@@ -16,6 +16,7 @@ final class AppDelegateTests: XCTestCase {
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
         appDelegate = nil
         super.tearDown()
     }
@@ -148,4 +149,18 @@ final class AppDelegateTests: XCTestCase {
         XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
     }
 
+    // MARK: - Dock Icon Tests
+
+    func testHideDockIconDefaultValue() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+    }
+
+    func testDockIconVisibilityPersistence() {
+        UserDefaults.standard.set(true, forKey: UserDefaults.hideDockIconKey)
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+
+        UserDefaults.standard.set(false, forKey: UserDefaults.hideDockIconKey)
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+    }
 }
