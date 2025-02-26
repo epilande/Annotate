@@ -132,6 +132,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             menu.addItem(NSMenuItem.separator())
 
+            let clearAllItem = NSMenuItem(
+                title: "Clear All",
+                action: #selector(clearAllAnnotations),
+                keyEquivalent: "\u{8}"
+            )
+            clearAllItem.keyEquivalentModifierMask = [.option]
+            menu.addItem(clearAllItem)
+
             let undoItem = NSMenuItem(
                 title: "Undo",
                 action: #selector(undo),
@@ -361,6 +369,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             overlayWindow.isVisible
         {
             overlayWindow.overlayView.redo()
+        }
+    }
+
+    @objc func clearAllAnnotations() {
+        if let currentScreen = getCurrentScreen(),
+            let overlayWindow = overlayWindows[currentScreen],
+            overlayWindow.isVisible
+        {
+            overlayWindow.overlayView.clearAll()
         }
     }
 
