@@ -4,6 +4,8 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(UserDefaults.clearDrawingsOnStartKey)
     private var clearDrawingsOnStart = false
+    @AppStorage(UserDefaults.hideDockIconKey)
+    private var hideDockIcon = false
     @State private var shortcuts: [ShortcutKey: String] = ShortcutManager.shared.allShortcuts
     @State private var editingShortcut: ShortcutKey?
 
@@ -12,11 +14,21 @@ struct SettingsView: View {
             GroupBox("General") {
                 VStack(alignment: .center, spacing: 12) {
                     KeyboardShortcuts.Recorder("Annotate Hotkey:", name: .toggleOverlay)
-                    Toggle("Clear drawings when toggling overlay", isOn: $clearDrawingsOnStart)
+
+                    Divider()
+
+                    Toggle("Clear Drawings on Toggle", isOn: $clearDrawingsOnStart)
                         .toggleStyle(.checkbox)
                         .help(
                             "When enabled, all drawings will be cleared each time you toggle the overlay"
                         )
+
+                    Toggle("Hide Dock Icon", isOn: $hideDockIcon)
+                        .toggleStyle(.checkbox)
+                        .help("When enabled, Annotate will not show in the Dock")
+                        .onChange(of: hideDockIcon) { _ in
+                            AppDelegate.shared?.updateDockIconVisibility()
+                        }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
@@ -24,7 +36,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity)
 
-            GroupBox("Tool Shortcuts") {
+            GroupBox("Shortcuts") {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(ShortcutKey.allCases, id: \.self) { tool in
                         HStack {

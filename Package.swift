@@ -19,11 +19,9 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Annotate",
-            dependencies: [],
-            // 'path' should point to the directory containing your .swift files (AppDelegate.swift, etc.)
-            // If those files are in a folder named "Annotate", set `path: "Annotate"`.
-            // If everything is in your root directory, you can omit 'path' or set it to "."
-            path: "Annotate"
+            dependencies: ["KeyboardShortcuts"],
+            path: "Annotate",
+            resources: []
         )
     ]
 )

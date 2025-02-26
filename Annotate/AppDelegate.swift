@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        updateDockIconVisibility()
 
         // Load color from UserDefaults if exists
         if let colorData = UserDefaults.standard.data(forKey: "SelectedColor"),
@@ -26,6 +27,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupStatusBarItem()
         setupOverlayWindows()
         setupScreenNotifications()
+    }
+
+    func updateDockIconVisibility() {
+        if UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey) {
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     func setupStatusBarItem() {

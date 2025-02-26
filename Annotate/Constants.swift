@@ -7,4 +7,5 @@ extension KeyboardShortcuts.Name {
 
 extension UserDefaults {
     static let clearDrawingsOnStartKey = "ClearDrawingsOnStart"
+    static let hideDockIconKey = "HideDockIcon"
 }
