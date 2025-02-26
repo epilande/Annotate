@@ -16,7 +16,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         AppDelegate.shared = self
         updateDockIconVisibility()
 
-        // Load color from UserDefaults if exists
         if let colorData = UserDefaults.standard.data(forKey: "SelectedColor"),
             let unarchivedColor = try? NSKeyedUnarchiver.unarchivedObject(
                 ofClass: NSColor.self, from: colorData)
@@ -26,6 +25,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         setupStatusBarItem()
         setupOverlayWindows()
+
+        let persistedFadeMode =
+            UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+        overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
+
         setupScreenNotifications()
     }
 
@@ -108,8 +112,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             menu.addItem(NSMenuItem.separator())
 
+            let persistedFadeMode =
+                UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
             let currentDrawingModeItem = NSMenuItem(
-                title: "Current Mode: Fade",
+                title: persistedFadeMode ? "Current Mode: Fade" : "Current Mode: Persist",
                 action: nil,
                 keyEquivalent: ""
             )
@@ -117,7 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             menu.addItem(currentDrawingModeItem)
 
             let toggleDrawingModeItem = NSMenuItem(
-                title: "Persist",
+                title: persistedFadeMode ? "Persist" : "Fade",
                 action: #selector(toggleFadeMode(_:)),
                 keyEquivalent: " "
             )
@@ -364,6 +370,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for window in overlayWindows.values {
             window.overlayView.fadeMode.toggle()
         }
+
+        UserDefaults.standard.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         if let menu = statusItem.menu {
             let currentDrawingModeItem = menu.item(at: 10)

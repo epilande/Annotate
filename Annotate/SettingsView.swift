@@ -26,7 +26,7 @@ struct SettingsView: View {
                     Toggle("Hide Dock Icon", isOn: $hideDockIcon)
                         .toggleStyle(.checkbox)
                         .help("When enabled, Annotate will not show in the Dock")
-                        .onChange(of: hideDockIcon) { _ in
+                        .onChange(of: hideDockIcon) {
                             AppDelegate.shared?.updateDockIconVisibility()
                         }
                 }

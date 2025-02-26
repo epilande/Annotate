@@ -17,6 +17,7 @@ final class AppDelegateTests: XCTestCase {
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
         UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeModeKey)
         appDelegate = nil
         super.tearDown()
     }
@@ -162,5 +163,52 @@ final class AppDelegateTests: XCTestCase {
 
         UserDefaults.standard.set(false, forKey: UserDefaults.hideDockIconKey)
         XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+    }
+
+    // MARK: - Persist Fade Mode Tests
+
+    func testDefaultFadeModePersistence() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeModeKey)
+        let persistedFadeMode =
+            UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+        XCTAssertTrue(persistedFadeMode, "Default fade mode should be true (fade mode active).")
+    }
+
+    func testToggleFadeModeUpdatesPersistence() {
+        let appDelegate = AppDelegate()
+        appDelegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification))
+
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window found")
+            return
+        }
+        XCTAssertTrue(
+            overlayWindow.overlayView.fadeMode, "Expected fade mode to be true by default.")
+
+        // Toggle fade mode.
+        appDelegate.toggleFadeMode(NSMenuItem())
+
+        XCTAssertFalse(
+            overlayWindow.overlayView.fadeMode, "Expected fade mode to be false after toggle.")
+
+        // UserDefaults should reflect this change.
+        let persistedFadeMode = UserDefaults.standard.bool(forKey: UserDefaults.fadeModeKey)
+        XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
+    }
+
+    func testOverlayWindowsRestorePersistedFadeMode() {
+        UserDefaults.standard.set(false, forKey: UserDefaults.fadeModeKey)
+
+        let appDelegate = AppDelegate()
+        appDelegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification))
+
+        // All overlay windows should be initialized with fade mode set to false.
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertFalse(
+                window.overlayView.fadeMode,
+                "Overlay window should restore persisted fade mode as false.")
+        }
     }
 }
