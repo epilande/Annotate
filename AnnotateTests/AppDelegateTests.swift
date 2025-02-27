@@ -68,6 +68,19 @@ final class AppDelegateTests: XCTestCase {
         }
     }
 
+    func testCounterToolSwitching() {
+        appDelegate.enableCounterMode(NSMenuItem())
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .counter)
+        }
+
+        if let menu = appDelegate.statusItem.menu,
+            let currentToolItem = menu.item(at: 2)
+        {
+            XCTAssertEqual(currentToolItem.title, "Current Tool: Counter")
+        }
+    }
+
     func testColorPicker() {
         appDelegate.showColorPicker(nil)
         XCTAssertNotNil(appDelegate.colorPopover)

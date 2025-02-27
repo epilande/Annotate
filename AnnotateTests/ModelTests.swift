@@ -71,6 +71,48 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(emptyAnnotation.text.isEmpty)
     }
 
+    func testCounterAnnotation() {
+        let position = NSPoint(x: 50, y: 50)
+        let color = NSColor.blue
+        let number = 3
+        let time: CFTimeInterval = 1.5
+
+        let counter = CounterAnnotation(
+            number: number,
+            position: position,
+            color: color,
+            creationTime: time
+        )
+
+        XCTAssertEqual(counter.number, number)
+        XCTAssertEqual(counter.position, position)
+        XCTAssertEqual(counter.color, color)
+        XCTAssertEqual(counter.creationTime, time)
+
+        let counterNoTime = CounterAnnotation(
+            number: number,
+            position: position,
+            color: color
+        )
+        XCTAssertNil(counterNoTime.creationTime)
+
+        let counterCopy = CounterAnnotation(
+            number: number,
+            position: position,
+            color: color,
+            creationTime: time
+        )
+        XCTAssertEqual(counter, counterCopy)
+
+        let differentCounter = CounterAnnotation(
+            number: number + 1,
+            position: position,
+            color: color,
+            creationTime: time
+        )
+        XCTAssertNotEqual(counter, differentCounter)
+    }
+
     func testToolType() {
         let tools: [ToolType] = [.pen, .arrow, .highlighter, .rectangle, .circle, .text]
         XCTAssertEqual(tools.count, 6)  // Ensure we have all tool types

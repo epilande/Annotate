@@ -62,4 +62,29 @@ final class ShortcutManagerTests: XCTestCase {
             ShortcutManager.shared.isShortcutTaken("a", excluding: .arrow),
             "Excluding Arrow, 'a' should not be taken")
     }
+
+    func testCounterShortcut() {
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .counter),
+            ShortcutKey.counter.defaultKey,
+            "Default shortcut for Counter should be 'n'"
+        )
+
+        // Set a custom shortcut
+        ShortcutManager.shared.setShortcut("m", for: .counter)
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .counter),
+            "m",
+            "Counter shortcut should be updated to 'm'"
+        )
+
+        // Reset to default
+        ShortcutManager.shared.resetToDefault(tool: .counter)
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .counter),
+            ShortcutKey.counter.defaultKey,
+            "Counter shortcut should be reset to default"
+        )
+    }
+
 }

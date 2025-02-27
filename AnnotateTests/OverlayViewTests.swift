@@ -82,4 +82,59 @@ final class OverlayViewTests: XCTestCase {
         XCTAssertTrue(overlayView.circles.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
     }
+
+    func testCounterAnnotations() {
+        XCTAssertTrue(overlayView.counterAnnotations.isEmpty)
+        XCTAssertEqual(overlayView.nextCounterNumber, 1)
+
+        let counter = CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 100, y: 100),
+            color: .systemBlue
+        )
+        overlayView.counterAnnotations.append(counter)
+        overlayView.nextCounterNumber = 2
+
+        // Verify counter was added
+        XCTAssertEqual(overlayView.counterAnnotations.count, 1)
+        XCTAssertEqual(overlayView.counterAnnotations[0].number, 1)
+        XCTAssertEqual(overlayView.nextCounterNumber, 2)
+
+        // Test clearing counters
+        overlayView.clearAll()
+        XCTAssertTrue(overlayView.counterAnnotations.isEmpty)
+        XCTAssertEqual(overlayView.nextCounterNumber, 1)
+    }
+
+    func testCounterToolSelection() {
+        overlayView.currentTool = .counter
+        XCTAssertEqual(overlayView.currentTool, .counter)
+    }
+
+    func testDeleteLastCounter() {
+        // Add two counters
+        let counter1 = CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 100, y: 100),
+            color: .systemBlue
+        )
+        let counter2 = CounterAnnotation(
+            number: 2,
+            position: NSPoint(x: 200, y: 200),
+            color: .systemRed
+        )
+
+        overlayView.counterAnnotations = [counter1, counter2]
+        overlayView.nextCounterNumber = 3
+        overlayView.currentTool = .counter
+
+        // Delete last counter
+        overlayView.deleteLastItem()
+
+        // Verify only counter1 remains
+        XCTAssertEqual(overlayView.counterAnnotations.count, 1)
+        XCTAssertEqual(overlayView.counterAnnotations[0].number, 1)
+        XCTAssertEqual(overlayView.nextCounterNumber, 2)
+    }
+
 }

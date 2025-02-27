@@ -49,19 +49,57 @@ final class DrawingActionTests: XCTestCase {
         }
     }
 
-    func testClearAllAction() {
+    func testAddCounterAction() {
+        let counter = CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 100, y: 100),
+            color: .systemBlue
+        )
+
+        let action = DrawingAction.addCounter(counter)
+
+        if case .addCounter(let actionCounter) = action {
+            XCTAssertEqual(actionCounter.number, counter.number)
+            XCTAssertEqual(actionCounter.position, counter.position)
+            XCTAssertEqual(actionCounter.color, counter.color)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
+
+    func testRemoveCounterAction() {
+        let counter = CounterAnnotation(
+            number: 2,
+            position: NSPoint(x: 200, y: 200),
+            color: .systemGreen
+        )
+
+        let action = DrawingAction.removeCounter(counter)
+
+        if case .removeCounter(let actionCounter) = action {
+            XCTAssertEqual(actionCounter.number, counter.number)
+            XCTAssertEqual(actionCounter.position, counter.position)
+            XCTAssertEqual(actionCounter.color, counter.color)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
+
+    func testClearAllWithCounters() {
         let paths = [DrawingPath(points: [], color: .systemRed)]
         let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
         let highlights = [DrawingPath(points: [], color: .yellow)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
         let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
+        let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
-        let action = DrawingAction.clearAll(paths, arrows, highlights, rectangles, circles, texts)
+        let action = DrawingAction.clearAll(
+            paths, arrows, highlights, rectangles, circles, texts, counters)
 
         if case .clearAll(
             let actionPaths, let actionArrows, let actionHighlights,
-            let actionRects, let actionCircles, let actionTexts) = action
+            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
@@ -69,6 +107,35 @@ final class DrawingActionTests: XCTestCase {
             XCTAssertEqual(actionRects, rectangles)
             XCTAssertEqual(actionCircles, circles)
             XCTAssertEqual(actionTexts, texts)
+            XCTAssertEqual(actionCounters, counters)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
+
+    func testClearAllAction() {
+        let paths = [DrawingPath(points: [], color: .systemRed)]
+        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
+        let highlights = [DrawingPath(points: [], color: .yellow)]
+        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
+        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
+        let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
+        let counters = [CounterAnnotation(number: 1, position: .zero, color: .black)]
+
+        let action = DrawingAction.clearAll(
+            paths, arrows, highlights, rectangles, circles, texts, counters)
+
+        if case .clearAll(
+            let actionPaths, let actionArrows, let actionHighlights,
+            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
+        {
+            XCTAssertEqual(actionPaths, paths)
+            XCTAssertEqual(actionArrows, arrows)
+            XCTAssertEqual(actionHighlights, highlights)
+            XCTAssertEqual(actionRects, rectangles)
+            XCTAssertEqual(actionCircles, circles)
+            XCTAssertEqual(actionTexts, texts)
+            XCTAssertEqual(actionCounters, counters)
         } else {
             XCTFail("Wrong action type")
         }
