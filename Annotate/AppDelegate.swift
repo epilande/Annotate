@@ -103,6 +103,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             circleModeItem.keyEquivalentModifierMask = []
             menu.addItem(circleModeItem)
 
+            let counterModeItem = NSMenuItem(
+                title: "Counter",
+                action: #selector(enableCounterMode(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .counter))
+            counterModeItem.keyEquivalentModifierMask = []
+            menu.addItem(counterModeItem)
+
             let textModeItem = NSMenuItem(
                 title: "Text",
                 action: #selector(enableTextMode(_:)),
@@ -346,6 +353,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    @objc func enableCounterMode(_ sender: NSMenuItem) {
+        switchTool(to: .counter)
+        if let menu = statusItem.menu {
+            let currentToolItem = menu.item(at: 2)
+            currentToolItem?.title = "Current Tool: Counter"
+        }
+    }
+
     @objc func enableTextMode(_ sender: NSMenuItem) {
         switchTool(to: .text)
         if let menu = statusItem.menu {
@@ -391,8 +406,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UserDefaults.standard.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         if let menu = statusItem.menu {
-            let currentDrawingModeItem = menu.item(at: 10)
-            let toggleDrawingModeItem = menu.item(at: 11)
+            let currentDrawingModeItem = menu.item(at: 11)
+            let toggleDrawingModeItem = menu.item(at: 12)
 
             currentDrawingModeItem?.title =
                 isCurrentlyFadeMode

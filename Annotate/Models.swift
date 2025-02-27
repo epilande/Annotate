@@ -8,6 +8,7 @@ enum ToolType {
     case rectangle
     case circle
     case text
+    case counter
 }
 
 /// Represents a timed point for pen/highlighter so we can do trailing fade-out
@@ -54,6 +55,13 @@ struct TextAnnotation {
     var fontSize: CGFloat
 }
 
+struct CounterAnnotation {
+    var number: Int
+    var position: NSPoint
+    var color: NSColor
+    var creationTime: CFTimeInterval?
+}
+
 /// Describes actions that can be used for undo/redo operations.
 enum DrawingAction {
     case addPath(DrawingPath)
@@ -61,15 +69,19 @@ enum DrawingAction {
     case addHighlight(DrawingPath)
     case addRectangle(Rectangle)
     case addCircle(Circle)
+    case addCounter(CounterAnnotation)
     case removePath(DrawingPath)
     case removeArrow(Arrow)
     case removeHighlight(DrawingPath)
     case removeRectangle(Rectangle)
     case removeCircle(Circle)
+    case removeCounter(CounterAnnotation)
     case addText(TextAnnotation)
     case removeText(TextAnnotation)
     case moveText(Int, NSPoint, NSPoint)
-    case clearAll([DrawingPath], [Arrow], [DrawingPath], [Rectangle], [Circle], [TextAnnotation])
+    case clearAll(
+        [DrawingPath], [Arrow], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
+        [CounterAnnotation])
 }
 
 // Add to Models.swift
@@ -110,5 +122,12 @@ extension TextAnnotation: Equatable {
     public static func == (lhs: TextAnnotation, rhs: TextAnnotation) -> Bool {
         return lhs.text == rhs.text && lhs.position == rhs.position && lhs.color.isEqual(rhs.color)
             && lhs.fontSize == rhs.fontSize
+    }
+}
+
+extension CounterAnnotation: Equatable {
+    public static func == (lhs: CounterAnnotation, rhs: CounterAnnotation) -> Bool {
+        return lhs.number == rhs.number && lhs.position == rhs.position
+            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
     }
 }

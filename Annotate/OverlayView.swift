@@ -24,6 +24,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var dragOffset: NSPoint?
     var editingTextAnnotationIndex: Int?
 
+    var counterAnnotations: [CounterAnnotation] = []
+    var nextCounterNumber: Int = 1
+
     var currentColor: NSColor = .systemRed
     var currentTool: ToolType = .pen
 
@@ -142,8 +145,25 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 target.registerUndo(action: .moveText(index, newPosition, oldPosition))
                 target.needsDisplay = true
             }
+        case .addCounter(let counter):
+            undoManager?.registerUndo(withTarget: self) { target in
+                if !target.counterAnnotations.isEmpty {
+                    target.counterAnnotations.removeLast()
+                    target.nextCounterNumber = max(1, target.nextCounterNumber - 1)
+                    target.registerUndo(action: .removeCounter(counter))
+                    target.needsDisplay = true
+                }
+            }
+        case .removeCounter(let counter):
+            undoManager?.registerUndo(withTarget: self) { target in
+                target.counterAnnotations.append(counter)
+                target.nextCounterNumber = max(target.nextCounterNumber, counter.number + 1)
+                target.registerUndo(action: .addCounter(counter))
+                target.needsDisplay = true
+            }
         case .clearAll(
-            let paths, let arrows, let highlights, let rectangles, let circles, let textAnnotations):
+            let paths, let arrows, let highlights, let rectangles, let circles, let textAnnotations,
+            let counterAnnotations):
             undoManager?.registerUndo(withTarget: self) { target in
                 target.paths = paths
                 target.arrows = arrows
@@ -151,7 +171,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 target.rectangles = rectangles
                 target.circles = circles
                 target.textAnnotations = textAnnotations
-                target.registerUndo(action: .clearAll([], [], [], [], [], []))
+                target.counterAnnotations = counterAnnotations
+                target.nextCounterNumber =
+                    counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
+                target.registerUndo(action: .clearAll([], [], [], [], [], [], []))
                 target.needsDisplay = true
             }
         }
@@ -278,6 +301,22 @@ class OverlayView: NSView, NSTextFieldDelegate {
         if let annotation = currentTextAnnotation {
             drawText(annotation)
         }
+
+        var aliveCounters: [CounterAnnotation] = []
+        for counter in counterAnnotations {
+            if fadeMode, let creationTime = counter.creationTime {
+                let age = now - creationTime
+                if age < fadeDuration {
+                    let alpha = alphaForAge(age)
+                    drawCounter(counter, alpha: alpha)
+                    aliveCounters.append(counter)
+                }
+            } else {
+                drawCounter(counter, alpha: 1.0)
+                aliveCounters.append(counter)
+            }
+        }
+        counterAnnotations = aliveCounters
     }
 
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
@@ -419,10 +458,51 @@ class OverlayView: NSView, NSTextFieldDelegate {
         attributedString.draw(at: annotation.position)
     }
 
+    private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
+        let radius: CGFloat = 15.0
+        let diameter = radius * 2
+
+        let circleBounds = NSRect(
+            x: counter.position.x - radius,
+            y: counter.position.y - radius,
+            width: diameter,
+            height: diameter
+        )
+        let circlePath = NSBezierPath(ovalIn: circleBounds)
+
+        // Draw the circle outline
+        counter.color.withAlphaComponent(alpha).setStroke()
+        circlePath.lineWidth = 2.0
+        circlePath.stroke()
+
+        // Draw the number
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let fontSize: CGFloat = 14.0
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: counter.color.withAlphaComponent(alpha),
+            .font: NSFont.boldSystemFont(ofSize: fontSize),
+            .paragraphStyle: paragraphStyle,
+        ]
+
+        let numberString = "\(counter.number)"
+        let textSize = numberString.size(withAttributes: attributes)
+
+        // Center the text in the circle
+        let textRect = NSRect(
+            x: counter.position.x - textSize.width / 2,
+            y: counter.position.y - textSize.height / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+
+        numberString.draw(in: textRect, withAttributes: attributes)
+    }
+
     func clearAll() {
         // Only register undo if there's something to clear
         if !paths.isEmpty || !arrows.isEmpty || !highlightPaths.isEmpty || !rectangles.isEmpty
-            || !circles.isEmpty || !textAnnotations.isEmpty
+            || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
         {
             let oldPaths = paths
             let oldArrows = arrows
@@ -430,10 +510,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let oldRectangles = rectangles
             let oldCircles = circles
             let oldTextAnnotations = textAnnotations
+            let oldCounterAnnotations = counterAnnotations
             registerUndo(
                 action: .clearAll(
                     oldPaths, oldArrows, oldHighlights, oldRectangles, oldCircles,
-                    oldTextAnnotations))
+                    oldTextAnnotations, oldCounterAnnotations))
 
             paths.removeAll()
             arrows.removeAll()
@@ -441,6 +522,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             rectangles.removeAll()
             circles.removeAll()
             textAnnotations.removeAll()
+            counterAnnotations.removeAll()
+            nextCounterNumber = 1
             currentArrow = nil
             currentPath = nil
             currentHighlight = nil
@@ -483,6 +566,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastText = textAnnotations.last!
             registerUndo(action: .removeText(lastText))
             textAnnotations.removeLast()
+        case .counter:
+            guard !counterAnnotations.isEmpty else { return }
+            let lastCounter = counterAnnotations.last!
+            registerUndo(action: .removeCounter(lastCounter))
+            counterAnnotations.removeLast()
+            nextCounterNumber = max(1, nextCounterNumber - 1)
         }
         needsDisplay = true
     }
@@ -607,8 +696,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
-        // For pen/highlighter paths, you track fading by each TimedPoint.
-        // If you keep them in memory until they fully fade, you can do something like:
+        let stillFadingCounters = counterAnnotations.contains { counter in
+            if let creationTime = counter.creationTime {
+                return (now - creationTime) < fadeDuration
+            }
+            return false
+        }
+
         let maxPathAge =
             highlightPaths.contains { path in
                 if let minTimestamp = path.points.map({ $0.timestamp }).min() {
@@ -626,6 +720,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return stillFadingArrows
             || stillFadingRectangles
             || stillFadingCircles
+            || stillFadingCounters
             || maxPathAge
     }
 }

@@ -99,6 +99,25 @@ class OverlayWindow: NSWindow {
             overlayView.finalizeTextAnnotation(activeTextField)
         }
 
+        if overlayView.currentTool == .counter {
+            let counterAnnotation = CounterAnnotation(
+                number: overlayView.nextCounterNumber,
+                position: startPoint,
+                color: currentColor,
+                creationTime: CACurrentMediaTime()
+            )
+
+            overlayView.registerUndo(action: .addCounter(counterAnnotation))
+            overlayView.counterAnnotations.append(counterAnnotation)
+            overlayView.nextCounterNumber += 1
+            overlayView.needsDisplay = true
+
+            if overlayView.fadeMode {
+                startFadeLoop()
+            }
+            return
+        }
+
         if overlayView.currentTool == .text {
             for (index, annotation) in overlayView.textAnnotations.enumerated() {
                 let textRect = getTextRect(for: annotation)
@@ -162,6 +181,8 @@ class OverlayWindow: NSWindow {
             overlayView.currentCircle = Circle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor)
         case .text:
+            break
+        case .counter:
             break
         }
         overlayView.needsDisplay = true
@@ -230,6 +251,8 @@ class OverlayWindow: NSWindow {
                 overlayView.currentCircle?.endPoint = currentPoint
             }
         case .text:
+            break
+        case .counter:
             break
         }
         overlayView.needsDisplay = true
@@ -311,6 +334,8 @@ class OverlayWindow: NSWindow {
             }
         case .text:
             break
+        case .counter:
+            break
         }
         overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false
@@ -344,6 +369,9 @@ class OverlayWindow: NSWindow {
                 return
             case ShortcutManager.shared.getShortcut(for: .circle):
                 AppDelegate.shared?.enableCircleMode(NSMenuItem())
+                return
+            case ShortcutManager.shared.getShortcut(for: .counter):
+                AppDelegate.shared?.enableCounterMode(NSMenuItem())
                 return
             case ShortcutManager.shared.getShortcut(for: .text):
                 AppDelegate.shared?.enableTextMode(NSMenuItem())

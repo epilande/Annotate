@@ -6,6 +6,7 @@ enum ShortcutKey: String, CaseIterable {
     case highlighter = "h"
     case rectangle = "r"
     case circle = "o"
+    case counter = "n"
     case text = "t"
     case colorPicker = "c"
 
@@ -18,6 +19,7 @@ enum ShortcutKey: String, CaseIterable {
         case .highlighter: return "Highlighter"
         case .rectangle: return "Rectangle"
         case .circle: return "Circle"
+        case .counter: return "Counter"
         case .text: return "Text"
         case .colorPicker: return "Color Picker"
         }
