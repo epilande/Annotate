@@ -11,7 +11,7 @@
 
 ## ❓ Why?
 
-Sometimes you need to emphasize a part of your screen or share ideas visually, and Annotate fills that gap with a simple, efficient interface. It enables real-time screen annotations using tools like pen, arrow, highlighter, rectangle, circle, and text—perfect for highlighting and explaining concepts during presentations, live demos, or teaching sessions where visual annotations enhance understanding and clarity.
+Sometimes you need to emphasize a part of your screen or share ideas visually, and Annotate fills that gap with a simple, efficient interface. It enables real-time screen annotations using tools like pen, arrow, highlighter, rectangle, circle, counter, and text—perfect for highlighting and explaining concepts during presentations, live demos, or teaching sessions where visual annotations enhance understanding and clarity.
 
 ## ✨ Features
 
@@ -21,6 +21,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🟨 **Highlighter** for emphasizing content.
   - 🔲 **Rectangle** shapes for boxing content.
   - ⭕ **Circle** shapes for highlighting areas.
+  - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support.
 - ✨ **Fade/Persist Mode:** Control whether annotations fade out after a duration or persist on the screen.
 - 🌈 **Color Picker:** Easily select and persist your preferred color.
@@ -96,6 +97,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 | **Rectangle Mode**    | <kbd>r</kbd>                                         | Draw rectangles (hold <kbd>Option</kbd> to expand from center). |
 | **Circle Mode**       | <kbd>o</kbd>                                         | Draw circles (hold <kbd>Option</kbd> to expand from center).    |
 | **Text Mode**         | <kbd>t</kbd>                                         | Add text annotations.                                           |
+| **Counter Mode**      | <kbd>n</kbd>                                         | Add sequential numbered circles.                                |
 | **Finalize Text**     | <kbd>Enter</kbd> or <kbd>Esc</kbd>                   | Finalize text input (empty text removes it).                    |
 | **Toggle Fade Mode**  | <kbd>Space</kbd>                                     | Switch between fade and persist modes.                          |
 | **Delete Last**       | <kbd>Delete</kbd>                                    | Remove the most recent annotation.                              |
@@ -126,5 +128,3 @@ Toggle between two drawing modes:
 
 - <kbd>Delete</kbd>: Removes the most recently added annotation.
 - <kbd>Option</kbd> + <kbd>Delete</kbd>: Clear all annotations from the screen.
-
-
