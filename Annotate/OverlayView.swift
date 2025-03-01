@@ -470,9 +470,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
         let circlePath = NSBezierPath(ovalIn: circleBounds)
 
-        // Draw the circle outline
+        let backgroundColor = getContrastingColor(for: counter.color)
+        backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
+        circlePath.fill()
+
         counter.color.withAlphaComponent(alpha).setStroke()
-        circlePath.lineWidth = 2.0
+        circlePath.lineWidth = 2.5
         circlePath.stroke()
 
         // Draw the number
@@ -481,7 +484,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let fontSize: CGFloat = 14.0
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: counter.color.withAlphaComponent(alpha),
-            .font: NSFont.boldSystemFont(ofSize: fontSize),
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .heavy),
             .paragraphStyle: paragraphStyle,
         ]
 
@@ -723,4 +726,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || stillFadingCounters
             || maxPathAge
     }
+}
+
+private func getContrastingColor(for color: NSColor) -> NSColor {
+    guard let rgbColor = color.usingColorSpace(.sRGB) else {
+        return .white
+    }
+
+    // Calculate luminance to determine if color is light or dark
+    // based on standard coefficients from the WCAG 2.0 specification
+    let luminance =
+        0.2126 * rgbColor.redComponent + 0.7152 * rgbColor.greenComponent + 0.0722
+        * rgbColor.blueComponent
+
+    // Return white for dark colors, black for light colors
+    return luminance < 0.6 ? .white : .black
 }
