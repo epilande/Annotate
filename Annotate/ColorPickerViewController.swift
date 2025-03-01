@@ -6,6 +6,8 @@ class ColorSwatchButton: NSButton {
         didSet { needsDisplay = true }
     }
 
+    var colorIndex: Int = 0
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         swatchColor.setFill()
@@ -20,6 +22,9 @@ class ColorPickerViewController: NSViewController {
         .magenta, .white, .black,
     ]
 
+    private var keyMonitor: Any?
+    private var buttons: [ColorSwatchButton] = []
+
     override func loadView() {
         let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 150, height: 100))
 
@@ -30,6 +35,8 @@ class ColorPickerViewController: NSViewController {
         stackView.spacing = 0
 
         let columnsPerRow = 3
+        var buttonIndex = 0
+
         for chunk in colorPalette.chunked(into: columnsPerRow) {
             let rowStack = NSStackView()
             rowStack.orientation = .horizontal
@@ -42,6 +49,12 @@ class ColorPickerViewController: NSViewController {
                 button.swatchColor = color
                 button.target = self
                 button.action = #selector(colorSwatchClicked(_:))
+
+                buttonIndex += 1
+                button.colorIndex = buttonIndex
+
+                buttons.append(button)
+
                 rowStack.addArrangedSubview(button)
             }
             stackView.addArrangedSubview(rowStack)
@@ -58,6 +71,81 @@ class ColorPickerViewController: NSViewController {
         ])
 
         self.view = containerView
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        setupKeyboardMonitoring()
+
+        // Add visual indicators of keyboard shortcuts
+        updateButtonLabels()
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        removeKeyboardMonitoring()
+    }
+
+    private func setupKeyboardMonitoring() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if let strongSelf = self, strongSelf.handleKeyEvent(event) {
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeKeyboardMonitoring() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    private func handleKeyEvent(_ event: NSEvent) -> Bool {
+        guard let characters = event.characters, characters.count == 1 else {
+            return false
+        }
+
+        // Check if the character is a digit between 1-9
+        if let digit = Int(characters), digit >= 1 && digit <= min(9, colorPalette.count) {
+            // Find the button with this index and simulate a click
+            if digit <= buttons.count {
+                let button = buttons[digit - 1]
+                colorSwatchClicked(button)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func updateButtonLabels() {
+        // Add number indicators to buttons
+        for button in buttons {
+            // Remove any existing label
+            button.subviews.forEach { if $0 is NSTextField { $0.removeFromSuperview() } }
+
+            // Create a text label to show the shortcut number
+            let label = NSTextField()
+            label.stringValue = "\(button.colorIndex)"
+            label.isBezeled = false
+            label.drawsBackground = false
+            label.isEditable = false
+            label.isSelectable = false
+            label.textColor = button.swatchColor.contrastingColor()
+
+            label.font = NSFont.boldSystemFont(ofSize: 12)
+            label.alignment = .center
+
+            // Add the label to the button and center it
+            button.addSubview(label)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            ])
+        }
     }
 
     @objc func colorSwatchClicked(_ sender: ColorSwatchButton) {
