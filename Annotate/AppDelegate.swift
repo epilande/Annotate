@@ -466,8 +466,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UserDefaults.standard.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         if let menu = statusItem.menu {
-            let currentDrawingModeItem = menu.item(at: 12)
-            let toggleDrawingModeItem = menu.item(at: 13)
+            let currentDrawingModeItem = menu.item(at: 13)
+            let toggleDrawingModeItem = menu.item(at: 14)
 
             currentDrawingModeItem?.title =
                 isCurrentlyFadeMode
