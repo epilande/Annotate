@@ -56,6 +56,7 @@ class OverlayWindow: NSWindow {
             height: windowRect.height
         )
         boardView = BoardView(frame: boardFrame)
+        boardView.isHidden = !BoardManager.shared.isEnabled
         containerView.addSubview(boardView)
 
         overlayView = OverlayView(frame: containerView.bounds)

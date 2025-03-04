@@ -25,7 +25,6 @@ class BoardView: NSView {
     }
 
     private var boardType: BoardType = .whiteboard
-    private var currentAppearance: NSAppearance?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -45,28 +44,35 @@ class BoardView: NSView {
 
         updateForAppearance()
 
-        // Register for system appearance changes
-        DistributedNotificationCenter.default().addObserver(
+        NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceDidChange),
-            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            name: .boardAppearanceChanged,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visibilityChanged),
+            name: .boardStateChanged,
             object: nil
         )
     }
 
     deinit {
-        DistributedNotificationCenter.default().removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
     }
 
     @objc private func appearanceDidChange() {
         updateForAppearance()
     }
 
-    private func updateForAppearance() {
-        let newAppearance = self.effectiveAppearance
+    @objc private func visibilityChanged() {
+        self.isHidden = !BoardManager.shared.isEnabled
+    }
 
-        let isDarkMode = newAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        boardType = isDarkMode ? .blackboard : .whiteboard
+    func updateForAppearance() {
+        boardType = BoardManager.shared.currentBoardType
 
         layer?.backgroundColor = boardType.backgroundColor.cgColor
         layer?.borderColor = boardType.borderColor.cgColor
@@ -74,17 +80,9 @@ class BoardView: NSView {
         needsDisplay = true
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-    }
-
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateForAppearance()
-    }
-
-    func getCurrentBoardType() -> BoardType {
-        return boardType
     }
 
     override var isHidden: Bool {

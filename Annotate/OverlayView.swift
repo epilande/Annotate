@@ -750,30 +750,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func adaptColorForBoard(_ color: NSColor, boardType: BoardView.BoardType) -> NSColor {
-        guard adaptColorsToBoardType else { return color }
-
-        if boardType == .blackboard && color.contrastingColor() == .white {
-            if color.isEqual(NSColor.black) {
-                return NSColor.white
-            }
-            return color.blended(withFraction: 0.1, of: NSColor.white) ?? color
-        }
-
-        if boardType == .whiteboard && color.contrastingColor() == .black {
-            if color.isEqual(NSColor.white) {
-                return NSColor.black
-            }
-            return color.blended(withFraction: 0.1, of: NSColor.black) ?? color
-        }
-
-        return color
+        return BoardManager.shared.adaptColor(color, forBoardType: boardType)
     }
 
     var currentBoardType: BoardView.BoardType {
-        if let window = self.window as? OverlayWindow {
-            return window.boardView.getCurrentBoardType()
-        }
-        return .whiteboard
+        return BoardManager.shared.currentBoardType
     }
 
     func updateAdaptColors(boardEnabled: Bool) {

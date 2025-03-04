@@ -30,13 +30,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
 
-        setupScreenNotifications()
-
         let enableBoard = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
         overlayWindows.values.forEach {
             $0.boardView.isHidden = !enableBoard
             $0.overlayView.updateAdaptColors(boardEnabled: enableBoard)
         }
+
+        setupBoardObservers()
     }
 
     func updateDockIconVisibility() {
@@ -202,15 +202,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             statusItem.menu = menu
         }
-    }
-
-    func setupScreenNotifications() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(screenParametersChanged),
-            name: NSApplication.didChangeScreenParametersNotification,
-            object: nil
-        )
     }
 
     @objc func screenParametersChanged() {
@@ -389,11 +380,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func toggleBoardVisibility(_ sender: Any?) {
-        let currentVisibility = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
-        let newVisibility = !currentVisibility
-
-        UserDefaults.standard.set(newVisibility, forKey: UserDefaults.enableBoardKey)
-        updateBoardVisibility(enabled: newVisibility)
+        BoardManager.shared.toggle()
         updateBoardMenuItems()
         showOverlay()
     }
@@ -401,26 +388,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func updateBoardMenuItems() {
         guard let menu = statusItem.menu else { return }
 
-        let isDarkMode = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let boardType = isDarkMode ? "Blackboard" : "Whiteboard"
+        let boardType = BoardManager.shared.displayName
+        let boardEnabled = BoardManager.shared.isEnabled
 
-        let boardEnabled = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
         let toggleBoardItem = menu.items.first { $0.action == #selector(toggleBoardVisibility(_:)) }
 
         if let item = toggleBoardItem {
-            if boardEnabled {
-                item.title = "Hide \(boardType)"
-            } else {
-                item.title = "Show \(boardType)"
-            }
+            item.title = boardEnabled ? "Hide \(boardType)" : "Show \(boardType)"
         }
     }
 
-    func updateBoardVisibility(enabled: Bool) {
-        for window in overlayWindows.values {
-            window.boardView.isHidden = !enabled
-            window.overlayView.updateAdaptColors(boardEnabled: enabled)
-        }
+    func setupBoardObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersChanged),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(boardStateChanged),
+            name: .boardStateChanged,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(boardAppearanceChanged),
+            name: .boardAppearanceChanged,
+            object: nil
+        )
+    }
+
+    @objc func boardStateChanged() {
+        updateBoardMenuItems()
+    }
+
+    @objc func boardAppearanceChanged() {
+        updateBoardMenuItems()
     }
 
     @objc func undo() {
