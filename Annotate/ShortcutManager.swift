@@ -9,6 +9,7 @@ enum ShortcutKey: String, CaseIterable {
     case counter = "n"
     case text = "t"
     case colorPicker = "c"
+    case toggleBoard = "b"
 
     var defaultKey: String { rawValue }
 
@@ -22,6 +23,7 @@ enum ShortcutKey: String, CaseIterable {
         case .counter: return "Counter"
         case .text: return "Text"
         case .colorPicker: return "Color Picker"
+        case .toggleBoard: return "Toggle Board"
         }
     }
 }

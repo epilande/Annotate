@@ -1,6 +1,8 @@
 import Cocoa
 
 class OverlayView: NSView, NSTextFieldDelegate {
+    var adaptColorsToBoardType: Bool = true
+
     var arrows: [Arrow] = []
     var currentArrow: Arrow?
 
@@ -361,6 +363,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor) {
+        let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
+
         let path = NSBezierPath()
         path.move(to: start)
         path.line(to: end)
@@ -387,12 +391,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         path.move(to: end)
         path.line(to: p2)
 
-        color.setStroke()
+        adaptedColor.setStroke()
         path.lineWidth = 3.0
         path.stroke()
     }
 
     private func drawRectangle(_ rectangle: Rectangle, alpha: CGFloat) {
+        let adaptedColor = adaptColorForBoard(rectangle.color, boardType: currentBoardType)
+
         let rect = NSRect(
             x: min(rectangle.startPoint.x, rectangle.endPoint.x),
             y: min(rectangle.startPoint.y, rectangle.endPoint.y),
@@ -401,12 +407,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
 
         let path = NSBezierPath(rect: rect)
-        rectangle.color.withAlphaComponent(alpha).setStroke()
+        adaptedColor.withAlphaComponent(alpha).setStroke()
         path.lineWidth = 3.0
         path.stroke()
     }
 
     private func drawCircle(_ circle: Circle, alpha: CGFloat) {
+        let adaptedColor = adaptColorForBoard(circle.color, boardType: currentBoardType)
+
         let rect = NSRect(
             x: min(circle.startPoint.x, circle.endPoint.x),
             y: min(circle.startPoint.y, circle.endPoint.y),
@@ -415,7 +423,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
 
         let path = NSBezierPath(ovalIn: rect)
-        circle.color.withAlphaComponent(alpha).setStroke()
+        adaptedColor.withAlphaComponent(alpha).setStroke()
         path.lineWidth = 3.0
         path.stroke()
     }
@@ -429,6 +437,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func drawPath(_ path: DrawingPath, tool: ToolType) {
         guard !path.points.isEmpty else { return }
 
+        let adaptedColor = adaptColorForBoard(path.color, boardType: currentBoardType)
+
         let bezierPath = NSBezierPath()
         bezierPath.move(to: path.points[0].point)
 
@@ -437,10 +447,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         if tool == .highlighter {
-            path.color.withAlphaComponent(0.5).setStroke()
+            adaptedColor.withAlphaComponent(0.5).setStroke()
             bezierPath.lineWidth = 14.0
         } else {
-            path.color.setStroke()
+            adaptedColor.setStroke()
             bezierPath.lineWidth = 3.0
         }
 
@@ -450,8 +460,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func drawText(_ annotation: TextAnnotation) {
+        let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
+
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: annotation.color,
+            .foregroundColor: adaptedColor,
             .font: NSFont.systemFont(ofSize: annotation.fontSize),
         ]
         let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
@@ -459,6 +471,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
+        let adaptedColor = adaptColorForBoard(counter.color, boardType: currentBoardType)
+
         let radius: CGFloat = 15.0
         let diameter = radius * 2
 
@@ -470,11 +484,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
         let circlePath = NSBezierPath(ovalIn: circleBounds)
 
-        let backgroundColor = counter.color.contrastingColor()
+        let backgroundColor = adaptedColor.contrastingColor()
         backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
         circlePath.fill()
 
-        counter.color.withAlphaComponent(alpha).setStroke()
+        adaptedColor.withAlphaComponent(alpha).setStroke()
         circlePath.lineWidth = 2.5
         circlePath.stroke()
 
@@ -483,7 +497,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         paragraphStyle.alignment = .center
         let fontSize: CGFloat = 14.0
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: counter.color.withAlphaComponent(alpha),
+            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
             .font: NSFont.systemFont(ofSize: fontSize, weight: .heavy),
             .paragraphStyle: paragraphStyle,
         ]
@@ -586,13 +600,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             frame: NSRect(x: point.x, y: point.y, width: width, height: 24))
         if let textField = activeTextField {
             textField.font = NSFont.systemFont(ofSize: 18)
-            textField.backgroundColor = .clear
+
+            let boardType = currentBoardType
+            if boardType == .blackboard {
+                textField.backgroundColor = NSColor.black.withAlphaComponent(0.3)
+                textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
+            } else {
+                textField.backgroundColor = NSColor.white.withAlphaComponent(0.3)
+                textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
+            }
+
             textField.isBordered = false
-            textField.textColor = currentColor
             textField.isEditable = true
             textField.isSelectable = true
             textField.isBezeled = false
-            textField.drawsBackground = false
+            textField.drawsBackground = true
             textField.usesSingleLineMode = false
             textField.cell?.wraps = false
             textField.cell?.truncatesLastVisibleLine = false
@@ -725,5 +747,37 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || stillFadingCircles
             || stillFadingCounters
             || maxPathAge
+    }
+
+    func adaptColorForBoard(_ color: NSColor, boardType: BoardView.BoardType) -> NSColor {
+        guard adaptColorsToBoardType else { return color }
+
+        if boardType == .blackboard && color.contrastingColor() == .white {
+            if color.isEqual(NSColor.black) {
+                return NSColor.white
+            }
+            return color.blended(withFraction: 0.1, of: NSColor.white) ?? color
+        }
+
+        if boardType == .whiteboard && color.contrastingColor() == .black {
+            if color.isEqual(NSColor.white) {
+                return NSColor.black
+            }
+            return color.blended(withFraction: 0.1, of: NSColor.black) ?? color
+        }
+
+        return color
+    }
+
+    var currentBoardType: BoardView.BoardType {
+        if let window = self.window as? OverlayWindow {
+            return window.boardView.getCurrentBoardType()
+        }
+        return .whiteboard
+    }
+
+    func updateAdaptColors(boardEnabled: Bool) {
+        adaptColorsToBoardType = boardEnabled
+        needsDisplay = true
     }
 }

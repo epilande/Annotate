@@ -31,6 +31,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
 
         setupScreenNotifications()
+
+        let enableBoard = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        overlayWindows.values.forEach {
+            $0.boardView.isHidden = !enableBoard
+            $0.overlayView.updateAdaptColors(boardEnabled: enableBoard)
+        }
     }
 
     func updateDockIconVisibility() {
@@ -116,6 +122,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .text))
             textModeItem.keyEquivalentModifierMask = []
             menu.addItem(textModeItem)
+
+            menu.addItem(NSMenuItem.separator())
+
+            let isDarkMode =
+                NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let boardType = isDarkMode ? "Blackboard" : "Whiteboard"
+            let boardEnabled = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+            let toggleBoardItem = NSMenuItem(
+                title: boardEnabled ? "Hide \(boardType)" : "Show \(boardType)",
+                action: #selector(toggleBoardVisibility(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .toggleBoard))
+            toggleBoardItem.keyEquivalentModifierMask = []
+            menu.addItem(toggleBoardItem)
 
             menu.addItem(NSMenuItem.separator())
 
@@ -369,6 +388,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    @objc func toggleBoardVisibility(_ sender: Any?) {
+        let currentVisibility = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let newVisibility = !currentVisibility
+
+        UserDefaults.standard.set(newVisibility, forKey: UserDefaults.enableBoardKey)
+        updateBoardVisibility(enabled: newVisibility)
+        updateBoardMenuItems()
+        showOverlay()
+    }
+
+    func updateBoardMenuItems() {
+        guard let menu = statusItem.menu else { return }
+
+        let isDarkMode = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let boardType = isDarkMode ? "Blackboard" : "Whiteboard"
+
+        let boardEnabled = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let toggleBoardItem = menu.items.first { $0.action == #selector(toggleBoardVisibility(_:)) }
+
+        if let item = toggleBoardItem {
+            if boardEnabled {
+                item.title = "Hide \(boardType)"
+            } else {
+                item.title = "Show \(boardType)"
+            }
+        }
+    }
+
+    func updateBoardVisibility(enabled: Bool) {
+        for window in overlayWindows.values {
+            window.boardView.isHidden = !enabled
+            window.overlayView.updateAdaptColors(boardEnabled: enabled)
+        }
+    }
+
     @objc func undo() {
         if let currentScreen = getCurrentScreen(),
             let overlayWindow = overlayWindows[currentScreen],
@@ -406,8 +460,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UserDefaults.standard.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         if let menu = statusItem.menu {
-            let currentDrawingModeItem = menu.item(at: 11)
-            let toggleDrawingModeItem = menu.item(at: 12)
+            let currentDrawingModeItem = menu.item(at: 12)
+            let toggleDrawingModeItem = menu.item(at: 13)
 
             currentDrawingModeItem?.title =
                 isCurrentlyFadeMode
@@ -522,10 +576,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
             case "Color":
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .colorPicker)
+            case let title where title.hasPrefix("Show") || title.hasPrefix("Hide"):
+                if item.action == #selector(toggleBoardVisibility(_:)) {
+                    item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
+                }
             default:
                 break
             }
         }
     }
-
 }

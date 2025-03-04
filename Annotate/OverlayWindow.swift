@@ -2,6 +2,8 @@ import Cocoa
 
 class OverlayWindow: NSWindow {
     var overlayView: OverlayView!
+    var boardView: BoardView!
+
     var anchorPoint: NSPoint = .zero
     private var isOptionCurrentlyPressed = false
     private var wasOptionPressedOnMouseDown = false
@@ -47,11 +49,14 @@ class OverlayWindow: NSWindow {
 
         let containerView = NSView(frame: NSRect(origin: .zero, size: windowRect.size))
 
-        let visualEffect = NSVisualEffectView(frame: containerView.bounds)
-        visualEffect.material = .fullScreenUI
-        visualEffect.state = .active
-        visualEffect.alphaValue = 0
-        containerView.addSubview(visualEffect)
+        let boardFrame = NSRect(
+            x: 0,
+            y: 0,
+            width: windowRect.width,
+            height: windowRect.height
+        )
+        boardView = BoardView(frame: boardFrame)
+        containerView.addSubview(boardView)
 
         overlayView = OverlayView(frame: containerView.bounds)
         overlayView.wantsLayer = true
@@ -378,6 +383,9 @@ class OverlayWindow: NSWindow {
                 return
             case ShortcutManager.shared.getShortcut(for: .colorPicker):
                 AppDelegate.shared?.showColorPicker(nil)
+                return
+            case ShortcutManager.shared.getShortcut(for: .toggleBoard):
+                AppDelegate.shared?.toggleBoardVisibility(nil)
                 return
             default:
                 break
