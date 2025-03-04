@@ -57,18 +57,18 @@ class BoardManager {
     func adaptColor(_ color: NSColor, forBoardType boardType: BoardView.BoardType) -> NSColor {
         guard isEnabled else { return color }
 
+        if boardType == .blackboard && color.isEqual(NSColor.black) {
+            return NSColor.white
+        } else if boardType == .whiteboard && color.isEqual(NSColor.white) {
+            return NSColor.black
+        }
+
         if boardType == .blackboard && color.contrastingColor() == .white {
-            if color.isEqual(NSColor.black) {
-                return NSColor.white
-            }
-            return color.blended(withFraction: 0.3, of: NSColor.white) ?? color
+            return color.blended(withFraction: 0.1, of: NSColor.white) ?? color
         }
 
         if boardType == .whiteboard && color.contrastingColor() == .black {
-            if color.isEqual(NSColor.white) {
-                return NSColor.black
-            }
-            return color.blended(withFraction: 0.3, of: NSColor.black) ?? color
+            return color.blended(withFraction: 0.1, of: NSColor.black) ?? color
         }
 
         return color

@@ -137,4 +137,15 @@ final class OverlayViewTests: XCTestCase {
         XCTAssertEqual(overlayView.nextCounterNumber, 2)
     }
 
+    func testUpdateAdaptColors() {
+        overlayView.updateAdaptColors(boardEnabled: true)
+        XCTAssertTrue(
+            overlayView.adaptColorsToBoardType, "adaptColorsToBoardType should be true when enabled"
+        )
+
+        overlayView.updateAdaptColors(boardEnabled: false)
+        XCTAssertFalse(
+            overlayView.adaptColorsToBoardType,
+            "adaptColorsToBoardType should be false when disabled")
+    }
 }

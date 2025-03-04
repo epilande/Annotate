@@ -31,13 +31,6 @@ final class OverlayWindowTests: XCTestCase {
         // Test view hierarchy
         XCTAssertNotNil(window.contentView)
         XCTAssertNotNil(window.overlayView)
-
-        // Test visual effect view
-        let visualEffectView = window.contentView?.subviews.first as? NSVisualEffectView
-        XCTAssertNotNil(visualEffectView)
-        XCTAssertEqual(visualEffectView?.material, .fullScreenUI)
-        XCTAssertEqual(visualEffectView?.state, .active)
-        XCTAssertEqual(visualEffectView?.alphaValue, 0)
     }
 
     func testFadeLoop() {

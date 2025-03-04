@@ -224,4 +224,43 @@ final class AppDelegateTests: XCTestCase {
                 "Overlay window should restore persisted fade mode as false.")
         }
     }
+
+    func testToggleBoardVisibility() {
+        let initialState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+
+        appDelegate.toggleBoardVisibility(nil)
+
+        let newState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        XCTAssertNotEqual(initialState, newState, "Board visibility should be toggled")
+
+        appDelegate.toggleBoardVisibility(nil)
+        let finalState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        XCTAssertEqual(
+            initialState, finalState, "Board visibility should be toggled back to original state")
+    }
+
+    func testUpdateBoardMenuItems() {
+        guard let menu = appDelegate.statusItem.menu else {
+            XCTFail("Status bar menu not initialized")
+            return
+        }
+
+        let toggleBoardItem = menu.items.first {
+            $0.action == #selector(AppDelegate.toggleBoardVisibility(_:))
+        }
+        XCTAssertNotNil(toggleBoardItem, "Board toggle menu item should exist")
+
+        let initialTitle = toggleBoardItem?.title
+
+        let initialState = BoardManager.shared.isEnabled
+        BoardManager.shared.isEnabled = !initialState
+
+        appDelegate.updateBoardMenuItems()
+
+        let newTitle = toggleBoardItem?.title
+        XCTAssertNotEqual(
+            initialTitle, newTitle, "Menu item title should change when board visibility changes")
+
+        BoardManager.shared.isEnabled = initialState
+    }
 }
