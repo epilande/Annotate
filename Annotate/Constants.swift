@@ -10,4 +10,5 @@ extension UserDefaults {
     static let hideDockIconKey = "HideDockIcon"
     static let fadeModeKey = "FadeMode"
     static let enableBoardKey = "EnableBoard"
+    static let boardOpacityKey = "BoardOpacity"
 }

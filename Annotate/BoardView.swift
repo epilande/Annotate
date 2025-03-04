@@ -8,9 +8,9 @@ class BoardView: NSView {
         var backgroundColor: NSColor {
             switch self {
             case .whiteboard:
-                return NSColor.white.withAlphaComponent(0.95)
+                return NSColor.white.withAlphaComponent(CGFloat(BoardManager.shared.opacity))
             case .blackboard:
-                return NSColor(calibratedWhite: 0.1, alpha: 0.95)
+                return NSColor(calibratedWhite: 0.1, alpha: CGFloat(BoardManager.shared.opacity))
             }
         }
 

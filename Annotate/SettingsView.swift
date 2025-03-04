@@ -8,6 +8,7 @@ struct SettingsView: View {
     private var hideDockIcon = false
     @State private var shortcuts: [ShortcutKey: String] = ShortcutManager.shared.allShortcuts
     @State private var editingShortcut: ShortcutKey?
+    @State private var boardOpacity: Double = BoardManager.shared.opacity
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -16,6 +17,13 @@ struct SettingsView: View {
                     KeyboardShortcuts.Recorder("Annotate Hotkey:", name: .toggleOverlay)
 
                     Divider()
+
+                    Slider(value: $boardOpacity, in: 0.1...1.0) {
+                        Text("Board Opacity: \(Int(boardOpacity * 100))%")
+                    }
+                    .onChange(of: boardOpacity) { oldValue, newValue in
+                        BoardManager.shared.opacity = newValue
+                    }
 
                     Toggle("Clear Drawings on Toggle", isOn: $clearDrawingsOnStart)
                         .toggleStyle(.checkbox)

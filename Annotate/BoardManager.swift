@@ -30,6 +30,18 @@ class BoardManager {
         return currentBoardType == .blackboard ? "Blackboard" : "Whiteboard"
     }
 
+    var opacity: Double {
+        get {
+            let storedValue = UserDefaults.standard.double(forKey: UserDefaults.boardOpacityKey)
+            return storedValue == 0 ? 0.9 : storedValue.clamped(to: 0.1...1.0)
+        }
+        set {
+            UserDefaults.standard.set(
+                newValue.clamped(to: 0.1...1.0), forKey: UserDefaults.boardOpacityKey)
+            NotificationCenter.default.post(name: .boardAppearanceChanged, object: nil)
+        }
+    }
+
     func toggle() {
         isEnabled = !isEnabled
     }
@@ -66,4 +78,10 @@ class BoardManager {
 extension Notification.Name {
     static let boardStateChanged = Notification.Name("BoardStateChangedNotification")
     static let boardAppearanceChanged = Notification.Name("BoardAppearanceChangedNotification")
+}
+
+extension Comparable {
+    func clamped(to limits: ClosedRange<Self>) -> Self {
+        return min(max(self, limits.lowerBound), limits.upperBound)
+    }
 }
