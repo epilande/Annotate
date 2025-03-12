@@ -4,6 +4,7 @@ import Cocoa
 enum ToolType {
     case pen
     case arrow
+    case line
     case highlighter
     case rectangle
     case circle
@@ -25,6 +26,14 @@ struct DrawingPath {
 
 /// Represents an arrow annotation with start and end points.
 struct Arrow {
+    var startPoint: NSPoint
+    var endPoint: NSPoint
+    var color: NSColor
+    var creationTime: CFTimeInterval?
+}
+
+/// Represents a line annotation with start and end points.
+struct Line {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
@@ -66,12 +75,14 @@ struct CounterAnnotation {
 enum DrawingAction {
     case addPath(DrawingPath)
     case addArrow(Arrow)
+    case addLine(Line)
     case addHighlight(DrawingPath)
     case addRectangle(Rectangle)
     case addCircle(Circle)
     case addCounter(CounterAnnotation)
     case removePath(DrawingPath)
     case removeArrow(Arrow)
+    case removeLine(Line)
     case removeHighlight(DrawingPath)
     case removeRectangle(Rectangle)
     case removeCircle(Circle)
@@ -80,7 +91,7 @@ enum DrawingAction {
     case removeText(TextAnnotation)
     case moveText(Int, NSPoint, NSPoint)
     case clearAll(
-        [DrawingPath], [Arrow], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
         [CounterAnnotation])
 }
 
@@ -99,6 +110,13 @@ extension DrawingPath: Equatable {
 
 extension Arrow: Equatable {
     public static func == (lhs: Arrow, rhs: Arrow) -> Bool {
+        return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
+            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+    }
+}
+
+extension Line: Equatable {
+    public static func == (lhs: Line, rhs: Line) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
             && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
     }

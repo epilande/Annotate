@@ -80,6 +80,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .arrow))
             arrowModeItem.keyEquivalentModifierMask = []
             menu.addItem(arrowModeItem)
+            
+            let lineModeItem = NSMenuItem(
+                title: "Line",
+                action: #selector(enableLineMode(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .line))
+            lineModeItem.keyEquivalentModifierMask = []
+            menu.addItem(lineModeItem)
 
             let penModeItem = NSMenuItem(
                 title: "Pen",
@@ -330,6 +337,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             currentToolItem?.title = "Current Tool: Arrow"
         }
     }
+    
+    @objc func enableLineMode(_ sender: NSMenuItem) {
+        switchTool(to: .line)
+        if let menu = statusItem.menu {
+            let currentToolItem = menu.item(at: 2)
+            currentToolItem?.title = "Current Tool: Line"
+        }
+    }
 
     @objc func enablePenMode(_ sender: NSMenuItem) {
         switchTool(to: .pen)
@@ -572,6 +587,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .pen)
             case "Arrow":
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .arrow)
+            case "Line":
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .line)
             case "Highlighter":
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .highlighter)
             case "Rectangle":

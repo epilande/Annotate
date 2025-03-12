@@ -3,6 +3,7 @@ import Foundation
 enum ShortcutKey: String, CaseIterable {
     case pen = "p"
     case arrow = "a"
+    case line = "l"
     case highlighter = "h"
     case rectangle = "r"
     case circle = "o"
@@ -17,6 +18,7 @@ enum ShortcutKey: String, CaseIterable {
         switch self {
         case .pen: return "Pen"
         case .arrow: return "Arrow"
+        case .line: return "Line"
         case .highlighter: return "Highlighter"
         case .rectangle: return "Rectangle"
         case .circle: return "Circle"

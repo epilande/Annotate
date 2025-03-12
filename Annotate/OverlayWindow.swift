@@ -175,6 +175,9 @@ class OverlayWindow: NSWindow {
         case .arrow:
             overlayView.currentArrow = Arrow(
                 startPoint: startPoint, endPoint: startPoint, color: currentColor)
+        case .line:
+            overlayView.currentLine = Line(
+                startPoint: startPoint, endPoint: startPoint, color: currentColor)
         case .highlighter:
             let t = CACurrentMediaTime()
             overlayView.currentHighlight = DrawingPath(
@@ -230,6 +233,8 @@ class OverlayWindow: NSWindow {
             overlayView.currentPath?.points.append(TimedPoint(point: currentPoint, timestamp: t))
         case .arrow:
             overlayView.currentArrow?.endPoint = currentPoint
+        case .line:
+            overlayView.currentLine?.endPoint = currentPoint
         case .highlighter:
             let t = CACurrentMediaTime()
             overlayView.currentHighlight?.points.append(
@@ -306,6 +311,13 @@ class OverlayWindow: NSWindow {
                 overlayView.arrows.append(currentArrow)
                 overlayView.currentArrow = nil
             }
+        case .line:
+            if var currentLine = overlayView.currentLine {
+                currentLine.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addLine(currentLine))
+                overlayView.lines.append(currentLine)
+                overlayView.currentLine = nil
+            }
         case .highlighter:
             if var currentHighlight = overlayView.currentHighlight {
                 let finalTime = CACurrentMediaTime()
@@ -366,6 +378,9 @@ class OverlayWindow: NSWindow {
                 return
             case ShortcutManager.shared.getShortcut(for: .arrow):
                 AppDelegate.shared?.enableArrowMode(NSMenuItem())
+                return
+            case ShortcutManager.shared.getShortcut(for: .line):
+                AppDelegate.shared?.enableLineMode(NSMenuItem())
                 return
             case ShortcutManager.shared.getShortcut(for: .highlighter):
                 AppDelegate.shared?.enableHighlighterMode(NSMenuItem())

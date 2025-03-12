@@ -5,6 +5,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var arrows: [Arrow] = []
     var currentArrow: Arrow?
+    
+    var lines: [Line] = []
+    var currentLine: Line?
 
     var paths: [DrawingPath] = []
     var currentPath: DrawingPath?
@@ -73,6 +76,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.needsDisplay = true
                 }
             }
+        case .addLine(let line):
+            undoManager?.registerUndo(withTarget: self) { target in
+                if !target.lines.isEmpty {
+                    target.lines.removeLast()
+                    target.registerUndo(action: .removeLine(line))
+                    target.needsDisplay = true
+                }
+            }
         case .addHighlight(let highlight):
             undoManager?.registerUndo(withTarget: self) { target in
                 if !target.highlightPaths.isEmpty {
@@ -91,6 +102,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             undoManager?.registerUndo(withTarget: self) { target in
                 target.arrows.append(arrow)
                 target.registerUndo(action: .addArrow(arrow))
+                target.needsDisplay = true
+            }
+        case .removeLine(let line):
+            undoManager?.registerUndo(withTarget: self) { target in
+                target.lines.append(line)
+                target.registerUndo(action: .addLine(line))
                 target.needsDisplay = true
             }
         case .removeHighlight(let highlight):
@@ -210,6 +227,32 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Draw current arrow being drawn
         if let arrow = currentArrow {
             drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color)
+        }
+        
+        // Draw lines
+        var aliveLines: [Line] = []
+        for line in lines {
+            if fadeMode, let creationTime = line.creationTime {
+                let age = now - creationTime
+                if age < fadeDuration {
+                    let alpha = alphaForAge(age)
+                    drawLine(
+                        from: line.startPoint,
+                        to: line.endPoint,
+                        color: line.color.withAlphaComponent(alpha)
+                    )
+                    aliveLines.append(line)
+                }
+            } else {
+                drawLine(from: line.startPoint, to: line.endPoint, color: line.color)
+                aliveLines.append(line)
+            }
+        }
+        lines = aliveLines
+
+        // Draw current line being drawn
+        if let line = currentLine {
+            drawLine(from: line.startPoint, to: line.endPoint, color: line.color)
         }
 
         // Draw existing paths
@@ -395,6 +438,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
         path.lineWidth = 3.0
         path.stroke()
     }
+    
+    private func drawLine(from start: NSPoint, to end: NSPoint, color: NSColor) {
+        let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
+
+        let path = NSBezierPath()
+        path.move(to: start)
+        path.line(to: end)
+        
+        adaptedColor.setStroke()
+        path.lineWidth = 3.0
+        path.stroke()
+    }
 
     private func drawRectangle(_ rectangle: Rectangle, alpha: CGFloat) {
         let adaptedColor = adaptColorForBoard(rectangle.color, boardType: currentBoardType)
@@ -518,11 +573,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func clearAll() {
         // Only register undo if there's something to clear
-        if !paths.isEmpty || !arrows.isEmpty || !highlightPaths.isEmpty || !rectangles.isEmpty
+        if !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty || !rectangles.isEmpty
             || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
         {
             let oldPaths = paths
             let oldArrows = arrows
+            let oldLines = lines
             let oldHighlights = highlightPaths
             let oldRectangles = rectangles
             let oldCircles = circles
@@ -530,11 +586,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let oldCounterAnnotations = counterAnnotations
             registerUndo(
                 action: .clearAll(
-                    oldPaths, oldArrows, oldHighlights, oldRectangles, oldCircles,
+                    oldPaths, oldArrows, oldLines, oldHighlights, oldRectangles, oldCircles,
                     oldTextAnnotations, oldCounterAnnotations))
 
             paths.removeAll()
             arrows.removeAll()
+            lines.removeAll()
             highlightPaths.removeAll()
             rectangles.removeAll()
             circles.removeAll()
@@ -542,6 +599,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             counterAnnotations.removeAll()
             nextCounterNumber = 1
             currentArrow = nil
+            currentLine = nil
             currentPath = nil
             currentHighlight = nil
             currentRectangle = nil
@@ -563,6 +621,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastArrow = arrows.last!
             registerUndo(action: .removeArrow(lastArrow))
             arrows.removeLast()
+        case .line:
+            guard !lines.isEmpty else { return }
+            let lastLine = lines.last!
+            registerUndo(action: .removeLine(lastLine))
+            lines.removeLast()
         case .highlighter:
             guard !highlightPaths.isEmpty else { return }
             let lastHighlight = highlightPaths.last!
@@ -708,6 +771,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
             return false
         }
+        
+        let stillFadingLines = lines.contains { line in
+            if let creationTime = line.creationTime {
+                return (now - creationTime) < fadeDuration
+            }
+            return false
+        }
         let stillFadingRectangles = rectangles.contains { rect in
             if let creationTime = rect.creationTime {
                 return (now - creationTime) < fadeDuration
@@ -743,6 +813,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
 
         return stillFadingArrows
+            || stillFadingLines
             || stillFadingRectangles
             || stillFadingCircles
             || stillFadingCounters
