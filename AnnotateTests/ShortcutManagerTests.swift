@@ -86,5 +86,28 @@ final class ShortcutManagerTests: XCTestCase {
             "Counter shortcut should be reset to default"
         )
     }
-
+    
+    func testLineShortcut() {
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .line),
+            ShortcutKey.line.defaultKey,
+            "Default shortcut for Line should be 'l'"
+        )
+        
+        // Set a custom shortcut for line
+        ShortcutManager.shared.setShortcut("k", for: .line)
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .line),
+            "k",
+            "Line shortcut should be updated to 'k'"
+        )
+        
+        // Reset to default
+        ShortcutManager.shared.resetToDefault(tool: .line)
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .line),
+            ShortcutKey.line.defaultKey,
+            "Line shortcut should be reset to default"
+        )
+    }
 }

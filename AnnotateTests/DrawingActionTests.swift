@@ -32,6 +32,32 @@ final class DrawingActionTests: XCTestCase {
             XCTFail("Wrong action type")
         }
     }
+    
+    func testAddLineAction() {
+        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .red)
+        let action = DrawingAction.addLine(line)
+        
+        if case .addLine(let actionLine) = action {
+            XCTAssertEqual(actionLine.startPoint, line.startPoint)
+            XCTAssertEqual(actionLine.endPoint, line.endPoint)
+            XCTAssertEqual(actionLine.color, line.color)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
+    
+    func testRemoveLineAction() {
+        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        let action = DrawingAction.removeLine(line)
+        
+        if case .removeLine(let actionLine) = action {
+            XCTAssertEqual(actionLine.startPoint, line.startPoint)
+            XCTAssertEqual(actionLine.endPoint, line.endPoint)
+            XCTAssertEqual(actionLine.color, line.color)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
 
     func testMoveTextAction() {
         let oldPosition = NSPoint(x: 0, y: 0)
@@ -88,6 +114,7 @@ final class DrawingActionTests: XCTestCase {
     func testClearAllWithCounters() {
         let paths = [DrawingPath(points: [], color: .systemRed)]
         let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
+        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red)]
         let highlights = [DrawingPath(points: [], color: .yellow)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
@@ -95,14 +122,15 @@ final class DrawingActionTests: XCTestCase {
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
         let action = DrawingAction.clearAll(
-            paths, arrows, highlights, rectangles, circles, texts, counters)
+            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
 
         if case .clearAll(
-            let actionPaths, let actionArrows, let actionHighlights,
+            let actionPaths, let actionArrows, let actionLines, let actionHighlights,
             let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
+            XCTAssertEqual(actionLines, lines)
             XCTAssertEqual(actionHighlights, highlights)
             XCTAssertEqual(actionRects, rectangles)
             XCTAssertEqual(actionCircles, circles)
@@ -116,6 +144,7 @@ final class DrawingActionTests: XCTestCase {
     func testClearAllAction() {
         let paths = [DrawingPath(points: [], color: .systemRed)]
         let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
+        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red)]
         let highlights = [DrawingPath(points: [], color: .yellow)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
@@ -123,14 +152,15 @@ final class DrawingActionTests: XCTestCase {
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .black)]
 
         let action = DrawingAction.clearAll(
-            paths, arrows, highlights, rectangles, circles, texts, counters)
+            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
 
         if case .clearAll(
-            let actionPaths, let actionArrows, let actionHighlights,
+            let actionPaths, let actionArrows, let actionLines, let actionHighlights,
             let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
+            XCTAssertEqual(actionLines, lines)
             XCTAssertEqual(actionHighlights, highlights)
             XCTAssertEqual(actionRects, rectangles)
             XCTAssertEqual(actionCircles, circles)

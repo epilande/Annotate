@@ -25,6 +25,7 @@ final class OverlayViewTests: XCTestCase {
         // Test empty collections
         XCTAssertTrue(overlayView.paths.isEmpty)
         XCTAssertTrue(overlayView.arrows.isEmpty)
+        XCTAssertTrue(overlayView.lines.isEmpty)
         XCTAssertTrue(overlayView.highlightPaths.isEmpty)
         XCTAssertTrue(overlayView.rectangles.isEmpty)
         XCTAssertTrue(overlayView.circles.isEmpty)
@@ -33,6 +34,7 @@ final class OverlayViewTests: XCTestCase {
         // Test nil values
         XCTAssertNil(overlayView.currentPath)
         XCTAssertNil(overlayView.currentArrow)
+        XCTAssertNil(overlayView.currentLine)
         XCTAssertNil(overlayView.currentHighlight)
         XCTAssertNil(overlayView.currentRectangle)
         XCTAssertNil(overlayView.currentCircle)
@@ -46,6 +48,9 @@ final class OverlayViewTests: XCTestCase {
 
         overlayView.currentTool = .arrow
         XCTAssertEqual(overlayView.currentTool, .arrow)
+        
+        overlayView.currentTool = .line
+        XCTAssertEqual(overlayView.currentTool, .line)
 
         overlayView.currentTool = .highlighter
         XCTAssertEqual(overlayView.currentTool, .highlighter)
@@ -64,6 +69,7 @@ final class OverlayViewTests: XCTestCase {
         // Add some test data
         overlayView.paths = [DrawingPath(points: [], color: .red)]
         overlayView.arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
+        overlayView.lines = [Line(startPoint: .zero, endPoint: .zero, color: .red)]
         overlayView.highlightPaths = [DrawingPath(points: [], color: .yellow)]
         overlayView.rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
         overlayView.circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
@@ -77,10 +83,63 @@ final class OverlayViewTests: XCTestCase {
         // Verify everything is cleared
         XCTAssertTrue(overlayView.paths.isEmpty)
         XCTAssertTrue(overlayView.arrows.isEmpty)
+        XCTAssertTrue(overlayView.lines.isEmpty)
         XCTAssertTrue(overlayView.highlightPaths.isEmpty)
         XCTAssertTrue(overlayView.rectangles.isEmpty)
         XCTAssertTrue(overlayView.circles.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
+    }
+    
+    func testDrawLine() {
+        // Create a new line
+        let startPoint = NSPoint(x: 100, y: 100)
+        let endPoint = NSPoint(x: 200, y: 200)
+        let line = Line(startPoint: startPoint, endPoint: endPoint, color: .systemBlue)
+        
+        // Add it to the view
+        overlayView.lines.append(line)
+        
+        // Verify line was added
+        XCTAssertEqual(overlayView.lines.count, 1)
+        XCTAssertEqual(overlayView.lines[0].startPoint, startPoint)
+        XCTAssertEqual(overlayView.lines[0].endPoint, endPoint)
+        XCTAssertEqual(overlayView.lines[0].color, .systemBlue)
+        
+        // Test delete last item when tool is line
+        overlayView.currentTool = .line
+        overlayView.deleteLastItem()
+        XCTAssertTrue(overlayView.lines.isEmpty)
+    }
+    
+    func testLineFade() {
+        // Create a line with a creation time
+        let now = CACurrentMediaTime()
+        let line = Line(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 200),
+            color: .systemBlue,
+            creationTime: now
+        )
+        
+        overlayView.lines.append(line)
+        
+        // Test line with recent creation time should be visible
+        overlayView.fadeMode = true
+        XCTAssertEqual(overlayView.lines.count, 1)
+        
+        // Add a line with an old creation time
+        let oldLine = Line(
+            startPoint: NSPoint(x: 300, y: 300),
+            endPoint: NSPoint(x: 400, y: 400),
+            color: .systemRed,
+            creationTime: now - 10.0 // Way beyond fade duration
+        )
+        
+        overlayView.lines.append(oldLine)
+        XCTAssertEqual(overlayView.lines.count, 2)
+        
+        // Note: We can't directly test the drawing behavior since it's done
+        // in the draw method that interacts with the graphics context
     }
 
     func testCounterAnnotations() {

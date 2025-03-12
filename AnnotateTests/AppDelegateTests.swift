@@ -66,6 +66,17 @@ final class AppDelegateTests: XCTestCase {
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .arrow)
         }
+        
+        appDelegate.enableLineMode(NSMenuItem())
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .line)
+        }
+        
+        if let menu = appDelegate.statusItem.menu,
+            let currentToolItem = menu.item(at: 2)
+        {
+            XCTAssertEqual(currentToolItem.title, "Current Tool: Line")
+        }
     }
 
     func testCounterToolSwitching() {
@@ -106,9 +117,13 @@ final class AppDelegateTests: XCTestCase {
 
         let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue)
         overlayWindow.overlayView.arrows.append(testArrow)
+        
+        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        overlayWindow.overlayView.lines.append(testLine)
 
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
         // Toggle overlay
         appDelegate.toggleOverlay()
@@ -119,6 +134,7 @@ final class AppDelegateTests: XCTestCase {
         // Verify drawings were cleared
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 0)
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 0)
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 0)
     }
 
     func testToggleOverlayPreservesDrawingsWhenDisabled() {
@@ -138,9 +154,13 @@ final class AppDelegateTests: XCTestCase {
 
         let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue)
         overlayWindow.overlayView.arrows.append(testArrow)
+        
+        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        overlayWindow.overlayView.lines.append(testLine)
 
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
         // Toggle overlay
         appDelegate.toggleOverlay()
@@ -151,6 +171,7 @@ final class AppDelegateTests: XCTestCase {
         // Verify drawings were preserved
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
     }
 
     func testClearDrawingsSettingPersistence() {
