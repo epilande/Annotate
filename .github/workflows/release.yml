@@ -1,0 +1,119 @@
+name: Release (macOS)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-notarize-release:
+    name: Build → Sign → Notarize → Release
+    runs-on: macos-15
+    environment: release
+    env:
+      APP_NAME: Annotate
+      SCHEME: Annotate
+      CONFIG: Release
+      ARCHIVE_PATH: build/Annotate.xcarchive
+      EXPORT_DIR: build/export
+      EXPORT_PLIST: packaging/ExportOptions.plist
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag version
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "semver=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Inject TEAM_ID into ExportOptions
+        run: |
+          sed "s/__TEAM_ID__/${{ secrets.TEAM_ID }}/" "$EXPORT_PLIST" > "$EXPORT_PLIST.out"
+          mv "$EXPORT_PLIST.out" "$EXPORT_PLIST"
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v5
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_PASSWORD }}
+
+      - name: Update marketing version from tag
+        run: |
+          # Update marketing version in project settings
+          /usr/libexec/PlistBuddy -c "Set :objects:$(plutil -extract objects json Annotate.xcodeproj/project.pbxproj | jq -r 'to_entries[] | select(.value.isa == "XCBuildConfiguration" and (.value.name == "Release" or .value.name == "Debug")) | .key' | head -1):buildSettings:MARKETING_VERSION ${{ steps.version.outputs.semver }}" Annotate.xcodeproj/project.pbxproj || true
+
+      - name: Install xcpretty
+        run: gem install xcpretty --no-document
+
+      - name: Xcode archive (arm64, verbose, unsigned)
+        run: |
+          set -euxo pipefail
+          mkdir -p build
+          ENTRY="-project Annotate.xcodeproj"
+          xcodebuild \
+            $ENTRY \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -archivePath "$ARCHIVE_PATH" \
+            -destination "generic/platform=macOS" \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            clean archive | xcpretty && exit ${PIPESTATUS[0]}
+
+      - name: Export signed app (Developer ID)
+        run: |
+          mkdir -p "$EXPORT_DIR"
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_DIR" \
+            -exportOptionsPlist "$EXPORT_PLIST" | xcpretty && exit ${PIPESTATUS[0]}
+
+      - name: Re-sign with hardened runtime
+        run: |
+          codesign --force --sign "Developer ID Application" \
+            -o runtime --timestamp \
+            --entitlements "$APP_NAME/$APP_NAME.entitlements" \
+            "$EXPORT_DIR/$APP_NAME.app"
+
+      - name: Package DMG
+        run: |
+          chmod +x packaging/make_dmg.sh
+          DMG_PATH=$(./packaging/make_dmg.sh)
+          echo "DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
+
+      - name: Notarize (notarytool --wait)
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "${{ secrets.NOTARIZE_APPLE_ID }}" \
+            --password "${{ secrets.NOTARIZE_PASSWORD }}" \
+            --team-id "${{ secrets.TEAM_ID }}" \
+            --wait
+
+      - name: Validate & staple for distribution
+        run: |
+          echo "Verifying app signature and entitlements..."
+          codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/$APP_NAME.app"
+          spctl -a -vvv --type exec "$EXPORT_DIR/$APP_NAME.app"
+
+          echo "Stapling notarization ticket to DMG..."
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Create GitHub Release & upload DMG
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Annotate ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.DMG_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
