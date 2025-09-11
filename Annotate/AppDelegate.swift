@@ -2,6 +2,7 @@ import Carbon
 import Cocoa
 import SwiftUI
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static weak var shared: AppDelegate?
 
@@ -39,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupBoardObservers()
     }
 
+    @MainActor
     func updateDockIconVisibility() {
         if UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey) {
             NSApp.setActivationPolicy(.accessory)

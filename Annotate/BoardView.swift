@@ -1,10 +1,12 @@
 import Cocoa
 
+@MainActor
 class BoardView: NSView {
     enum BoardType {
         case whiteboard
         case blackboard
 
+        @MainActor
         var backgroundColor: NSColor {
             switch self {
             case .whiteboard:
@@ -66,7 +68,9 @@ class BoardView: NSView {
     }
 
     @objc private func visibilityChanged() {
-        self.isHidden = !BoardManager.shared.isEnabled
+        Task { @MainActor in
+            self.isHidden = !BoardManager.shared.isEnabled
+        }
     }
 
     func updateForAppearance() {

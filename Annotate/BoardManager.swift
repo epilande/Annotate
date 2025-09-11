@@ -1,6 +1,7 @@
 import Cocoa
 
-class BoardManager {
+@MainActor
+class BoardManager: @unchecked Sendable {
     static let shared = BoardManager()
 
     private init() {

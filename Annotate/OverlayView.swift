@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 class OverlayView: NSView, NSTextFieldDelegate {
     var adaptColorsToBoardType: Bool = true
 
@@ -62,141 +63,177 @@ class OverlayView: NSView, NSTextFieldDelegate {
         switch action {
         case .addPath(let path):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.paths.isEmpty {
-                    target.paths.removeLast()
-                    target.registerUndo(action: .removePath(path))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.paths.isEmpty {
+                        target.paths.removeLast()
+                        target.registerUndo(action: .removePath(path))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .addArrow(let arrow):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.arrows.isEmpty {
-                    target.arrows.removeLast()
-                    target.registerUndo(action: .removeArrow(arrow))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.arrows.isEmpty {
+                        target.arrows.removeLast()
+                        target.registerUndo(action: .removeArrow(arrow))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .addLine(let line):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.lines.isEmpty {
-                    target.lines.removeLast()
-                    target.registerUndo(action: .removeLine(line))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.lines.isEmpty {
+                        target.lines.removeLast()
+                        target.registerUndo(action: .removeLine(line))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .addHighlight(let highlight):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.highlightPaths.isEmpty {
-                    target.highlightPaths.removeLast()
-                    target.registerUndo(action: .removeHighlight(highlight))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.highlightPaths.isEmpty {
+                        target.highlightPaths.removeLast()
+                        target.registerUndo(action: .removeHighlight(highlight))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .removePath(let path):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.paths.append(path)
-                target.registerUndo(action: .addPath(path))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.paths.append(path)
+                    target.registerUndo(action: .addPath(path))
+                    target.needsDisplay = true
+                }
             }
         case .removeArrow(let arrow):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.arrows.append(arrow)
-                target.registerUndo(action: .addArrow(arrow))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.arrows.append(arrow)
+                    target.registerUndo(action: .addArrow(arrow))
+                    target.needsDisplay = true
+                }
             }
         case .removeLine(let line):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.lines.append(line)
-                target.registerUndo(action: .addLine(line))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.lines.append(line)
+                    target.registerUndo(action: .addLine(line))
+                    target.needsDisplay = true
+                }
             }
         case .removeHighlight(let highlight):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.highlightPaths.append(highlight)
-                target.registerUndo(action: .addHighlight(highlight))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.highlightPaths.append(highlight)
+                    target.registerUndo(action: .addHighlight(highlight))
+                    target.needsDisplay = true
+                }
             }
         case .addRectangle(let rectangle):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.rectangles.isEmpty {
-                    target.rectangles.removeLast()
-                    target.registerUndo(action: .removeRectangle(rectangle))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.rectangles.isEmpty {
+                        target.rectangles.removeLast()
+                        target.registerUndo(action: .removeRectangle(rectangle))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .removeRectangle(let rectangle):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.rectangles.append(rectangle)
-                target.registerUndo(action: .addRectangle(rectangle))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.rectangles.append(rectangle)
+                    target.registerUndo(action: .addRectangle(rectangle))
+                    target.needsDisplay = true
+                }
             }
         case .addCircle(let circle):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.circles.isEmpty {
-                    target.circles.removeLast()
-                    target.registerUndo(action: .removeCircle(circle))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.circles.isEmpty {
+                        target.circles.removeLast()
+                        target.registerUndo(action: .removeCircle(circle))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .removeCircle(let circle):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.circles.append(circle)
-                target.registerUndo(action: .addCircle(circle))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.circles.append(circle)
+                    target.registerUndo(action: .addCircle(circle))
+                    target.needsDisplay = true
+                }
             }
         case .addText(let annotation):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.textAnnotations.isEmpty {
-                    target.textAnnotations.removeLast()
-                    target.registerUndo(action: .removeText(annotation))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.textAnnotations.isEmpty {
+                        target.textAnnotations.removeLast()
+                        target.registerUndo(action: .removeText(annotation))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .removeText(let annotation):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.textAnnotations.append(annotation)
-                target.registerUndo(action: .addText(annotation))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.textAnnotations.append(annotation)
+                    target.registerUndo(action: .addText(annotation))
+                    target.needsDisplay = true
+                }
             }
         case .moveText(let index, let oldPosition, let newPosition):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.textAnnotations[index].position = oldPosition
-                target.registerUndo(action: .moveText(index, newPosition, oldPosition))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.textAnnotations[index].position = oldPosition
+                    target.registerUndo(action: .moveText(index, newPosition, oldPosition))
+                    target.needsDisplay = true
+                }
             }
         case .addCounter(let counter):
             undoManager?.registerUndo(withTarget: self) { target in
-                if !target.counterAnnotations.isEmpty {
-                    target.counterAnnotations.removeLast()
-                    target.nextCounterNumber = max(1, target.nextCounterNumber - 1)
-                    target.registerUndo(action: .removeCounter(counter))
-                    target.needsDisplay = true
+                Task { @MainActor in
+                    if !target.counterAnnotations.isEmpty {
+                        target.counterAnnotations.removeLast()
+                        target.nextCounterNumber = max(1, target.nextCounterNumber - 1)
+                        target.registerUndo(action: .removeCounter(counter))
+                        target.needsDisplay = true
+                    }
                 }
             }
         case .removeCounter(let counter):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.counterAnnotations.append(counter)
-                target.nextCounterNumber = max(target.nextCounterNumber, counter.number + 1)
-                target.registerUndo(action: .addCounter(counter))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.counterAnnotations.append(counter)
+                    target.nextCounterNumber = max(target.nextCounterNumber, counter.number + 1)
+                    target.registerUndo(action: .addCounter(counter))
+                    target.needsDisplay = true
+                }
             }
         case .clearAll(
             let paths, let arrows, let lines, let highlights, let rectangles, let circles,
             let textAnnotations,
             let counterAnnotations):
             undoManager?.registerUndo(withTarget: self) { target in
-                target.paths = paths
-                target.arrows = arrows
-                target.lines = lines
-                target.highlightPaths = highlights
-                target.rectangles = rectangles
-                target.circles = circles
-                target.textAnnotations = textAnnotations
-                target.counterAnnotations = counterAnnotations
-                target.nextCounterNumber =
-                    counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
-                target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))
-                target.needsDisplay = true
+                Task { @MainActor in
+                    target.paths = paths
+                    target.arrows = arrows
+                    target.lines = lines
+                    target.highlightPaths = highlights
+                    target.rectangles = rectangles
+                    target.circles = circles
+                    target.textAnnotations = textAnnotations
+                    target.counterAnnotations = counterAnnotations
+                    target.nextCounterNumber =
+                        counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
+                    target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))
+                    target.needsDisplay = true
+                }
             }
         }
     }

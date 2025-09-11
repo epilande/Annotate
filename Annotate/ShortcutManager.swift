@@ -30,7 +30,8 @@ enum ShortcutKey: String, CaseIterable {
     }
 }
 
-class ShortcutManager {
+@MainActor
+class ShortcutManager: @unchecked Sendable {
     static let shared = ShortcutManager()
 
     private let defaults = UserDefaults.standard

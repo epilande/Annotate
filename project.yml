@@ -1,0 +1,41 @@
+name: Annotate
+options:
+  bundleIdPrefix: com.epilande
+  deploymentTarget:
+    macOS: "15.2"
+  
+targets:
+  Annotate:
+    type: application
+    platform: macOS
+    sources:
+      - Annotate
+    dependencies:
+      - package: KeyboardShortcuts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.epilande.Annotate
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_ENTITLEMENTS: Annotate/Annotate.entitlements
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.2"
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        GENERATE_INFOPLIST_FILE: true
+        ENABLE_PREVIEWS: true
+        DEVELOPMENT_ASSET_PATHS: "\"Annotate/Preview Content\""
+        
+  AnnotateTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - AnnotateTests
+    dependencies:
+      - target: Annotate
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: "2.2.4"
