@@ -9,52 +9,56 @@ final class DrawingActionTests: XCTestCase {
         let path = DrawingPath(
             points: [
                 TimedPoint(point: .zero, timestamp: 0.0)
-            ], color: .systemRed)
+            ], color: .systemRed, lineWidth: 3.0)
 
         let action = DrawingAction.addPath(path)
 
         if case .addPath(let actionPath) = action {
             XCTAssertEqual(actionPath.points, path.points)
             XCTAssertEqual(actionPath.color, path.color)
+            XCTAssertEqual(actionPath.lineWidth, path.lineWidth)
         } else {
             XCTFail("Wrong action type")
         }
     }
 
     func testAddArrowAction() {
-        let arrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue)
+        let arrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue, lineWidth: 3.0)
         let action = DrawingAction.addArrow(arrow)
 
         if case .addArrow(let actionArrow) = action {
             XCTAssertEqual(actionArrow.startPoint, arrow.startPoint)
             XCTAssertEqual(actionArrow.endPoint, arrow.endPoint)
             XCTAssertEqual(actionArrow.color, arrow.color)
+            XCTAssertEqual(actionArrow.lineWidth, arrow.lineWidth)
         } else {
             XCTFail("Wrong action type")
         }
     }
     
     func testAddLineAction() {
-        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .red)
+        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .red, lineWidth: 3.0)
         let action = DrawingAction.addLine(line)
         
         if case .addLine(let actionLine) = action {
             XCTAssertEqual(actionLine.startPoint, line.startPoint)
             XCTAssertEqual(actionLine.endPoint, line.endPoint)
             XCTAssertEqual(actionLine.color, line.color)
+            XCTAssertEqual(actionLine.lineWidth, line.lineWidth)
         } else {
             XCTFail("Wrong action type")
         }
     }
     
     func testRemoveLineAction() {
-        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        let line = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green, lineWidth: 3.0)
         let action = DrawingAction.removeLine(line)
         
         if case .removeLine(let actionLine) = action {
             XCTAssertEqual(actionLine.startPoint, line.startPoint)
             XCTAssertEqual(actionLine.endPoint, line.endPoint)
             XCTAssertEqual(actionLine.color, line.color)
+            XCTAssertEqual(actionLine.lineWidth, line.lineWidth)
         } else {
             XCTFail("Wrong action type")
         }
@@ -113,12 +117,12 @@ final class DrawingActionTests: XCTestCase {
     }
 
     func testClearAllWithCounters() {
-        let paths = [DrawingPath(points: [], color: .systemRed)]
-        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
-        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red)]
-        let highlights = [DrawingPath(points: [], color: .yellow)]
-        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
-        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
+        let paths = [DrawingPath(points: [], color: .systemRed, lineWidth: 3.0)]
+        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue, lineWidth: 3.0)]
+        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
+        let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
+        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
+        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
@@ -143,12 +147,12 @@ final class DrawingActionTests: XCTestCase {
     }
 
     func testClearAllAction() {
-        let paths = [DrawingPath(points: [], color: .systemRed)]
-        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue)]
-        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red)]
-        let highlights = [DrawingPath(points: [], color: .yellow)]
-        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green)]
-        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple)]
+        let paths = [DrawingPath(points: [], color: .systemRed, lineWidth: 3.0)]
+        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue, lineWidth: 3.0)]
+        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
+        let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
+        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
+        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .black)]
 

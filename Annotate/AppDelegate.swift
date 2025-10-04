@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     var statusItem: NSStatusItem!
     var colorPopover: NSPopover?
+    var lineWidthPopover: NSPopover?
     var currentColor: NSColor = .systemRed
     var hotkeyMonitor: Any?
     var overlayWindows: [NSScreen: OverlayWindow] = [:]
@@ -42,6 +43,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 self.toggleAlwaysOnMode()
             }
         }
+
+        let persistedLineWidth = UserDefaults.standard.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
+        overlayWindows.values.forEach { $0.overlayView.currentLineWidth = CGFloat(persistedLineWidth) }
 
         let enableBoard = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
         overlayWindows.values.forEach {
@@ -90,6 +94,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .colorPicker))
             colorItem.keyEquivalentModifierMask = []
             menu.addItem(colorItem)
+
+            let lineWidthItem = NSMenuItem(
+                title: "Line Width",
+                action: #selector(showLineWidthPicker(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .lineWidthPicker))
+            lineWidthItem.keyEquivalentModifierMask = []
+            menu.addItem(lineWidthItem)
 
             menu.addItem(NSMenuItem.separator())
 
@@ -277,6 +288,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                     defer: false
                 )
                 overlayWindow.currentColor = currentColor
+                
+                let savedLineWidth = UserDefaults.standard.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
+                overlayWindow.overlayView.currentLineWidth = CGFloat(savedLineWidth)
+                
                 overlayWindows[screen] = overlayWindow
             }
         }
@@ -322,8 +337,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
     }
 
+    @objc func showLineWidthPicker(_ sender: Any?) {
+        if lineWidthPopover == nil {
+            lineWidthPopover = NSPopover()
+            lineWidthPopover?.contentViewController = LineWidthPickerViewController()
+            lineWidthPopover?.behavior = .transient
+            lineWidthPopover?.delegate = self
+        }
+
+        if let button = statusItem.button {
+            lineWidthPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+            if let popoverWindow = lineWidthPopover?.contentViewController?.view.window {
+                popoverWindow.level = .popUpMenu
+            }
+        }
+    }
+
     func popoverWillClose(_ notification: Notification) {
-        colorPopover = nil
+        if let popover = notification.object as? NSPopover {
+            if popover == colorPopover {
+                colorPopover = nil
+            } else if popover == lineWidthPopover {
+                lineWidthPopover = nil
+            }
+        }
     }
 
     @objc func toggleOverlay() {
@@ -765,6 +803,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
             case "Color":
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .colorPicker)
+            case "Line Width":
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
             case let title where title.hasPrefix("Show") || title.hasPrefix("Hide"):
                 if item.action == #selector(toggleBoardVisibility(_:)) {
                     item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)

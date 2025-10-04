@@ -90,4 +90,34 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.keyDown(with: penEvent!)
         XCTAssertEqual(window.overlayView.currentTool, .pen)
     }
+    
+    func testLineWidthInitialization() {
+        // Test default line width is set correctly
+        XCTAssertEqual(window.overlayView.currentLineWidth, 3.0)
+    }
+    
+    func testLineWidthAdjustment() {
+        let initialLineWidth = window.overlayView.currentLineWidth
+        
+        // Set a new line width
+        let newLineWidth: CGFloat = 5.5
+        window.overlayView.currentLineWidth = newLineWidth
+        
+        XCTAssertEqual(window.overlayView.currentLineWidth, newLineWidth)
+        XCTAssertNotEqual(window.overlayView.currentLineWidth, initialLineWidth)
+    }
+    
+    func testLineWidthBounds() {
+        // Test minimum line width
+        window.overlayView.currentLineWidth = 0.1
+        XCTAssertEqual(window.overlayView.currentLineWidth, 0.1)
+        
+        // Test maximum line width
+        window.overlayView.currentLineWidth = 20.0
+        XCTAssertEqual(window.overlayView.currentLineWidth, 20.0)
+        
+        // Test very large value (should still be set)
+        window.overlayView.currentLineWidth = 50.0
+        XCTAssertEqual(window.overlayView.currentLineWidth, 50.0)
+    }
 }

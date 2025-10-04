@@ -22,6 +22,7 @@ struct TimedPoint {
 struct DrawingPath {
     var points: [TimedPoint]
     var color: NSColor
+    var lineWidth: CGFloat
 }
 
 /// Represents an arrow annotation with start and end points.
@@ -29,6 +30,7 @@ struct Arrow {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
+    var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
 }
 
@@ -37,6 +39,7 @@ struct Line {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
+    var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
 }
 
@@ -45,6 +48,7 @@ struct Rectangle {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
+    var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
 }
 
@@ -53,6 +57,7 @@ struct Circle {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
+    var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
 }
 
@@ -104,35 +109,35 @@ extension TimedPoint: Equatable {
 
 extension DrawingPath: Equatable {
     public static func == (lhs: DrawingPath, rhs: DrawingPath) -> Bool {
-        return lhs.points == rhs.points && lhs.color.isEqual(rhs.color)
+        return lhs.points == rhs.points && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth
     }
 }
 
 extension Arrow: Equatable {
     public static func == (lhs: Arrow, rhs: Arrow) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
-            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+            && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
     }
 }
 
 extension Line: Equatable {
     public static func == (lhs: Line, rhs: Line) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
-            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+            && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
     }
 }
 
 extension Rectangle: Equatable {
     public static func == (lhs: Rectangle, rhs: Rectangle) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
-            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+            && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
     }
 }
 
 extension Circle: Equatable {
     public static func == (lhs: Circle, rhs: Circle) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
-            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+            && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
     }
 }
 

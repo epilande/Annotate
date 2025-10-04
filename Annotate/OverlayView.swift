@@ -35,6 +35,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var currentColor: NSColor = .systemRed
     var currentTool: ToolType = .pen
+    var currentLineWidth: CGFloat = 3.0
 
     var fadeMode: Bool = true
     let fadeDuration: CFTimeInterval = 1.25
@@ -253,12 +254,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     drawArrow(
                         from: arrow.startPoint,
                         to: arrow.endPoint,
-                        color: arrow.color.withAlphaComponent(alpha)
+                        color: arrow.color.withAlphaComponent(alpha),
+                        lineWidth: arrow.lineWidth
                     )
                     aliveArrows.append(arrow)
                 }
             } else {
-                drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color)
+                drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color, lineWidth: arrow.lineWidth)
                 aliveArrows.append(arrow)
             }
         }
@@ -266,7 +268,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Draw current arrow being drawn
         if let arrow = currentArrow {
-            drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color)
+            drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color, lineWidth: arrow.lineWidth)
         }
 
         // Draw lines
@@ -279,12 +281,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     drawLine(
                         from: line.startPoint,
                         to: line.endPoint,
-                        color: line.color.withAlphaComponent(alpha)
+                        color: line.color.withAlphaComponent(alpha),
+                        lineWidth: line.lineWidth
                     )
                     aliveLines.append(line)
                 }
             } else {
-                drawLine(from: line.startPoint, to: line.endPoint, color: line.color)
+                drawLine(from: line.startPoint, to: line.endPoint, color: line.color, lineWidth: line.lineWidth)
                 aliveLines.append(line)
             }
         }
@@ -292,7 +295,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Draw current line being drawn
         if let line = currentLine {
-            drawLine(from: line.startPoint, to: line.endPoint, color: line.color)
+            drawLine(from: line.startPoint, to: line.endPoint, color: line.color, lineWidth: line.lineWidth)
         }
 
         // Draw existing paths
@@ -436,7 +439,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 : path.color.withAlphaComponent(1)
 
             strokeColor.setStroke()
-            line.lineWidth = isHighlighter ? 14.0 : 3.0
+            line.lineWidth = isHighlighter ? path.lineWidth * 4.67 : path.lineWidth
             line.lineJoinStyle = .round
             line.lineCapStyle = .round
             line.stroke()
@@ -445,41 +448,57 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return validPoints
     }
 
-    private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor) {
+    private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
         let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
 
-        let path = NSBezierPath()
-        path.move(to: start)
-        path.line(to: end)
-
-        // Calculate arrow head
-        let arrowLength: CGFloat = 25.0
-        let arrowAngle: CGFloat = .pi / 6
+        // Calculate arrow head dimensions for equilateral triangle
+        let sideLength: CGFloat = 25.0  // Length of each side of the equilateral triangle
 
         let dx = end.x - start.x
         let dy = end.y - start.y
         let angle = atan2(dy, dx)
 
+        // For an equilateral triangle, the height is (sqrt(3)/2) * side_length
+        // and the base width is equal to side_length
+        let height = sideLength * sqrt(3.0) / 2.0
+        let halfBase = sideLength / 2.0
+
+        // Calculate the base center of the equilateral triangle
+        let baseCenter = NSPoint(
+            x: end.x - height * cos(angle),
+            y: end.y - height * sin(angle)
+        )
+
+        // Calculate the two base corners perpendicular to the arrow direction
+        let perpAngle = angle + .pi / 2
         let p1 = NSPoint(
-            x: end.x - arrowLength * cos(angle + arrowAngle),
-            y: end.y - arrowLength * sin(angle + arrowAngle)
+            x: baseCenter.x + halfBase * cos(perpAngle),
+            y: baseCenter.y + halfBase * sin(perpAngle)
         )
         let p2 = NSPoint(
-            x: end.x - arrowLength * cos(angle - arrowAngle),
-            y: end.y - arrowLength * sin(angle - arrowAngle)
+            x: baseCenter.x - halfBase * cos(perpAngle),
+            y: baseCenter.y - halfBase * sin(perpAngle)
         )
 
-        path.move(to: end)
-        path.line(to: p1)
-        path.move(to: end)
-        path.line(to: p2)
-
+        // Draw the line from start to the base center of the triangle
+        let linePath = NSBezierPath()
+        linePath.move(to: start)
+        linePath.line(to: baseCenter)
         adaptedColor.setStroke()
-        path.lineWidth = 3.0
-        path.stroke()
+        linePath.lineWidth = lineWidth
+        linePath.stroke()
+
+        // Draw filled equilateral triangle
+        let trianglePath = NSBezierPath()
+        trianglePath.move(to: end)
+        trianglePath.line(to: p1)
+        trianglePath.line(to: p2)
+        trianglePath.close()
+        adaptedColor.setFill()
+        trianglePath.fill()
     }
 
-    private func drawLine(from start: NSPoint, to end: NSPoint, color: NSColor) {
+    private func drawLine(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
         let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
 
         let path = NSBezierPath()
@@ -487,7 +506,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         path.line(to: end)
 
         adaptedColor.setStroke()
-        path.lineWidth = 3.0
+        path.lineWidth = lineWidth
         path.stroke()
     }
 
@@ -503,7 +522,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         let path = NSBezierPath(rect: rect)
         adaptedColor.withAlphaComponent(alpha).setStroke()
-        path.lineWidth = 3.0
+        path.lineWidth = rectangle.lineWidth
         path.stroke()
     }
 
@@ -519,7 +538,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         let path = NSBezierPath(ovalIn: rect)
         adaptedColor.withAlphaComponent(alpha).setStroke()
-        path.lineWidth = 3.0
+        path.lineWidth = circle.lineWidth
         path.stroke()
     }
 
@@ -543,10 +562,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         if tool == .highlighter {
             adaptedColor.withAlphaComponent(0.5).setStroke()
-            bezierPath.lineWidth = 14.0
+            bezierPath.lineWidth = path.lineWidth * 4.67  // Maintain the ratio: 14/3 ≈ 4.67
         } else {
             adaptedColor.setStroke()
-            bezierPath.lineWidth = 3.0
+            bezierPath.lineWidth = path.lineWidth
         }
 
         bezierPath.lineJoinStyle = .round

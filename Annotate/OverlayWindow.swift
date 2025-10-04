@@ -11,6 +11,10 @@ class OverlayWindow: NSWindow {
 
     var fadeTimer: Timer?
     let fadeInterval: TimeInterval = 1.0 / 60.0
+    
+    // Track the current feedback view to remove it when a new one appears
+    private var currentFeedbackView: NSView?
+    private var feedbackRemovalTask: DispatchWorkItem?
 
     var currentColor: NSColor {
         get { overlayView.currentColor }
@@ -171,24 +175,26 @@ class OverlayWindow: NSWindow {
             let t = CACurrentMediaTime()
             overlayView.currentPath = DrawingPath(
                 points: [TimedPoint(point: startPoint, timestamp: t)],
-                color: currentColor)
+                color: currentColor,
+                lineWidth: overlayView.currentLineWidth)
         case .arrow:
             overlayView.currentArrow = Arrow(
-                startPoint: startPoint, endPoint: startPoint, color: currentColor)
+                startPoint: startPoint, endPoint: startPoint, color: currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .line:
             overlayView.currentLine = Line(
-                startPoint: startPoint, endPoint: startPoint, color: currentColor)
+                startPoint: startPoint, endPoint: startPoint, color: currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .highlighter:
             let t = CACurrentMediaTime()
             overlayView.currentHighlight = DrawingPath(
                 points: [TimedPoint(point: startPoint, timestamp: t)],
-                color: currentColor.withAlphaComponent(0.3))
+                color: currentColor.withAlphaComponent(0.3),
+                lineWidth: overlayView.currentLineWidth)
         case .rectangle:
             overlayView.currentRectangle = Rectangle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor)
+                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .circle:
             overlayView.currentCircle = Circle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor)
+                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .text:
             break
         case .counter:
@@ -400,6 +406,9 @@ class OverlayWindow: NSWindow {
             case ShortcutManager.shared.getShortcut(for: .colorPicker):
                 AppDelegate.shared?.showColorPicker(nil)
                 return
+            case ShortcutManager.shared.getShortcut(for: .lineWidthPicker):
+                AppDelegate.shared?.showLineWidthPicker(nil)
+                return
             case ShortcutManager.shared.getShortcut(for: .toggleBoard):
                 AppDelegate.shared?.toggleBoardVisibility(nil)
                 return
@@ -471,6 +480,149 @@ class OverlayWindow: NSWindow {
                 height: abs(circle.endPoint.y - circle.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
+        }
+    }
+    
+    override func scrollWheel(with event: NSEvent) {
+        // Check if Command key is pressed
+        let cmdPressed = event.modifierFlags.contains(.command)
+        
+        if cmdPressed {
+            // Adjust line width with Command + Scroll
+            let minLineWidth: CGFloat = 0.5
+            let maxLineWidth: CGFloat = 20.0
+            let ratio: CGFloat = 0.25
+            
+            // Get scroll delta (negative means scroll up, positive means scroll down)
+            let scrollDelta = event.scrollingDeltaY
+            
+            // Determine direction and amount
+            let increment: CGFloat = scrollDelta > 0 ? ratio : -ratio
+            
+            // Get current line width
+            let currentWidth = overlayView.currentLineWidth
+            
+            // Calculate new width
+            var newWidth = currentWidth + increment
+            
+            // Round to nearest ratio increment
+            newWidth = round(newWidth / ratio) * ratio
+            
+            // Clamp to min/max
+            newWidth = max(minLineWidth, min(maxLineWidth, newWidth))
+            
+            // Only update if value changed
+            if newWidth != currentWidth {
+                // Update the line width globally
+                overlayView.currentLineWidth = newWidth
+                
+                // Save to UserDefaults
+                UserDefaults.standard.set(Double(newWidth), forKey: UserDefaults.lineWidthKey)
+                
+                // Apply to all overlay windows
+                AppDelegate.shared?.overlayWindows.values.forEach { window in
+                    window.overlayView.currentLineWidth = newWidth
+                }
+                
+                // Show visual feedback
+                showLineWidthFeedback(newWidth)
+            }
+        } else {
+            // Default scroll behavior
+            super.scrollWheel(with: event)
+        }
+    }
+    
+    private func showLineWidthFeedback(_ width: CGFloat) {
+        let text = String(format: "Line Width: %.2f px", width)
+        showFeedback(text)
+    }
+    
+    /// Shows a centered feedback message on screen
+    /// - Parameters:
+    ///   - text: The message to display
+    ///   - duration: How long to show the message (default: 1.5 seconds)
+    ///   - fadeOutDuration: How long the fade out animation takes (default: 0.5 seconds)
+    private func showFeedback(
+        _ text: String,
+        duration: TimeInterval = 1.5,
+        fadeOutDuration: TimeInterval = 0.5
+    ) {
+        // Cancel any pending removal task
+        feedbackRemovalTask?.cancel()
+        
+        // Remove the previous view immediately if it exists
+        if let previousView = currentFeedbackView {
+            previousView.removeFromSuperview()
+            currentFeedbackView = nil
+        }
+        
+        // Create container view for proper centering
+        let containerWidth: CGFloat = 250
+        let containerHeight: CGFloat = 60
+        let containerView = NSView(frame: NSRect(
+            x: (frame.width - containerWidth) / 2,
+            y: (frame.height - containerHeight) / 2,
+            width: containerWidth,
+            height: containerHeight
+        ))
+        containerView.wantsLayer = true
+        containerView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.75).cgColor
+        containerView.layer?.cornerRadius = 8
+        
+        // Create label with proper vertical centering
+        let feedbackLabel = NSTextField(labelWithString: text)
+        feedbackLabel.font = NSFont.boldSystemFont(ofSize: 24)
+        feedbackLabel.textColor = .white
+        feedbackLabel.backgroundColor = .clear
+        feedbackLabel.isBordered = false
+        feedbackLabel.isEditable = false
+        feedbackLabel.isSelectable = false
+        feedbackLabel.alignment = .center
+        
+        // Calculate text size for proper centering
+        let textSize = text.size(withAttributes: [.font: feedbackLabel.font!])
+        feedbackLabel.frame = NSRect(
+            x: 0,
+            y: (containerHeight - textSize.height) / 2,
+            width: containerWidth,
+            height: textSize.height
+        )
+        
+        containerView.addSubview(feedbackLabel)
+        overlayView.addSubview(containerView)
+        
+        // Store reference to container view
+        currentFeedbackView = containerView
+        
+        // Stay visible for specified duration, then fade out
+        let totalDuration = duration + fadeOutDuration
+        let removalTask = DispatchWorkItem { [weak self, weak containerView] in
+            guard let view = containerView else { return }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = fadeOutDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                view.animator().alphaValue = 0
+            }, completionHandler: {
+                view.removeFromSuperview()
+                if self?.currentFeedbackView == view {
+                    self?.currentFeedbackView = nil
+                }
+            })
+        }
+        
+        feedbackRemovalTask = removalTask
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: removalTask)
+        
+        // Schedule removal in case animation doesn't complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration + 0.5) { [weak self, weak containerView] in
+            guard let view = containerView else { return }
+            if view.superview != nil {
+                view.removeFromSuperview()
+                if self?.currentFeedbackView == view {
+                    self?.currentFeedbackView = nil
+                }
+            }
         }
     }
 }

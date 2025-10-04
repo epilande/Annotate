@@ -63,15 +63,16 @@ final class AnnotateTests: XCTestCase {
         ]
         let color = NSColor.systemRed
 
-        let path = DrawingPath(points: points, color: color)
+        let path = DrawingPath(points: points, color: color, lineWidth: 3.0)
 
         XCTAssertEqual(path.points.count, 2)
         XCTAssertEqual(path.color, color)
+        XCTAssertEqual(path.lineWidth, 3.0)
         XCTAssertEqual(path.points[0].timestamp, 0.0)
         XCTAssertEqual(path.points[1].timestamp, 1.0)
 
         // Test empty path
-        let emptyPath = DrawingPath(points: [], color: color)
+        let emptyPath = DrawingPath(points: [], color: color, lineWidth: 3.0)
         XCTAssertTrue(emptyPath.points.isEmpty)
     }
 }

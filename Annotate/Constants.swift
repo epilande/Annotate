@@ -13,4 +13,5 @@ extension UserDefaults {
     static let enableBoardKey = "EnableBoard"
     static let boardOpacityKey = "BoardOpacity"
     static let alwaysOnModeKey = "AlwaysOnMode"
+    static let lineWidthKey = "LineWidth"
 }

@@ -83,7 +83,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
         
         if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 2)
+            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
         {
             XCTAssertEqual(currentToolItem.title, "Current Tool: Line")
         }
@@ -96,7 +96,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
 
         if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 2)
+            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
         {
             XCTAssertEqual(currentToolItem.title, "Current Tool: Counter")
         }
@@ -136,13 +136,13 @@ final class AppDelegateTests: XCTestCase, Sendable {
         let testPath = DrawingPath(
             points: [
                 TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: 0)
-            ], color: .red)
+            ], color: .red, lineWidth: 3.0)
         overlayWindow.overlayView.paths.append(testPath)
 
-        let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue)
+        let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue, lineWidth: 3.0)
         overlayWindow.overlayView.arrows.append(testArrow)
         
-        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green, lineWidth: 3.0)
         overlayWindow.overlayView.lines.append(testLine)
 
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
@@ -173,13 +173,13 @@ final class AppDelegateTests: XCTestCase, Sendable {
         let testPath = DrawingPath(
             points: [
                 TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: 0)
-            ], color: .red)
+            ], color: .red, lineWidth: 3.0)
         overlayWindow.overlayView.paths.append(testPath)
 
-        let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue)
+        let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue, lineWidth: 3.0)
         overlayWindow.overlayView.arrows.append(testArrow)
         
-        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green)
+        let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green, lineWidth: 3.0)
         overlayWindow.overlayView.lines.append(testLine)
 
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
