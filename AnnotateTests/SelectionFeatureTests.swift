@@ -3,7 +3,7 @@ import XCTest
 @testable import Annotate
 
 @MainActor
-final class SelectionFeatureTests: XCTestCase, Sendable {
+final class SelectionFeatureTests: XCTestCase {
     var overlayView: OverlayView!
     
     nonisolated override func setUp() {

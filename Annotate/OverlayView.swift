@@ -33,20 +33,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var counterAnnotations: [CounterAnnotation] = []
     var nextCounterNumber: Int = 1
 
-    // Selection state
-    var selectedObjects: Set<SelectedObject> = []  // Changed to Set for multiple selection
+    var selectedObjects: Set<SelectedObject> = []
     var selectionDragOffset: NSPoint?
-    var selectionOriginalData: [SelectedObject: Any] = [:]  // Map of object to original position
-    
-    // Rectangle selection zone
+    var selectionOriginalData: [SelectedObject: Any] = [:]
+
     var isDrawingSelectionRect: Bool = false
     var selectionRectStart: NSPoint?
     var selectionRectEnd: NSPoint?
-    
-    // Clipboard for copy/paste
-    var clipboard: [SelectedObject: Any] = [:]  // Stores copied object data
-    var lastMousePosition: NSPoint = .zero  // Track mouse position for paste
-    
+
+    var clipboard: [ClipboardItem] = []
+    var lastMousePosition: NSPoint = .zero
+
     var currentColor: NSColor = .systemRed
     var currentTool: ToolType = .pen
     var currentLineWidth: CGFloat = 3.0
@@ -939,12 +936,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             currentRectangle = nil
             currentCircle = nil
             currentTextAnnotation = nil
-            
-            // Clear selection state
+
             selectedObjects.removeAll()
             selectionRectStart = nil
             selectionRectEnd = nil
-            
+            isDrawingSelectionRect = false
+            selectionDragOffset = nil
+            selectionOriginalData = [:]
+
             needsDisplay = true
         }
     }
@@ -1003,35 +1002,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
     
     func deleteSelectedObjects() {
         guard !selectedObjects.isEmpty else { return }
-        
+
         // Sort objects by type and index (descending) to delete from end first
         // This prevents index shifting issues
         let sortedObjects = selectedObjects.sorted { obj1, obj2 in
-            // Helper to get sortable value
-            func getSortValue(_ obj: SelectedObject) -> (Int, Int) {
-                switch obj {
-                case .arrow(let idx): return (0, idx)
-                case .line(let idx): return (1, idx)
-                case .rectangle(let idx): return (2, idx)
-                case .circle(let idx): return (3, idx)
-                case .path(let idx): return (4, idx)
-                case .highlight(let idx): return (5, idx)
-                case .text(let idx): return (6, idx)
-                case .counter(let idx): return (7, idx)
-                case .none: return (99, 0)
-                }
-            }
-            let (type1, idx1) = getSortValue(obj1)
-            let (type2, idx2) = getSortValue(obj2)
+            let (type1, idx1) = obj1.sortValue
+            let (type2, idx2) = obj2.sortValue
             if type1 != type2 { return type1 < type2 }
             return idx1 > idx2 // Descending index order
         }
-        
+
         for object in sortedObjects {
             deleteObject(object)
         }
-        
-        // Clear selection after deletion
+
         selectedObjects.removeAll()
         needsDisplay = true
     }
@@ -1097,43 +1081,49 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Copy selected objects to clipboard
     func copySelectedObjects() {
         guard !selectedObjects.isEmpty else { return }
-        
+
         clipboard.removeAll()
-        
-        for object in selectedObjects {
+
+        let sortedObjects = selectedObjects.sorted { obj1, obj2 in
+            let (type1, idx1) = obj1.sortValue
+            let (type2, idx2) = obj2.sortValue
+            return type1 < type2 || (type1 == type2 && idx1 < idx2)
+        }
+
+        for object in sortedObjects {
             switch object {
             case .arrow(let index):
                 guard index < arrows.count else { continue }
-                clipboard[object] = arrows[index]
-                
+                clipboard.append(.arrow(arrows[index]))
+
             case .line(let index):
                 guard index < lines.count else { continue }
-                clipboard[object] = lines[index]
-                
+                clipboard.append(.line(lines[index]))
+
             case .rectangle(let index):
                 guard index < rectangles.count else { continue }
-                clipboard[object] = rectangles[index]
-                
+                clipboard.append(.rectangle(rectangles[index]))
+
             case .circle(let index):
                 guard index < circles.count else { continue }
-                clipboard[object] = circles[index]
-                
+                clipboard.append(.circle(circles[index]))
+
             case .path(let index):
                 guard index < paths.count else { continue }
-                clipboard[object] = paths[index]
-                
+                clipboard.append(.path(paths[index]))
+
             case .highlight(let index):
                 guard index < highlightPaths.count else { continue }
-                clipboard[object] = highlightPaths[index]
-                
+                clipboard.append(.highlight(highlightPaths[index]))
+
             case .text(let index):
                 guard index < textAnnotations.count else { continue }
-                clipboard[object] = textAnnotations[index]
-                
+                clipboard.append(.text(textAnnotations[index]))
+
             case .counter(let index):
                 guard index < counterAnnotations.count else { continue }
-                clipboard[object] = counterAnnotations[index]
-                
+                clipboard.append(.counter(counterAnnotations[index]))
+
             case .none:
                 continue
             }
@@ -1172,184 +1162,158 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Internal method to paste objects with specific offset
     private func pasteObjectsWithOffset(offsetX: CGFloat, offsetY: CGFloat) {
         guard !clipboard.isEmpty else { return }
-        
+
         var pastedObjects: [SelectedObject] = []
-        
-        // Paste each object with the calculated offset
-        for (object, data) in clipboard {
-            switch object {
-            case .arrow:
-                guard var arrow = data as? Arrow else { continue }
+
+        for item in clipboard {
+            switch item {
+            case .arrow(var arrow):
                 arrow.startPoint = NSPoint(x: arrow.startPoint.x + offsetX, y: arrow.startPoint.y + offsetY)
                 arrow.endPoint = NSPoint(x: arrow.endPoint.x + offsetX, y: arrow.endPoint.y + offsetY)
-                arrow.creationTime = CACurrentMediaTime()
+                arrow.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 arrows.append(arrow)
                 registerUndo(action: .addArrow(arrow))
                 pastedObjects.append(.arrow(index: arrows.count - 1))
-                
-            case .line:
-                guard var line = data as? Line else { continue }
+
+            case .line(var line):
                 line.startPoint = NSPoint(x: line.startPoint.x + offsetX, y: line.startPoint.y + offsetY)
                 line.endPoint = NSPoint(x: line.endPoint.x + offsetX, y: line.endPoint.y + offsetY)
-                line.creationTime = CACurrentMediaTime()
+                line.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 lines.append(line)
                 registerUndo(action: .addLine(line))
                 pastedObjects.append(.line(index: lines.count - 1))
-                
-            case .rectangle:
-                guard var rect = data as? Rectangle else { continue }
+
+            case .rectangle(var rect):
                 rect.startPoint = NSPoint(x: rect.startPoint.x + offsetX, y: rect.startPoint.y + offsetY)
                 rect.endPoint = NSPoint(x: rect.endPoint.x + offsetX, y: rect.endPoint.y + offsetY)
-                rect.creationTime = CACurrentMediaTime()
+                rect.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 rectangles.append(rect)
                 registerUndo(action: .addRectangle(rect))
                 pastedObjects.append(.rectangle(index: rectangles.count - 1))
-                
-            case .circle:
-                guard var circle = data as? Circle else { continue }
+
+            case .circle(var circle):
                 circle.startPoint = NSPoint(x: circle.startPoint.x + offsetX, y: circle.startPoint.y + offsetY)
                 circle.endPoint = NSPoint(x: circle.endPoint.x + offsetX, y: circle.endPoint.y + offsetY)
-                circle.creationTime = CACurrentMediaTime()
+                circle.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 circles.append(circle)
                 registerUndo(action: .addCircle(circle))
                 pastedObjects.append(.circle(index: circles.count - 1))
-                
-            case .path:
-                guard var path = data as? DrawingPath else { continue }
-                // Offset all points in the path
+
+            case .path(var path):
                 path.points = path.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
-                        timestamp: CACurrentMediaTime()
+                        timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
                     )
                 }
                 paths.append(path)
                 registerUndo(action: .addPath(path))
                 pastedObjects.append(.path(index: paths.count - 1))
-                
-            case .highlight:
-                guard var highlight = data as? DrawingPath else { continue }
-                // Offset all points in the highlight
+
+            case .highlight(var highlight):
                 highlight.points = highlight.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
-                        timestamp: CACurrentMediaTime()
+                        timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
                     )
                 }
                 highlightPaths.append(highlight)
                 registerUndo(action: .addHighlight(highlight))
                 pastedObjects.append(.highlight(index: highlightPaths.count - 1))
-                
-            case .text:
-                guard var text = data as? TextAnnotation else { continue }
+
+            case .text(var text):
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
                 textAnnotations.append(text)
                 registerUndo(action: .addText(text))
                 pastedObjects.append(.text(index: textAnnotations.count - 1))
-                
-            case .counter:
-                guard var counter = data as? CounterAnnotation else { continue }
+
+            case .counter(var counter):
                 counter.position = NSPoint(x: counter.position.x + offsetX, y: counter.position.y + offsetY)
                 counter.number = nextCounterNumber
-                counter.creationTime = CACurrentMediaTime()
+                counter.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 counterAnnotations.append(counter)
                 registerUndo(action: .addCounter(counter))
                 pastedObjects.append(.counter(index: counterAnnotations.count - 1))
                 nextCounterNumber += 1
-                
-            case .none:
-                continue
             }
         }
-        
-        // Select the newly pasted objects and switch to select mode
+
         selectedObjects = Set(pastedObjects)
         currentTool = .select
-        
+
         needsDisplay = true
     }
     
     /// Calculate the center point of objects in clipboard
     func calculateClipboardCenter() -> NSPoint {
         guard !clipboard.isEmpty else { return .zero }
-        
+
         var minX = CGFloat.greatestFiniteMagnitude
         var minY = CGFloat.greatestFiniteMagnitude
         var maxX = -CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude
-        
-        for (object, data) in clipboard {
-            switch object {
-            case .arrow:
-                guard let arrow = data as? Arrow else { continue }
+
+        for item in clipboard {
+            switch item {
+            case .arrow(let arrow):
                 minX = min(minX, min(arrow.startPoint.x, arrow.endPoint.x))
                 minY = min(minY, min(arrow.startPoint.y, arrow.endPoint.y))
                 maxX = max(maxX, max(arrow.startPoint.x, arrow.endPoint.x))
                 maxY = max(maxY, max(arrow.startPoint.y, arrow.endPoint.y))
-                
-            case .line:
-                guard let line = data as? Line else { continue }
+
+            case .line(let line):
                 minX = min(minX, min(line.startPoint.x, line.endPoint.x))
                 minY = min(minY, min(line.startPoint.y, line.endPoint.y))
                 maxX = max(maxX, max(line.startPoint.x, line.endPoint.x))
                 maxY = max(maxY, max(line.startPoint.y, line.endPoint.y))
-                
-            case .rectangle:
-                guard let rect = data as? Rectangle else { continue }
+
+            case .rectangle(let rect):
                 minX = min(minX, min(rect.startPoint.x, rect.endPoint.x))
                 minY = min(minY, min(rect.startPoint.y, rect.endPoint.y))
                 maxX = max(maxX, max(rect.startPoint.x, rect.endPoint.x))
                 maxY = max(maxY, max(rect.startPoint.y, rect.endPoint.y))
-                
-            case .circle:
-                guard let circle = data as? Circle else { continue }
+
+            case .circle(let circle):
                 minX = min(minX, min(circle.startPoint.x, circle.endPoint.x))
                 minY = min(minY, min(circle.startPoint.y, circle.endPoint.y))
                 maxX = max(maxX, max(circle.startPoint.x, circle.endPoint.x))
                 maxY = max(maxY, max(circle.startPoint.y, circle.endPoint.y))
-                
-            case .path:
-                guard let path = data as? DrawingPath, !path.points.isEmpty else { continue }
+
+            case .path(let path):
+                guard !path.points.isEmpty else { continue }
                 for point in path.points {
                     minX = min(minX, point.point.x)
                     minY = min(minY, point.point.y)
                     maxX = max(maxX, point.point.x)
                     maxY = max(maxY, point.point.y)
                 }
-                
-            case .highlight:
-                guard let highlight = data as? DrawingPath, !highlight.points.isEmpty else { continue }
+
+            case .highlight(let highlight):
+                guard !highlight.points.isEmpty else { continue }
                 for point in highlight.points {
                     minX = min(minX, point.point.x)
                     minY = min(minY, point.point.y)
                     maxX = max(maxX, point.point.x)
                     maxY = max(maxY, point.point.y)
                 }
-                
-            case .text:
-                guard let text = data as? TextAnnotation else { continue }
-                // Approximate text bounds (using position as center)
-                let estimatedWidth: CGFloat = CGFloat(text.text.count) * 8.0  // Rough estimate
-                let estimatedHeight: CGFloat = 20.0  // Rough estimate
+
+            case .text(let text):
+                let estimatedWidth: CGFloat = CGFloat(text.text.count) * 8.0
+                let estimatedHeight: CGFloat = 20.0
                 minX = min(minX, text.position.x)
                 minY = min(minY, text.position.y)
                 maxX = max(maxX, text.position.x + estimatedWidth)
                 maxY = max(maxY, text.position.y + estimatedHeight)
-                
-            case .counter:
-                guard let counter = data as? CounterAnnotation else { continue }
-                let radius: CGFloat = 15.0  // Counter circle radius
+
+            case .counter(let counter):
+                let radius: CGFloat = 15.0
                 minX = min(minX, counter.position.x - radius)
                 minY = min(minY, counter.position.y - radius)
                 maxX = max(maxX, counter.position.x + radius)
                 maxY = max(maxY, counter.position.y + radius)
-                
-            case .none:
-                continue
             }
         }
-        
-        // Return the center point of the bounding box
+
         return NSPoint(x: (minX + maxX) / 2.0, y: (minY + maxY) / 2.0)
     }
     
@@ -1369,53 +1333,28 @@ class OverlayView: NSView, NSTextFieldDelegate {
         pasteObjectsWithOffset(offsetX: offsetX, offsetY: offsetY)
     }
     
-    /// Select all objects in the overlay
     func selectAllObjects() {
-        // Only works in select mode
         guard currentTool == .select else { return }
-        
+
         selectedObjects.removeAll()
-        
-        // Add all arrows
-        for i in 0..<arrows.count {
-            selectedObjects.insert(.arrow(index: i))
+
+        let objectCollections: [(count: Int, factory: (Int) -> SelectedObject)] = [
+            (arrows.count, { .arrow(index: $0) }),
+            (lines.count, { .line(index: $0) }),
+            (paths.count, { .path(index: $0) }),
+            (highlightPaths.count, { .highlight(index: $0) }),
+            (rectangles.count, { .rectangle(index: $0) }),
+            (circles.count, { .circle(index: $0) }),
+            (textAnnotations.count, { .text(index: $0) }),
+            (counterAnnotations.count, { .counter(index: $0) })
+        ]
+
+        for (count, factory) in objectCollections {
+            for i in 0..<count {
+                selectedObjects.insert(factory(i))
+            }
         }
-        
-        // Add all lines
-        for i in 0..<lines.count {
-            selectedObjects.insert(.line(index: i))
-        }
-        
-        // Add all paths
-        for i in 0..<paths.count {
-            selectedObjects.insert(.path(index: i))
-        }
-        
-        // Add all highlights
-        for i in 0..<highlightPaths.count {
-            selectedObjects.insert(.highlight(index: i))
-        }
-        
-        // Add all rectangles
-        for i in 0..<rectangles.count {
-            selectedObjects.insert(.rectangle(index: i))
-        }
-        
-        // Add all circles
-        for i in 0..<circles.count {
-            selectedObjects.insert(.circle(index: i))
-        }
-        
-        // Add all text annotations
-        for i in 0..<textAnnotations.count {
-            selectedObjects.insert(.text(index: i))
-        }
-        
-        // Add all counters
-        for i in 0..<counterAnnotations.count {
-            selectedObjects.insert(.counter(index: i))
-        }
-        
+
         needsDisplay = true
     }
 
@@ -1661,66 +1600,29 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return .none
     }
     
-    /// Find all objects that intersect with the given rectangle
     func findObjectsInRect(_ rect: NSRect) -> Set<SelectedObject> {
         var foundObjects = Set<SelectedObject>()
-        
-        // Check counters
-        for (index, _) in counterAnnotations.enumerated() {
-            if objectIntersectsRect(.counter(index: index), rect: rect) {
-                foundObjects.insert(.counter(index: index))
+
+        let objectCollections: [(count: Int, factory: (Int) -> SelectedObject)] = [
+            (counterAnnotations.count, { .counter(index: $0) }),
+            (textAnnotations.count, { .text(index: $0) }),
+            (circles.count, { .circle(index: $0) }),
+            (rectangles.count, { .rectangle(index: $0) }),
+            (highlightPaths.count, { .highlight(index: $0) }),
+            (paths.count, { .path(index: $0) }),
+            (lines.count, { .line(index: $0) }),
+            (arrows.count, { .arrow(index: $0) })
+        ]
+
+        for (count, factory) in objectCollections {
+            for i in 0..<count {
+                let selectedObject = factory(i)
+                if objectIntersectsRect(selectedObject, rect: rect) {
+                    foundObjects.insert(selectedObject)
+                }
             }
         }
-        
-        // Check text annotations
-        for (index, _) in textAnnotations.enumerated() {
-            if objectIntersectsRect(.text(index: index), rect: rect) {
-                foundObjects.insert(.text(index: index))
-            }
-        }
-        
-        // Check circles
-        for (index, _) in circles.enumerated() {
-            if objectIntersectsRect(.circle(index: index), rect: rect) {
-                foundObjects.insert(.circle(index: index))
-            }
-        }
-        
-        // Check rectangles
-        for (index, _) in rectangles.enumerated() {
-            if objectIntersectsRect(.rectangle(index: index), rect: rect) {
-                foundObjects.insert(.rectangle(index: index))
-            }
-        }
-        
-        // Check highlight paths
-        for (index, _) in highlightPaths.enumerated() {
-            if objectIntersectsRect(.highlight(index: index), rect: rect) {
-                foundObjects.insert(.highlight(index: index))
-            }
-        }
-        
-        // Check regular paths
-        for (index, _) in paths.enumerated() {
-            if objectIntersectsRect(.path(index: index), rect: rect) {
-                foundObjects.insert(.path(index: index))
-            }
-        }
-        
-        // Check lines
-        for (index, _) in lines.enumerated() {
-            if objectIntersectsRect(.line(index: index), rect: rect) {
-                foundObjects.insert(.line(index: index))
-            }
-        }
-        
-        // Check arrows
-        for (index, _) in arrows.enumerated() {
-            if objectIntersectsRect(.arrow(index: index), rect: rect) {
-                foundObjects.insert(.arrow(index: index))
-            }
-        }
-        
+
         return foundObjects
     }
     

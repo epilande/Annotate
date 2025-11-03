@@ -24,6 +24,21 @@ enum SelectedObject: Equatable, Hashable {
     case text(index: Int)
     case counter(index: Int)
     case none
+
+    /// Returns a tuple for sorting: (type priority, index)
+    var sortValue: (Int, Int) {
+        switch self {
+        case .arrow(let idx): return (0, idx)
+        case .line(let idx): return (1, idx)
+        case .rectangle(let idx): return (2, idx)
+        case .circle(let idx): return (3, idx)
+        case .path(let idx): return (4, idx)
+        case .highlight(let idx): return (5, idx)
+        case .text(let idx): return (6, idx)
+        case .counter(let idx): return (7, idx)
+        case .none: return (99, 0)
+        }
+    }
 }
 
 /// Represents a timed point for pen/highlighter so we can do trailing fade-out
@@ -88,6 +103,17 @@ struct CounterAnnotation {
     var position: NSPoint
     var color: NSColor
     var creationTime: CFTimeInterval?
+}
+
+enum ClipboardItem {
+    case arrow(Arrow)
+    case line(Line)
+    case path(DrawingPath)
+    case highlight(DrawingPath)
+    case rectangle(Rectangle)
+    case circle(Circle)
+    case text(TextAnnotation)
+    case counter(CounterAnnotation)
 }
 
 /// Describes actions that can be used for undo/redo operations.
