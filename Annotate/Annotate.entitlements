@@ -4,22 +4,10 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
-	<true/>
-	<key>com.apple.security.cs.allow-jit</key>
-	<false/>
-	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-	<false/>
-	<key>com.apple.security.cs.disable-executable-page-protection</key>
-	<false/>
-	<key>com.apple.security.cs.disable-library-validation</key>
-	<false/>
-	<key>com.apple.security.network.client</key>
-	<true/>
 	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
 	<array>
-		<string>com.epilande.Annotate-spks</string>
-		<string>com.epilande.Annotate-spki</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
 	</array>
 </dict>
 </plist>
