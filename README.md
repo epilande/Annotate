@@ -25,12 +25,6 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support.
   - 👆 **Select** tool for moving and managing objects.
-- 🎯 **Selection & Manipulation**:
-  - Select single or multiple objects
-  - Move objects by dragging
-  - Delete selected objects
-  - Rectangle selection to select multiple objects at once
-  - Shift+Click to add/remove objects from selection
 - ✨ **Fade/Persist Mode:** Control whether annotations fade out after a duration or persist on the screen.
 - 📌 **Always-On Mode:** Display annotations persistently without user interaction.
 - 🌈 **Color Picker:** Easily select and persist your preferred color.
@@ -178,7 +172,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 
 Annotate provides flexible line width control:
 
-- **Interactive Picker**: Press <kbd>s</kbd> or select "Line Width" from the menu bar to open a picker with:
+- **Interactive Picker**: Press <kbd>W</kbd> or select "Line Width" from the menu bar to open a picker with:
   - Visual line preview showing the current thickness
   - Slider for precise width adjustment (0.5px to 20px)
   - Real-time feedback as you adjust
@@ -219,7 +213,7 @@ Annotate provides flexible line width control:
 
 The Select tool allows you to manipulate existing annotations with precision:
 
-- **Select Objects**: Press <kbd>v</kbd> to enter select mode
+- **Select Objects**: Press <kbd>V</kbd> to enter select mode
   - Click on objects to select them (lines, arrows, shapes, text, etc.)
   - Circles and rectangles must be clicked on their edges
   - A blue dashed bounding box appears around selected objects
@@ -235,12 +229,12 @@ The Select tool allows you to manipulate existing annotations with precision:
   - Multiple selected objects move together, maintaining their relative positions
   
 - **Copy/Paste/Cut/Duplicate**:
-  - **Select All** (<kbd>Cmd</kbd>+<kbd>A</kbd>): Select all objects on the canvas
-  - **Copy** (<kbd>Cmd</kbd>+<kbd>C</kbd>): Copy selected objects to clipboard
-  - **Cut** (<kbd>Cmd</kbd>+<kbd>X</kbd>): Cut selected objects (copy and delete)
-  - **Paste** (<kbd>Cmd</kbd>+<kbd>V</kbd>): Paste objects at mouse cursor position
+  - **Select All** (<kbd>Command</kbd>+<kbd>A</kbd>): Select all objects on the canvas
+  - **Copy** (<kbd>Command</kbd>+<kbd>C</kbd>): Copy selected objects to clipboard
+  - **Cut** (<kbd>Command</kbd>+<kbd>X</kbd>): Cut selected objects (copy and delete)
+  - **Paste** (<kbd>Command</kbd>+<kbd>V</kbd>): Paste objects at mouse cursor position
     - Automatically switches to select mode with pasted objects selected
-  - **Duplicate** (<kbd>Cmd</kbd>+<kbd>D</kbd>): Duplicate selected objects with a small offset
+  - **Duplicate** (<kbd>Command</kbd>+<kbd>D</kbd>): Duplicate selected objects with a small offset
     - Keeps you in select mode with duplicated objects selected
   
 - **Delete Selected**:
