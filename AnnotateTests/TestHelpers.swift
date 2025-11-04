@@ -87,7 +87,8 @@ enum TestEvents {
     static func createKeyEvent(
         type: NSEvent.EventType,
         keyCode: UInt16,
-        modifierFlags: NSEvent.ModifierFlags = []
+        modifierFlags: NSEvent.ModifierFlags = [],
+        characters: String = ""
     ) -> NSEvent? {
         return NSEvent.keyEvent(
             with: type,
@@ -96,8 +97,8 @@ enum TestEvents {
             timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: 0,
             context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
+            characters: characters,
+            charactersIgnoringModifiers: characters,
             isARepeat: false,
             keyCode: keyCode
         )

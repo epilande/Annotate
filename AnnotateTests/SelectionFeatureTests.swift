@@ -559,7 +559,6 @@ final class SelectionFeatureTests: XCTestCase {
     }
     
     func testSelectAllNotInSelectMode() {
-        // Add some objects
         overlayView.lines.append(Line(
             startPoint: NSPoint(x: 100, y: 100),
             endPoint: NSPoint(x: 200, y: 200),
@@ -567,15 +566,14 @@ final class SelectionFeatureTests: XCTestCase {
             lineWidth: 2.0,
             creationTime: nil
         ))
-        
-        // In pen mode, not select mode
+
         overlayView.currentTool = .pen
-        
-        // Call selectAllObjects
         overlayView.selectAllObjects()
-        
-        // Should not select anything when not in select mode
-        XCTAssertTrue(overlayView.selectedObjects.isEmpty)
+
+        // selectAllObjects() now works regardless of mode
+        // Mode switching is handled in OverlayWindow's performKeyEquivalent
+        XCTAssertEqual(overlayView.selectedObjects.count, 1)
+        XCTAssertTrue(overlayView.selectedObjects.contains(.line(index: 0)))
     }
     
     func testSelectAllEmptyCanvas() {
@@ -787,10 +785,10 @@ final class SelectionFeatureTests: XCTestCase {
         // Verify clipboard is not empty after copy
         XCTAssertFalse(overlayView.clipboard.isEmpty)
         XCTAssertEqual(overlayView.clipboard.count, 1)
-        
+
         // Verify the clipboard contains the line data
-        if let (objType, _) = overlayView.clipboard.first {
-            if case .line = objType {
+        if let clipboardItem = overlayView.clipboard.first {
+            if case .line = clipboardItem {
                 XCTAssertTrue(true, "Clipboard contains line data")
             } else {
                 XCTFail("Clipboard should contain line object type")
@@ -895,12 +893,11 @@ final class SelectionFeatureTests: XCTestCase {
         
         // Verify clipboard has all 3 objects
         XCTAssertEqual(overlayView.clipboard.count, 3)
-        
+
         // Verify each object type is in clipboard
-        let clipboardTypes = overlayView.clipboard.map { $0.0 }
-        XCTAssertTrue(clipboardTypes.contains { if case .line = $0 { return true }; return false })
-        XCTAssertTrue(clipboardTypes.contains { if case .rectangle = $0 { return true }; return false })
-        XCTAssertTrue(clipboardTypes.contains { if case .text = $0 { return true }; return false })
+        XCTAssertTrue(overlayView.clipboard.contains { if case .line = $0 { return true }; return false })
+        XCTAssertTrue(overlayView.clipboard.contains { if case .rectangle = $0 { return true }; return false })
+        XCTAssertTrue(overlayView.clipboard.contains { if case .text = $0 { return true }; return false })
     }
     
     func testCutAndPaste() {

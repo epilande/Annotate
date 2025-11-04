@@ -1334,8 +1334,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     
     func selectAllObjects() {
-        guard currentTool == .select else { return }
-
         selectedObjects.removeAll()
 
         let objectCollections: [(count: Int, factory: (Int) -> SelectedObject)] = [

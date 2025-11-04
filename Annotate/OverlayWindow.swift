@@ -1107,35 +1107,53 @@ class OverlayWindow: NSWindow {
         guard event.modifierFlags.contains(.command) else {
             return super.performKeyEquivalent(with: event)
         }
-        
-        // Handle copy/paste/cut/duplicate only in select mode
-        guard overlayView.currentTool == .select else {
-            return super.performKeyEquivalent(with: event)
-        }
-        
+
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "a":
-            // Cmd+A - Select All
-            overlayView.selectAllObjects()
+            // Defer to text field when editing text
+            if overlayView.activeTextField != nil {
+                return super.performKeyEquivalent(with: event)
+            }
+
+            let hasAnnotations = !overlayView.arrows.isEmpty || !overlayView.lines.isEmpty ||
+                                !overlayView.paths.isEmpty || !overlayView.highlightPaths.isEmpty ||
+                                !overlayView.rectangles.isEmpty || !overlayView.circles.isEmpty ||
+                                !overlayView.textAnnotations.isEmpty || !overlayView.counterAnnotations.isEmpty
+
+            if hasAnnotations {
+                if overlayView.currentTool != .select {
+                    AppDelegate.shared?.enableSelectMode(NSMenuItem())
+                }
+                overlayView.selectAllObjects()
+            }
+
             return true
-            
+
         case "c":
-            // Cmd+C - Copy
+            guard overlayView.currentTool == .select else {
+                return super.performKeyEquivalent(with: event)
+            }
             overlayView.copySelectedObjects()
             return true
-            
+
         case "x":
-            // Cmd+X - Cut
+            guard overlayView.currentTool == .select else {
+                return super.performKeyEquivalent(with: event)
+            }
             overlayView.cutSelectedObjects()
             return true
-            
+
         case "v":
-            // Cmd+V - Paste
+            guard overlayView.currentTool == .select else {
+                return super.performKeyEquivalent(with: event)
+            }
             overlayView.pasteObjects()
             return true
-            
+
         case "d":
-            // Cmd+D - Duplicate
+            guard overlayView.currentTool == .select else {
+                return super.performKeyEquivalent(with: event)
+            }
             overlayView.duplicateSelectedObjects()
             return true
             

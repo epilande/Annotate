@@ -255,13 +255,218 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     func testToolFeedbackWithDifferentColors() {
         // Test that feedback works with different colors
         let colors: [NSColor] = [.red, .blue, .black, .white, .yellow, .green]
-        
+
         for color in colors {
             window.overlayView.currentColor = color
             window.showToolFeedback(.pen)
-            
+
             // Verify the color was set correctly
             XCTAssertEqual(window.overlayView.currentColor, color, "Color should be set correctly")
         }
+    }
+
+    // MARK: - Keyboard Shortcut Tests (Cmd+A Global Select All)
+
+    func testCmdASelectAllInPenMode() {
+        window.overlayView.lines.append(Line(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 200),
+            color: .red,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.circles.append(Circle(
+            startPoint: NSPoint(x: 300, y: 300),
+            endPoint: NSPoint(x: 400, y: 400),
+            color: .blue,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.currentTool = .pen
+
+        let cmdAEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 0,
+            modifierFlags: .command,
+            characters: "a"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdAEvent!)
+
+        // In unit tests, AppDelegate.shared is nil so mode won't actually switch
+        XCTAssertTrue(handled)
+    }
+
+    func testCmdASelectAllInSelectMode() {
+        window.overlayView.arrows.append(Arrow(
+            startPoint: NSPoint(x: 50, y: 50),
+            endPoint: NSPoint(x: 100, y: 100),
+            color: .red,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.textAnnotations.append(TextAnnotation(
+            text: "Test",
+            position: NSPoint(x: 200, y: 200),
+            color: .black,
+            fontSize: 18
+        ))
+
+        window.overlayView.currentTool = .select
+
+        let cmdAEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 0,
+            modifierFlags: .command,
+            characters: "a"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdAEvent!)
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(window.overlayView.selectedObjects.count, 2)
+        XCTAssertTrue(window.overlayView.selectedObjects.contains(.arrow(index: 0)))
+        XCTAssertTrue(window.overlayView.selectedObjects.contains(.text(index: 0)))
+    }
+
+    func testCmdASelectAllOnEmptyCanvas() {
+        XCTAssertTrue(window.overlayView.arrows.isEmpty)
+        XCTAssertTrue(window.overlayView.lines.isEmpty)
+
+        window.overlayView.currentTool = .pen
+
+        let cmdAEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 0,
+            modifierFlags: .command,
+            characters: "a"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdAEvent!)
+
+        XCTAssertTrue(handled)
+        XCTAssertTrue(window.overlayView.selectedObjects.isEmpty)
+    }
+
+    func testCmdAWithActiveTextFieldDoesNotHandle() {
+        window.overlayView.textAnnotations.append(TextAnnotation(
+            text: "Test",
+            position: NSPoint(x: 100, y: 100),
+            color: .black,
+            fontSize: 18
+        ))
+
+        window.overlayView.activeTextField = NSTextField(frame: NSRect(x: 100, y: 100, width: 200, height: 30))
+        window.overlayView.currentTool = .text
+
+        let cmdAEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 0,
+            modifierFlags: .command,
+            characters: "a"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdAEvent!)
+
+        XCTAssertFalse(handled)
+
+        window.overlayView.activeTextField?.removeFromSuperview()
+        window.overlayView.activeTextField = nil
+    }
+
+    func testCmdCOnlyWorksInSelectMode() {
+        window.overlayView.lines.append(Line(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 200),
+            color: .red,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.selectedObjects = [.line(index: 0)]
+        window.overlayView.currentTool = .pen
+
+        let cmdCEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 8,
+            modifierFlags: .command,
+            characters: "c"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdCEvent!)
+        XCTAssertFalse(handled)
+    }
+
+    func testCmdVOnlyWorksInSelectMode() {
+        window.overlayView.clipboard = [
+            .line(Line(
+                startPoint: NSPoint(x: 100, y: 100),
+                endPoint: NSPoint(x: 200, y: 200),
+                color: .red,
+                lineWidth: 2.0,
+                creationTime: nil
+            ))
+        ]
+
+        window.overlayView.currentTool = .arrow
+
+        let cmdVEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 9,
+            modifierFlags: .command,
+            characters: "v"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdVEvent!)
+        XCTAssertFalse(handled)
+    }
+
+    func testCmdXOnlyWorksInSelectMode() {
+        window.overlayView.circles.append(Circle(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 200),
+            color: .blue,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.selectedObjects = [.circle(index: 0)]
+        window.overlayView.currentTool = .highlighter
+
+        let cmdXEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 7,
+            modifierFlags: .command,
+            characters: "x"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdXEvent!)
+        XCTAssertFalse(handled)
+    }
+
+    func testCmdDOnlyWorksInSelectMode() {
+        window.overlayView.rectangles.append(Rectangle(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 200),
+            color: .green,
+            lineWidth: 2.0,
+            creationTime: nil
+        ))
+
+        window.overlayView.selectedObjects = [.rectangle(index: 0)]
+        window.overlayView.currentTool = .line
+
+        let cmdDEvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 2,
+            modifierFlags: .command,
+            characters: "d"
+        )
+
+        let handled = window.performKeyEquivalent(with: cmdDEvent!)
+        XCTAssertFalse(handled)
     }
 }
