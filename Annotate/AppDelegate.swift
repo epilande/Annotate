@@ -17,12 +17,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var alwaysOnMode: Bool = false
     var aboutWindow: NSWindow?
     var updaterController: SPUStandardUpdaterController!
+    let userDefaults: UserDefaults
+
+    override init() {
+        self.userDefaults = .standard
+        super.init()
+    }
+
+    init(userDefaults: UserDefaults) {
+        self.userDefaults = userDefaults
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
         updateDockIconVisibility()
 
-        if let colorData = UserDefaults.standard.data(forKey: "SelectedColor"),
+        if let colorData = userDefaults.data(forKey: "SelectedColor"),
             let unarchivedColor = try? NSKeyedUnarchiver.unarchivedObject(
                 ofClass: NSColor.self, from: colorData)
         {
@@ -33,45 +44,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         setupOverlayWindows()
 
         let persistedFadeMode =
-            UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+            userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
-        
-        // Restore always-on mode if it was enabled when app last quit
-        let shouldStartInAlwaysOnMode = UserDefaults.standard.bool(forKey: UserDefaults.alwaysOnModeKey)
+
+        let shouldStartInAlwaysOnMode = userDefaults.bool(forKey: UserDefaults.alwaysOnModeKey)
         if shouldStartInAlwaysOnMode {
             DispatchQueue.main.async {
                 self.toggleAlwaysOnMode()
             }
         }
 
-        let persistedLineWidth = UserDefaults.standard.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
+        let persistedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
         overlayWindows.values.forEach { $0.overlayView.currentLineWidth = CGFloat(persistedLineWidth) }
 
-        let enableBoard = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let enableBoard = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
         overlayWindows.values.forEach {
             $0.boardView.isHidden = !enableBoard
             $0.overlayView.updateAdaptColors(boardEnabled: enableBoard)
         }
 
         setupBoardObservers()
-        
-        // Initialize Sparkle updater (uses Info.plist configuration)
+
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        
-        // Override the default About menu item
+
         setupApplicationMenu()
     }
 
     @MainActor
     func updateDockIconVisibility() {
-        // Skip NSApplication operations during testing
         guard NSApplication.shared.delegate != nil else { return }
 
-        if UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey) {
+        if userDefaults.bool(forKey: UserDefaults.hideDockIconKey) {
             NSApplication.shared.setActivationPolicy(.accessory)
         } else {
             NSApplication.shared.setActivationPolicy(.regular)
@@ -180,7 +187,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let isDarkMode =
                 NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let boardType = isDarkMode ? "Blackboard" : "Whiteboard"
-            let boardEnabled = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+            let boardEnabled = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
             let toggleBoardItem = NSMenuItem(
                 title: boardEnabled ? "Hide \(boardType)" : "Show \(boardType)",
                 action: #selector(toggleBoardVisibility(_:)),
@@ -191,7 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             menu.addItem(NSMenuItem.separator())
 
             let persistedFadeMode =
-                UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+                userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
             let currentDrawingModeItem = NSMenuItem(
                 title: persistedFadeMode ? "Drawing Mode: Fade" : "Drawing Mode: Persist",
                 action: nil,
@@ -295,8 +302,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                     defer: false
                 )
                 overlayWindow.currentColor = currentColor
-                
-                let savedLineWidth = UserDefaults.standard.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
+
+                let savedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
                 overlayWindow.overlayView.currentLineWidth = CGFloat(savedLineWidth)
                 
                 overlayWindows[screen] = overlayWindow
@@ -330,7 +337,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     @objc func showColorPicker(_ sender: Any?) {
         if colorPopover == nil {
             colorPopover = NSPopover()
-            colorPopover?.contentViewController = ColorPickerViewController()
+            colorPopover?.contentViewController = ColorPickerViewController(userDefaults: userDefaults)
             colorPopover?.behavior = .transient
             colorPopover?.delegate = self
         }
@@ -347,7 +354,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     @objc func showLineWidthPicker(_ sender: Any?) {
         if lineWidthPopover == nil {
             lineWidthPopover = NSPopover()
-            lineWidthPopover?.contentViewController = LineWidthPickerViewController()
+            lineWidthPopover?.contentViewController = LineWidthPickerViewController(userDefaults: userDefaults)
             lineWidthPopover?.behavior = .transient
             lineWidthPopover?.delegate = self
         }
@@ -389,9 +396,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             NSApp.hide(nil)
         } else {
             configureWindowForNormalMode(overlayWindow)
-            
-            // Clear drawings if the setting is enabled
-            if UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey) {
+
+            if userDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey) {
                 overlayWindow.overlayView.clearAll()
             }
 
@@ -415,12 +421,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             }
         }
         
-        let iconColor = alwaysOnMode 
-            ? currentColor.withAlphaComponent(0.7)  // Semi-transparent to indicate read-only
+        let iconColor = alwaysOnMode
+            ? currentColor.withAlphaComponent(0.7)
             : .gray
         updateStatusBarIcon(with: iconColor)
-        
-        UserDefaults.standard.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
+
+        userDefaults.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
         updateAlwaysOnMenuItems()
     }
 
@@ -435,7 +441,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
     
     @objc func closeOverlayAndEnableAlwaysOn() {
-        // Transition directly to always-on mode to preserve annotations (avoids hiding overlay first)
         if !alwaysOnMode {
             toggleAlwaysOnMode()
         }
@@ -456,13 +461,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func switchTool(to tool: ToolType) {
-        // Tool switching requires interactive mode
         if alwaysOnMode {
             toggleAlwaysOnMode()
         }
-        
+
         overlayWindows.values.forEach { window in
-            // Clear selection when switching away from select mode
             if window.overlayView.currentTool == .select && tool != .select {
                 window.overlayView.selectedObjects.removeAll()
                 window.overlayView.needsDisplay = true
@@ -563,21 +566,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         overlayWindow.ignoresMouseEvents = false
         overlayWindow.level = .normal
         overlayWindow.overlayView.isReadOnlyMode = false
-        
-        let persistedFadeMode = UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+
+        let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindow.overlayView.fadeMode = persistedFadeMode
     }
     
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.ignoresMouseEvents = true
         overlayWindow.level = .floating
-        overlayWindow.overlayView.fadeMode = false  // Persistent annotations for always-on display
+        overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true
-        
+
         let screenFrame = overlayWindow.screen?.frame ?? NSScreen.main?.frame ?? .zero
         overlayWindow.setFrame(screenFrame, display: true)
         overlayWindow.orderFront(nil)
-        overlayWindow.stopFadeLoop()  // Prevent fade conflicts with persistent mode
+        overlayWindow.stopFadeLoop()
     }
     
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
@@ -664,7 +667,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             window.overlayView.fadeMode.toggle()
         }
 
-        UserDefaults.standard.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
+        userDefaults.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         updateFadeModeMenuItems(isCurrentlyFadeMode: isCurrentlyFadeMode)
     }
@@ -753,14 +756,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
     
     func setupApplicationMenu() {
-        // Find the application menu (first submenu in the main menu bar)
         guard let mainMenu = NSApp.mainMenu,
               let appMenuItem = mainMenu.items.first,
               let appMenu = appMenuItem.submenu else {
             return
         }
-        
-        // Find and replace the About menu item
+
         for item in appMenu.items {
             if item.title.hasPrefix("About") {
                 item.target = self
@@ -788,12 +789,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
         
         aboutWindow?.makeKeyAndOrderFront(nil)
-        
-        // Center after the window is shown to ensure proper sizing
+
         DispatchQueue.main.async {
             self.aboutWindow?.center()
         }
-        
+
         NSApp.activate(ignoringOtherApps: true)
     }
     

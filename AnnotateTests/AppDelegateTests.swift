@@ -6,29 +6,27 @@ import XCTest
 @MainActor
 final class AppDelegateTests: XCTestCase, Sendable {
     var appDelegate: AppDelegate!
+    var testDefaults: UserDefaults!
 
     nonisolated override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: "SelectedColor")
-        UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.alwaysOnModeKey)
 
         MainActor.assumeIsolated {
-            appDelegate = AppDelegate()
+            testDefaults = TestUserDefaults.create()
+            BoardManager.shared = BoardManager(userDefaults: testDefaults)
+            ShortcutManager.shared = ShortcutManager(userDefaults: testDefaults)
+
+            appDelegate = AppDelegate(userDefaults: testDefaults)
             appDelegate.applicationDidFinishLaunching(
                 Notification(name: NSApplication.didFinishLaunchingNotification))
         }
     }
 
     nonisolated override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeModeKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.alwaysOnModeKey)
-        UserDefaults.standard.removeObject(forKey: "SelectedColor")
         MainActor.assumeIsolated {
             appDelegate = nil
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -111,28 +109,20 @@ final class AppDelegateTests: XCTestCase, Sendable {
     // MARK: - Clear Drawings Tests
 
     func testToggleOverlayClearsDrawingsWhenEnabled() {
-        UserDefaults.standard.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
         appDelegate.alwaysOnMode = false
-        
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
-        
-        guard let currentScreen = NSScreen.main,
+
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+
+        guard let currentScreen = appDelegate.getCurrentScreen(),
             let overlayWindow = appDelegate.overlayWindows[currentScreen]
         else {
-            XCTFail("Failed to get overlay window")
+            XCTFail("Failed to get overlay window for current screen")
             return
         }
 
-        // Ensure window starts visible - make sure we end with window visible
-        if !overlayWindow.isVisible {
-            appDelegate.toggleOverlay()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        
-        // If still not visible after one toggle and wait, skip this test as the windowing system isn't cooperating
-        guard overlayWindow.isVisible else {
-            XCTFail("Window could not be made visible - skipping test due to windowing system issues")
-            return
+        if overlayWindow.isVisible {
+            overlayWindow.orderOut(nil)
         }
 
         let testPath = DrawingPath(
@@ -143,7 +133,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
         let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue, lineWidth: 3.0)
         overlayWindow.overlayView.arrows.append(testArrow)
-        
+
         let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green, lineWidth: 3.0)
         overlayWindow.overlayView.lines.append(testLine)
 
@@ -151,27 +141,26 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
         XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
-        // Toggle overlay off
         appDelegate.toggleOverlay()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
 
-        // Toggle it back on - should clear drawings because clearDrawingsOnStartKey is true
-        appDelegate.toggleOverlay()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-
-        // Verify drawings were cleared
-        XCTAssertEqual(overlayWindow.overlayView.paths.count, 0, "Paths should be cleared")
-        XCTAssertEqual(overlayWindow.overlayView.arrows.count, 0, "Arrows should be cleared")
-        XCTAssertEqual(overlayWindow.overlayView.lines.count, 0, "Lines should be cleared")
+        XCTAssertEqual(overlayWindow.overlayView.paths.count, 0, "Paths should be cleared when clearDrawingsOnStartKey is true")
+        XCTAssertEqual(overlayWindow.overlayView.arrows.count, 0, "Arrows should be cleared when clearDrawingsOnStartKey is true")
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 0, "Lines should be cleared when clearDrawingsOnStartKey is true")
     }
 
     func testToggleOverlayPreservesDrawingsWhenDisabled() {
-        UserDefaults.standard.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
-        guard let currentScreen = NSScreen.main,
+        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
+        appDelegate.alwaysOnMode = false
+
+        guard let currentScreen = appDelegate.getCurrentScreen(),
             let overlayWindow = appDelegate.overlayWindows[currentScreen]
         else {
-            XCTFail("Failed to get overlay window")
+            XCTFail("Failed to get overlay window for current screen")
             return
+        }
+
+        if overlayWindow.isVisible {
+            overlayWindow.orderOut(nil)
         }
 
         let testPath = DrawingPath(
@@ -182,7 +171,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
         let testArrow = Arrow(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .blue, lineWidth: 3.0)
         overlayWindow.overlayView.arrows.append(testArrow)
-        
+
         let testLine = Line(startPoint: .zero, endPoint: NSPoint(x: 20, y: 20), color: .green, lineWidth: 3.0)
         overlayWindow.overlayView.lines.append(testLine)
 
@@ -190,54 +179,49 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
         XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
-        // Toggle overlay
         appDelegate.toggleOverlay()
 
-        // Toggle it back on
-        appDelegate.toggleOverlay()
-
-        // Verify drawings were preserved
-        XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
-        XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
-        XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
+        XCTAssertEqual(overlayWindow.overlayView.paths.count, 1, "Paths should be preserved when clearDrawingsOnStartKey is false")
+        XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1, "Arrows should be preserved when clearDrawingsOnStartKey is false")
+        XCTAssertEqual(overlayWindow.overlayView.lines.count, 1, "Lines should be preserved when clearDrawingsOnStartKey is false")
     }
 
     func testClearDrawingsSettingPersistence() {
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
 
-        UserDefaults.standard.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
 
-        UserDefaults.standard.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
     }
 
     // MARK: - Dock Icon Tests
 
     func testHideDockIconDefaultValue() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.removeObject(forKey: UserDefaults.hideDockIconKey)
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
     }
 
     func testDockIconVisibilityPersistence() {
-        UserDefaults.standard.set(true, forKey: UserDefaults.hideDockIconKey)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.set(true, forKey: UserDefaults.hideDockIconKey)
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
 
-        UserDefaults.standard.set(false, forKey: UserDefaults.hideDockIconKey)
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.set(false, forKey: UserDefaults.hideDockIconKey)
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
     }
 
     // MARK: - Persist Fade Mode Tests
 
     func testDefaultFadeModePersistence() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeModeKey)
+        testDefaults.removeObject(forKey: UserDefaults.fadeModeKey)
         let persistedFadeMode =
-            UserDefaults.standard.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+            testDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         XCTAssertTrue(persistedFadeMode, "Default fade mode should be true (fade mode active).")
     }
 
     func testToggleFadeModeUpdatesPersistence() {
-        let appDelegate = AppDelegate()
+        let appDelegate = AppDelegate(userDefaults: testDefaults)
         appDelegate.applicationDidFinishLaunching(
             Notification(name: NSApplication.didFinishLaunchingNotification))
 
@@ -255,14 +239,14 @@ final class AppDelegateTests: XCTestCase, Sendable {
             overlayWindow.overlayView.fadeMode, "Expected fade mode to be false after toggle.")
 
         // UserDefaults should reflect this change.
-        let persistedFadeMode = UserDefaults.standard.bool(forKey: UserDefaults.fadeModeKey)
+        let persistedFadeMode = testDefaults.bool(forKey: UserDefaults.fadeModeKey)
         XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
     }
 
     func testOverlayWindowsRestorePersistedFadeMode() {
-        UserDefaults.standard.set(false, forKey: UserDefaults.fadeModeKey)
+        testDefaults.set(false, forKey: UserDefaults.fadeModeKey)
 
-        let appDelegate = AppDelegate()
+        let appDelegate = AppDelegate(userDefaults: testDefaults)
         appDelegate.applicationDidFinishLaunching(
             Notification(name: NSApplication.didFinishLaunchingNotification))
 
@@ -275,15 +259,15 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testToggleBoardVisibility() {
-        let initialState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let initialState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
 
         appDelegate.toggleBoardVisibility(nil)
 
-        let newState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let newState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertNotEqual(initialState, newState, "Board visibility should be toggled")
 
         appDelegate.toggleBoardVisibility(nil)
-        let finalState = UserDefaults.standard.bool(forKey: UserDefaults.enableBoardKey)
+        let finalState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertEqual(
             initialState, finalState, "Board visibility should be toggled back to original state")
     }

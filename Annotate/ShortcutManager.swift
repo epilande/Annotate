@@ -36,12 +36,14 @@ enum ShortcutKey: String, CaseIterable {
 
 @MainActor
 class ShortcutManager: @unchecked Sendable {
-    static let shared = ShortcutManager()
+    static var shared = ShortcutManager()
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let shortcutPrefix = "shortcut."
 
-    private init() {}
+    init(userDefaults: UserDefaults = .standard) {
+        self.defaults = userDefaults
+    }
 
     func getShortcut(for tool: ShortcutKey) -> String {
         defaults.string(forKey: shortcutPrefix + tool.rawValue) ?? tool.defaultKey

@@ -8,6 +8,32 @@ enum TestConstants {
     static let defaultDelay: TimeInterval = 0.1
     static let defaultFrameSize = NSSize(width: 800, height: 600)
     static let smallFrameSize = NSSize(width: 400, height: 300)
+    static let testSuiteName = "com.annotate.tests"
+}
+
+// MARK: - Test UserDefaults
+enum TestUserDefaults {
+    /// Creates a fresh isolated UserDefaults instance for testing
+    /// - Returns: A new UserDefaults suite completely isolated from production data
+    static func create() -> UserDefaults {
+        let suite = UserDefaults(suiteName: TestConstants.testSuiteName)!
+        clear(suite)
+        return suite
+    }
+
+    /// Clears all data from a test UserDefaults suite
+    static func clear(_ userDefaults: UserDefaults) {
+        userDefaults.dictionaryRepresentation().keys.forEach { key in
+            userDefaults.removeObject(forKey: key)
+        }
+        userDefaults.synchronize()
+    }
+
+    /// Completely removes the test suite from the system
+    static func removeSuite() {
+        UserDefaults.standard.removePersistentDomain(forName: TestConstants.testSuiteName)
+        UserDefaults.standard.synchronize()
+    }
 }
 
 // MARK: - Test Factory Methods

@@ -5,11 +5,13 @@ import XCTest
 
 @MainActor
 final class SettingsViewTests: XCTestCase {
+    var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
         UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
+        testDefaults = UserDefaults.standard
     }
 
     override func tearDown() {
@@ -19,8 +21,8 @@ final class SettingsViewTests: XCTestCase {
     }
 
     func testSettingsViewInitialState() {
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
     }
 
     func testHideDockIconToggle() {
@@ -47,7 +49,7 @@ final class SettingsViewTests: XCTestCase {
     }
 
     func testToggleCallsUpdateDockIconVisibility() {
-        let appDelegateSpy = AppDelegateSpy()
+        let appDelegateSpy = AppDelegateSpy(userDefaults: testDefaults)
         AppDelegate.shared = appDelegateSpy
 
         class ViewModel: ObservableObject {

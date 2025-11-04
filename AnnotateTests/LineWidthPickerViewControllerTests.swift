@@ -5,19 +5,22 @@ import XCTest
 @MainActor
 final class LineWidthPickerViewControllerTests: XCTestCase, Sendable {
     var viewController: LineWidthPickerViewController!
-    
+    var testDefaults: UserDefaults!
+
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
-            viewController = LineWidthPickerViewController()
+            testDefaults = TestUserDefaults.create()
+            viewController = LineWidthPickerViewController(userDefaults: testDefaults)
             _ = viewController.view  // Trigger view loading
         }
     }
-    
+
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
             viewController = nil
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
     
@@ -62,19 +65,16 @@ final class LineWidthPickerViewControllerTests: XCTestCase, Sendable {
     func testCurrentLineWidthRetrieved() {
         // Test that current line width is retrieved from UserDefaults
         // Set a test value
-        UserDefaults.standard.set(5.5, forKey: UserDefaults.lineWidthKey)
-        
+        testDefaults.set(5.5, forKey: UserDefaults.lineWidthKey)
+
         // Create new view controller to trigger load
-        let newVC = LineWidthPickerViewController()
+        let newVC = LineWidthPickerViewController(userDefaults: testDefaults)
         _ = newVC.view
-        
+
         // Note: We can't directly access the slider value without making it public,
         // but we can verify the UserDefaults key is used correctly
-        let savedWidth = UserDefaults.standard.double(forKey: UserDefaults.lineWidthKey)
+        let savedWidth = testDefaults.double(forKey: UserDefaults.lineWidthKey)
         XCTAssertEqual(savedWidth, 5.5)
-        
-        // Clean up
-        UserDefaults.standard.removeObject(forKey: UserDefaults.lineWidthKey)
     }
     
     func testLineWidthIncrement() {

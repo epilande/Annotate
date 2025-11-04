@@ -30,7 +30,10 @@ let package = Package(
         .testTarget(
             name: "AnnotateTests",
             dependencies: ["Annotate"],
-            path: "AnnotateTests"
+            path: "AnnotateTests",
+            swiftSettings: [
+                .unsafeFlags(["-swift-version", "5"])
+            ]
         ),
     ]
 )

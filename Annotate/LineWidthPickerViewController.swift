@@ -4,30 +4,37 @@ class LineWidthPickerViewController: NSViewController {
     private var slider: NSSlider!
     private var valueLabel: NSTextField!
     private var previewView: LineWidthPreviewView!
-    
+    private let userDefaults: UserDefaults
+
     let minLineWidth: CGFloat = 0.5
     let maxLineWidth: CGFloat = 20.0
     let ratio: CGFloat = 0.25
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        self.userDefaults = .standard
+        super.init(coder: coder)
+    }
     
     override func loadView() {
         let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 120))
-        
-        // Title label
+
         let titleLabel = NSTextField(labelWithString: "Line Width")
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         titleLabel.alignment = .center
-        
-        // Value label
+
         valueLabel = NSTextField(labelWithString: "")
         valueLabel.font = NSFont.systemFont(ofSize: 11)
         valueLabel.alignment = .center
         valueLabel.textColor = .secondaryLabelColor
-        
-        // Preview view
+
         previewView = LineWidthPreviewView(frame: NSRect(x: 0, y: 0, width: 260, height: 40))
         previewView.lineWidth = getCurrentLineWidth()
-        
-        // Slider
+
         slider = NSSlider(frame: NSRect(x: 0, y: 0, width: 260, height: 20))
         slider.minValue = Double(minLineWidth)
         slider.maxValue = Double(maxLineWidth)
@@ -35,13 +42,11 @@ class LineWidthPickerViewController: NSViewController {
         slider.allowsTickMarkValuesOnly = false
         slider.target = self
         slider.action = #selector(sliderValueChanged(_:))
-        
-        // Set initial value
+
         let currentLineWidth = getCurrentLineWidth()
         slider.doubleValue = Double(currentLineWidth)
         updateValueLabel(currentLineWidth)
-        
-        // Layout
+
         containerView.addSubview(titleLabel)
         containerView.addSubview(valueLabel)
         containerView.addSubview(previewView)
@@ -74,26 +79,21 @@ class LineWidthPickerViewController: NSViewController {
     }
     
     private func getCurrentLineWidth() -> CGFloat {
-        let savedWidth = UserDefaults.standard.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
+        let savedWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
         return CGFloat(savedWidth)
     }
     
     @objc func sliderValueChanged(_ sender: NSSlider) {
-        // Apply ratio to get actual line width
         let rawValue = CGFloat(sender.doubleValue)
         let adjustedValue = round(rawValue / ratio) * ratio
-        
-        // Clamp to min/max
+
         let lineWidth = max(minLineWidth, min(maxLineWidth, adjustedValue))
-        
-        // Update UI
+
         updateValueLabel(lineWidth)
         previewView.lineWidth = lineWidth
-        
-        // Save and apply
-        UserDefaults.standard.set(Double(lineWidth), forKey: UserDefaults.lineWidthKey)
-        
-        // Apply to all overlay windows
+
+        userDefaults.set(Double(lineWidth), forKey: UserDefaults.lineWidthKey)
+
         AppDelegate.shared?.overlayWindows.values.forEach { window in
             window.overlayView.currentLineWidth = lineWidth
         }
@@ -101,7 +101,6 @@ class LineWidthPickerViewController: NSViewController {
     
     override func viewWillAppear() {
         super.viewWillAppear()
-        // Refresh preview when view appears (in case color changed)
         previewView.needsDisplay = true
     }
     
@@ -119,16 +118,13 @@ class LineWidthPreviewView: NSView {
     
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        
-        // Use current color or default
+
         let color = AppDelegate.shared?.currentColor ?? NSColor.systemRed
-        
-        // Draw background with contrasting color
+
         let backgroundColor = color.contrastingColor().withAlphaComponent(0.75)
         backgroundColor.setFill()
         bounds.fill()
-        
-        // Draw line preview
+
         let path = NSBezierPath()
         let startPoint = NSPoint(x: 20, y: bounds.midY)
         let endPoint = NSPoint(x: bounds.width - 20, y: bounds.midY)
@@ -141,8 +137,7 @@ class LineWidthPreviewView: NSView {
         path.lineWidth = lineWidth
         path.lineCapStyle = .round
         path.stroke()
-        
-        // Draw border
+
         NSColor.separatorColor.setStroke()
         NSBezierPath(rect: bounds).stroke()
     }

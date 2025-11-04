@@ -4,16 +4,16 @@ import XCTest
 
 @MainActor
 final class BoardManagerTests: XCTestCase {
+    var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: UserDefaults.enableBoardKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.boardOpacityKey)
+        testDefaults = TestUserDefaults.create()
+        BoardManager.shared = BoardManager(userDefaults: testDefaults)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.enableBoardKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.boardOpacityKey)
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -40,7 +40,7 @@ final class BoardManagerTests: XCTestCase {
         BoardManager.shared.opacity = testOpacity
         XCTAssertEqual(BoardManager.shared.opacity, testOpacity, "Opacity should be updated to 0.5")
 
-        let persistedOpacity = UserDefaults.standard.double(forKey: UserDefaults.boardOpacityKey)
+        let persistedOpacity = testDefaults.double(forKey: UserDefaults.boardOpacityKey)
         XCTAssertEqual(persistedOpacity, testOpacity, "Opacity should be persisted to UserDefaults")
     }
 
