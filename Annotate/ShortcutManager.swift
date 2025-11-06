@@ -26,7 +26,7 @@ enum ShortcutKey: String, CaseIterable {
         case .circle: return "Circle"
         case .counter: return "Counter"
         case .text: return "Text"
-        case .select: return "Select (Visual Mode)"
+        case .select: return "Select"
         case .colorPicker: return "Color Picker"
         case .lineWidthPicker: return "Line Width"
         case .toggleBoard: return "Toggle Board"

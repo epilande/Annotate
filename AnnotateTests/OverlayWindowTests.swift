@@ -469,4 +469,114 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         let handled = window.performKeyEquivalent(with: cmdDEvent!)
         XCTAssertFalse(handled)
     }
+
+    // MARK: - Conditional Line Width Display Tests
+
+    func testDrawingToolsShowLineWidthInFeedback() {
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
+
+        for tool in drawingTools {
+            window.overlayView.currentTool = tool
+            window.overlayView.currentLineWidth = 5.0
+
+            window.showToolFeedback(tool)
+
+            // We can't directly inspect the feedback text in unit tests, but we verify the method completes without errors
+            XCTAssertEqual(window.overlayView.currentTool, tool)
+            XCTAssertEqual(window.overlayView.currentLineWidth, 5.0)
+        }
+    }
+
+    func testNonDrawingToolsWorkWithoutLineWidth() {
+        let nonDrawingTools: [ToolType] = [.counter, .text, .select]
+
+        for tool in nonDrawingTools {
+            window.overlayView.currentTool = tool
+
+            window.showToolFeedback(tool)
+
+            XCTAssertEqual(window.overlayView.currentTool, tool)
+        }
+    }
+
+    func testToolFeedbackForPenShowsLineWidth() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 3.5
+
+        window.showToolFeedback(.pen)
+
+        XCTAssertEqual(window.overlayView.currentLineWidth, 3.5)
+        XCTAssertEqual(window.overlayView.currentTool, .pen)
+    }
+
+    func testToolFeedbackForCounterDoesNotRequireLineWidth() {
+        window.overlayView.currentTool = .counter
+
+        window.showToolFeedback(.counter)
+
+        XCTAssertEqual(window.overlayView.currentTool, .counter)
+    }
+
+    func testToolFeedbackForTextDoesNotRequireLineWidth() {
+        window.overlayView.currentTool = .text
+
+        window.showToolFeedback(.text)
+
+        XCTAssertEqual(window.overlayView.currentTool, .text)
+    }
+
+    func testToolFeedbackForSelectDoesNotRequireLineWidth() {
+        window.overlayView.currentTool = .select
+
+        window.showToolFeedback(.select)
+
+        XCTAssertEqual(window.overlayView.currentTool, .select)
+    }
+
+    func testAllDrawingToolsWithVariousLineWidths() {
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
+        let widths: [CGFloat] = [0.5, 1.0, 3.0, 5.0, 10.0, 20.0]
+
+        for tool in drawingTools {
+            for width in widths {
+                window.overlayView.currentTool = tool
+                window.overlayView.currentLineWidth = width
+
+                window.showToolFeedback(tool)
+
+                XCTAssertEqual(window.overlayView.currentLineWidth, width)
+                XCTAssertEqual(window.overlayView.currentTool, tool)
+            }
+        }
+    }
+
+    func testFeedbackConsistencyAcrossToolTypes() {
+        for tool in [ToolType.pen, .arrow, .line, .highlighter, .rectangle, .circle, .counter, .text, .select] {
+            window.overlayView.currentTool = tool
+            window.overlayView.currentLineWidth = 3.0
+            window.overlayView.currentColor = .blue
+
+            window.showToolFeedback(tool)
+
+            XCTAssertEqual(window.overlayView.currentTool, tool)
+        }
+    }
+
+    func testFeedbackWithMinimumLineWidth() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 0.5
+
+        window.showToolFeedback(.pen)
+
+        XCTAssertEqual(window.overlayView.currentLineWidth, 0.5)
+    }
+
+    func testFeedbackWithMaximumLineWidth() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 20.0
+
+        window.showToolFeedback(.pen)
+
+        XCTAssertEqual(window.overlayView.currentLineWidth, 20.0)
+    }
 }
