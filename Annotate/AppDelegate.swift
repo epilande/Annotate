@@ -623,6 +623,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             name: .boardAppearanceChanged,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(shortcutsDidChange),
+            name: .shortcutsDidChange,
+            object: nil
+        )
     }
 
     @objc func boardStateChanged() {
@@ -631,6 +638,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     @objc func boardAppearanceChanged() {
         updateBoardMenuItems()
+    }
+
+    @objc func shortcutsDidChange() {
+        refreshMenuKeyEquivalents()
+    }
+
+    func refreshMenuKeyEquivalents() {
+        guard let menu = statusItem.menu else { return }
+
+        for item in menu.items {
+            switch item.action {
+            case #selector(showColorPicker(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .colorPicker)
+            case #selector(showLineWidthPicker(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
+            case #selector(enableArrowMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .arrow)
+            case #selector(enableLineMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .line)
+            case #selector(enablePenMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .pen)
+            case #selector(enableHighlighterMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .highlighter)
+            case #selector(enableRectangleMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .rectangle)
+            case #selector(enableCircleMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .circle)
+            case #selector(enableCounterMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .counter)
+            case #selector(enableTextMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
+            case #selector(enableSelectMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .select)
+            case #selector(toggleBoardVisibility(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
+            default:
+                break
+            }
+        }
     }
 
     @objc func undo() {
@@ -799,39 +845,5 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     
     @objc func checkForUpdates() {
         updaterController.checkForUpdates(nil)
-    }
-
-    func updateMenuKeyEquivalents() {
-        guard let menu = statusItem.menu else { return }
-        for item in menu.items {
-            switch item.title {
-            case "Pen":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .pen)
-            case "Arrow":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .arrow)
-            case "Line":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .line)
-            case "Highlighter":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .highlighter)
-            case "Rectangle":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .rectangle)
-            case "Circle":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .circle)
-            case "Text":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
-            case "Select":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .select)
-            case "Color":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .colorPicker)
-            case "Line Width":
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
-            case let title where title.hasPrefix("Show") || title.hasPrefix("Hide"):
-                if item.action == #selector(toggleBoardVisibility(_:)) {
-                    item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
-                }
-            default:
-                break
-            }
-        }
     }
 }

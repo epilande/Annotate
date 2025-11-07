@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let shortcutsDidChange = Notification.Name("shortcutsDidChange")
+}
+
 enum ShortcutKey: String, CaseIterable {
     case pen = "p"
     case arrow = "a"
@@ -56,15 +60,21 @@ class ShortcutManager: @unchecked Sendable {
         }
         defaults.set(key, forKey: shortcutPrefix + tool.rawValue)
         defaults.synchronize()
+        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
     func resetToDefault(tool: ShortcutKey) {
         defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
         defaults.synchronize()
+        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
     func resetAllToDefault() {
-        ShortcutKey.allCases.forEach { resetToDefault(tool: $0) }
+        ShortcutKey.allCases.forEach { tool in
+            defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
+        }
+        defaults.synchronize()
+        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {

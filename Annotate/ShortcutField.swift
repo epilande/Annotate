@@ -29,7 +29,6 @@ struct ShortcutField: View {
                         if !key.isEmpty {
                             ShortcutManager.shared.setShortcut(key, for: tool)
                             shortcuts = ShortcutManager.shared.allShortcuts
-                            AppDelegate.shared?.updateMenuKeyEquivalents()
                         }
                         editingShortcut = nil
                     }

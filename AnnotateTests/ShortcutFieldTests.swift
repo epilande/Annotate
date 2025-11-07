@@ -49,10 +49,10 @@ final class ShortcutFieldTests: XCTestCase {
 
         ShortcutManager.shared.setShortcut("f", for: .pen)
 
-        // In real implementation, ShortcutField calls AppDelegate.shared?.updateMenuKeyEquivalents()
-        appDelegateSpy.updateMenuKeyEquivalents()
+        // In real implementation, ShortcutManager posts notification → AppDelegate observer → refreshMenuKeyEquivalents()
+        appDelegateSpy.refreshMenuKeyEquivalents()
 
-        XCTAssertTrue(appDelegateSpy.updateMenuKeyEquivalentsCalled)
+        XCTAssertTrue(appDelegateSpy.refreshMenuKeyEquivalentsCalled)
 
         AppDelegate.shared = nil
     }
@@ -206,9 +206,9 @@ final class ShortcutFieldTests: XCTestCase {
 
 @MainActor
 class AppDelegateShortcutSpy: AppDelegate {
-    var updateMenuKeyEquivalentsCalled = false
+    var refreshMenuKeyEquivalentsCalled = false
 
-    override func updateMenuKeyEquivalents() {
-        updateMenuKeyEquivalentsCalled = true
+    override func refreshMenuKeyEquivalents() {
+        refreshMenuKeyEquivalentsCalled = true
     }
 }
