@@ -122,7 +122,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 |-----|------|-------------|
 | <kbd>C</kbd> | **Color Picker** | Open color selection menu |
 | <kbd>W</kbd> | **Line Width** | Open line width picker |
-| <kbd>V</kbd> | **Select (Visual Mode)** | Select, move, and manage objects |
+| <kbd>V</kbd> | **Select** | Select, move, and manage objects |
 | <kbd>B</kbd> | **Board** | Toggle whiteboard/blackboard |
 
 #### ⚡ Quick Actions
@@ -278,18 +278,27 @@ Always-On Mode displays your annotations persistently without any user interacti
 
 Access the Settings panel from the menu bar icon or by pressing <kbd>Command</kbd> + <kbd>,</kbd>.
 
+Settings are organized into two tabs: **General** and **Shortcuts**.
+
 ### General Settings
 
-- **Annotate Hotkey**: Set a global keyboard shortcut to toggle Annotate.
+- **Activation Shortcut**: Set a global keyboard shortcut to toggle Annotate.
 - **Always-On Mode**: Set a global keyboard shortcut to toggle always-on mode.
 - **Clear Drawings on Toggle**: Automatically clear all drawings when activating Annotate.
-- **Hide Dock Icon**: Run Annotate in a more minimal mode without a dock icon.
+- **Hide Tool Feedback**: Disable visual feedback when switching tools.
+- **Show in Dock**: Display Annotate icon in the Dock.
+- **Enable Board**: Show whiteboard or blackboard background.
+- **Board Opacity**: Adjust board background transparency (10-100%).
 
 ### Keyboard Shortcuts
 
-Customize keyboard shortcuts for all drawing tools by assigning individual shortcut keys for each tool (pen, arrow, highlighter, etc.).
+Customize keyboard shortcuts for all tools, organized into categories:
+- **Drawing Tools**: Pen, Arrow, Line, Highlighter
+- **Shapes**: Rectangle, Circle
+- **Advanced Tools**: Counter, Text, Select
+- **Utilities**: Color Picker, Line Width, Toggle Board
 
-<img width="472" alt="image" src="https://github.com/user-attachments/assets/37d3498b-baa8-4fa5-93b0-6d2f8cc9246d" />
+<img width="712" height="740" alt="image" src="https://github.com/user-attachments/assets/23909c0a-7d8f-4d36-8ea5-f6d5783e7d19" />
 
 ## 🔄 Auto-Updates
 
