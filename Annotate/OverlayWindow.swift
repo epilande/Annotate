@@ -874,19 +874,15 @@ class OverlayWindow: NSWindow {
             icon = "👆"
         }
 
-        // Get current line width
         let currentWidth = overlayView.currentLineWidth
-        let widthText = String(format: "%.2f px", currentWidth)
 
-        let text = "\(icon) \(toolName) • \(widthText)"
-
-        // Show feedback with line preview for tools that use line width
         switch tool {
         case .pen, .arrow, .line, .highlighter, .rectangle, .circle:
-            // Drawing tools: show color background + line preview
+            let widthText = String(format: "%.2f px", currentWidth)
+            let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)
         case .counter, .text, .select:
-            // Counter, text, and select: show color background but no line preview (they don't use line width)
+            let text = "\(icon) \(toolName)"
             showFeedback(text, lineColor: overlayView.currentColor)
         }
     }
@@ -939,7 +935,7 @@ class OverlayWindow: NSWindow {
         lineWidth: CGFloat?
     ) -> NSView {
         let containerWidth = calculateFeedbackContainerWidth(for: text)
-        let containerHeight: CGFloat = 80
+        let containerHeight: CGFloat = (lineWidth != nil) ? 80 : 50
         let containerFrame = calculateFeedbackContainerFrame(
             width: containerWidth,
             height: containerHeight,
