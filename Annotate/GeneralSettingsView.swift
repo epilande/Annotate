@@ -27,6 +27,10 @@ struct GeneralSettingsView: View {
                             Text("Primary keyboard shortcut to activate Annotate")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
+                            Text("Requires modifier keys (⌘, ⌥, ⌃, or ⇧)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 2)
                         }
                         Spacer()
                         KeyboardShortcuts.Recorder("", name: .toggleOverlay)
@@ -39,6 +43,10 @@ struct GeneralSettingsView: View {
                             Text("Keep Annotate active without auto-hide")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
+                            Text("Requires modifier keys (⌘, ⌥, ⌃, or ⇧)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 2)
                         }
                         Spacer()
                         KeyboardShortcuts.Recorder("", name: .toggleAlwaysOnMode)
