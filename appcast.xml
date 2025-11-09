@@ -6,6 +6,65 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.0.10</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.0.10</link>
+            <description><![CDATA[
+<h1>Annotate v1.0.10</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>This release introduces a <strong>Selection Mode</strong> with full clipboard support, a modernized settings interface, and numerous quality-of-life improvements to make annotation workflows even smoother.</p>
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="selection-mode-24">Selection Mode (#24)</h3>
+<ul>
+<li><strong>New Selection Tool</strong>: Select, move, copy, and manipulate annotations with a dedicated selection mode</li>
+<li><strong>Clipboard Operations</strong>:
+<ul>
+<li><code>Cmd+C</code> to copy selected annotations</li>
+<li><code>Cmd+V</code> to paste annotations</li>
+<li><code>Cmd+X</code> to cut annotations</li>
+<li><code>Cmd+D</code> to duplicate selected annotations</li>
+</ul></li>
+<li><strong>Select All</strong>: <code>Cmd+A</code> now works globally across all modes to select all annotations</li>
+<li><strong>Keyboard Delete</strong>: Press <code>Delete</code> key to remove selected annotations</li>
+<li><strong>Mouse Button Support</strong>: Navigate with backward/forward mouse buttons</li>
+<li><strong>Smart Selection</strong>: Selection automatically clears when switching away from select mode</li>
+<li><strong>Visual Feedback</strong>: Consistent selection outline for better visibility</li>
+</ul>
+<h3 id="modernized-settings-ui-27">Modernized Settings UI (#27)</h3>
+<ul>
+<li><strong>Tabbed Interface</strong>: Clean, organized settings with dedicated tabs for different configuration areas</li>
+<li><strong>Dynamic Menu Updates</strong>: Menu keyboard shortcuts now sync automatically with custom shortcut changes</li>
+<li><strong>Better Organization</strong>: Improved layout and grouping of related settings</li>
+</ul>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<ul>
+<li>Fixed undo and redo functionality to work correctly with all annotation types</li>
+<li>Improved selection state management when switching tools</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Enhanced Testing</strong>: Added comprehensive unit tests for selection mode, clipboard operations, and shortcut manager</li>
+<li><strong>Code Quality</strong>:
+<ul>
+<li>Improved type safety in clipboard operations</li>
+<li>Better UserDefaults injection for test isolation</li>
+<li>Removed redundant clipboard menu items</li>
+<li>Cleaned up unnecessary sandbox entitlements</li>
+</ul></li>
+<li><strong>Documentation</strong>: Updated README with latest features and clearer keyboard shortcut documentation</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.0.10">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Sun, 09 Nov 2025 21:01:11 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.0.10/Annotate-1.0.10.zip"
+                       sparkle:version="1010"
+                       sparkle:shortVersionString="1.0.10"
+                       sparkle:edSignature="Pg5My3i5qJniZTjeG6Gz1ZKptfT4l2CR54DkkC1MlQ59uxnTIX2FBJHCFu+x0T59OllczZ1ykdHRC/VPcrY9Dg=="
+                       length="2592904"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.0.9</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.0.9</link>
             <description><![CDATA[
