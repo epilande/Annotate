@@ -33,6 +33,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var counterAnnotations: [CounterAnnotation] = []
     var nextCounterNumber: Int = 1
 
+    var eraserStrokes: [EraserStroke] = []
+    var currentEraserStroke: EraserStroke?
+    let eraserRadius: CGFloat = 12.0
+
     var selectedObjects: Set<SelectedObject> = []
     var selectionDragOffset: NSPoint?
     var selectionOriginalData: [SelectedObject: Any] = [:]
@@ -339,6 +343,26 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .cutObjects(_):
             // Cut undo is handled by individual remove actions for each cut object
             break
+        case .eraseAnnotations(
+            let paths, let arrows, let lines, let highlights, let rectangles, let circles,
+            let textAnnotations, let counterAnnotations):
+            manager?.registerUndo(withTarget: self) { target in
+                MainActor.assumeIsolated {
+                    // Restore all erased items
+                    target.paths.append(contentsOf: paths)
+                    target.arrows.append(contentsOf: arrows)
+                    target.lines.append(contentsOf: lines)
+                    target.highlightPaths.append(contentsOf: highlights)
+                    target.rectangles.append(contentsOf: rectangles)
+                    target.circles.append(contentsOf: circles)
+                    target.textAnnotations.append(contentsOf: textAnnotations)
+                    target.counterAnnotations.append(contentsOf: counterAnnotations)
+                    target.nextCounterNumber =
+                        target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
+                    target.registerUndo(action: .eraseAnnotations([], [], [], [], [], [], [], []))
+                    target.needsDisplay = true
+                }
+            }
         }
     }
 
@@ -522,7 +546,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 width: abs(end.x - start.x),
                 height: abs(end.y - start.y)
             )
-            
+
             let path = NSBezierPath(rect: rect)
             path.lineWidth = 2.0
             path.setLineDash([5.0, 3.0], count: 2, phase: 0)
@@ -996,6 +1020,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             if !selectedObjects.isEmpty {
                 deleteSelectedObjects()
             }
+        case .eraser:
+            // Eraser doesn't create items, so nothing to delete
+            break
         }
         needsDisplay = true
     }
@@ -1960,7 +1987,166 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let pdy = point.y - nearestY
         return sqrt(pdx * pdx + pdy * pdy)
     }
-    
+
+    // MARK: - Eraser Logic
+
+    func eraseAtPoint(_ point: NSPoint) {
+        var deletedPaths: [DrawingPath] = []
+        var deletedArrows: [Arrow] = []
+        var deletedLines: [Line] = []
+        var deletedHighlights: [DrawingPath] = []
+        var deletedRectangles: [Rectangle] = []
+        var deletedCircles: [Circle] = []
+        var deletedTextAnnotations: [TextAnnotation] = []
+        var deletedCounters: [CounterAnnotation] = []
+
+        // Check pen paths
+        for (index, path) in paths.enumerated().reversed() {
+            if pathIntersectsPoint(path, point: point, radius: eraserRadius) {
+                deletedPaths.append(path)
+                paths.remove(at: index)
+            }
+        }
+
+        // Check highlighter paths
+        for (index, path) in highlightPaths.enumerated().reversed() {
+            if pathIntersectsPoint(path, point: point, radius: eraserRadius) {
+                deletedHighlights.append(path)
+                highlightPaths.remove(at: index)
+            }
+        }
+
+        // Check arrows
+        for (index, arrow) in arrows.enumerated().reversed() {
+            if lineIntersectsPoint(arrow.startPoint, arrow.endPoint, point: point, radius: eraserRadius) {
+                deletedArrows.append(arrow)
+                arrows.remove(at: index)
+            }
+        }
+
+        // Check lines
+        for (index, line) in lines.enumerated().reversed() {
+            if lineIntersectsPoint(line.startPoint, line.endPoint, point: point, radius: eraserRadius) {
+                deletedLines.append(line)
+                lines.remove(at: index)
+            }
+        }
+
+        // Check rectangles
+        for (index, rectangle) in rectangles.enumerated().reversed() {
+            if rectangleIntersectsPoint(rectangle, point: point, radius: eraserRadius) {
+                deletedRectangles.append(rectangle)
+                rectangles.remove(at: index)
+            }
+        }
+
+        // Check circles
+        for (index, circle) in circles.enumerated().reversed() {
+            if circleIntersectsPoint(circle, point: point, radius: eraserRadius) {
+                deletedCircles.append(circle)
+                circles.remove(at: index)
+            }
+        }
+
+        // Check text annotations
+        for (index, text) in textAnnotations.enumerated().reversed() {
+            if textIntersectsPoint(text, point: point, radius: eraserRadius) {
+                deletedTextAnnotations.append(text)
+                textAnnotations.remove(at: index)
+            }
+        }
+
+        // Check counter annotations
+        for (index, counter) in counterAnnotations.enumerated().reversed() {
+            if counterIntersectsPoint(counter, point: point, radius: eraserRadius) {
+                deletedCounters.append(counter)
+                counterAnnotations.remove(at: index)
+            }
+        }
+
+        // Register undo only if something was deleted
+        if !deletedPaths.isEmpty || !deletedArrows.isEmpty || !deletedLines.isEmpty ||
+            !deletedHighlights.isEmpty || !deletedRectangles.isEmpty || !deletedCircles.isEmpty ||
+            !deletedTextAnnotations.isEmpty || !deletedCounters.isEmpty {
+
+            registerUndo(action: .eraseAnnotations(
+                deletedPaths, deletedArrows, deletedLines, deletedHighlights,
+                deletedRectangles, deletedCircles, deletedTextAnnotations, deletedCounters
+            ))
+        }
+    }
+
+    private func pathIntersectsPoint(_ path: DrawingPath, point: NSPoint, radius: CGFloat) -> Bool {
+        for timedPoint in path.points {
+            let distance = hypot(timedPoint.point.x - point.x, timedPoint.point.y - point.y)
+            if distance <= radius {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func lineIntersectsPoint(_ start: NSPoint, _ end: NSPoint, point: NSPoint, radius: CGFloat) -> Bool {
+        let distance = distanceFromPointToLineSegment(point: point, lineStart: start, lineEnd: end)
+        return distance <= radius
+    }
+
+    private func rectangleIntersectsPoint(_ rectangle: Rectangle, point: NSPoint, radius: CGFloat) -> Bool {
+        // Check if point is near any of the four edges
+        let bounds = NSRect(
+            x: min(rectangle.startPoint.x, rectangle.endPoint.x),
+            y: min(rectangle.startPoint.y, rectangle.endPoint.y),
+            width: abs(rectangle.endPoint.x - rectangle.startPoint.x),
+            height: abs(rectangle.endPoint.y - rectangle.startPoint.y)
+        )
+
+        let topLeft = NSPoint(x: bounds.minX, y: bounds.minY)
+        let topRight = NSPoint(x: bounds.maxX, y: bounds.minY)
+        let bottomLeft = NSPoint(x: bounds.minX, y: bounds.maxY)
+        let bottomRight = NSPoint(x: bounds.maxX, y: bounds.maxY)
+
+        return lineIntersectsPoint(topLeft, topRight, point: point, radius: radius) ||
+               lineIntersectsPoint(topRight, bottomRight, point: point, radius: radius) ||
+               lineIntersectsPoint(bottomRight, bottomLeft, point: point, radius: radius) ||
+               lineIntersectsPoint(bottomLeft, topLeft, point: point, radius: radius)
+    }
+
+    private func circleIntersectsPoint(_ circle: Circle, point: NSPoint, radius: CGFloat) -> Bool {
+        let bounds = NSRect(
+            x: min(circle.startPoint.x, circle.endPoint.x),
+            y: min(circle.startPoint.y, circle.endPoint.y),
+            width: abs(circle.endPoint.x - circle.startPoint.x),
+            height: abs(circle.endPoint.y - circle.startPoint.y)
+        )
+
+        let centerX = bounds.midX
+        let centerY = bounds.midY
+        let radiusX = bounds.width / 2
+        let radiusY = bounds.height / 2
+
+        // Distance from point to ellipse edge (approximate)
+        let dx = point.x - centerX
+        let dy = point.y - centerY
+        let normalizedDist = sqrt((dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY))
+        let edgeDistance = abs(normalizedDist - 1.0) * min(radiusX, radiusY)
+
+        return edgeDistance <= radius
+    }
+
+    private func textIntersectsPoint(_ text: TextAnnotation, point: NSPoint, radius: CGFloat) -> Bool {
+        let textRect = getTextRect(for: text)
+        let expandedRect = textRect.insetBy(dx: -radius, dy: -radius)
+        return expandedRect.contains(point)
+    }
+
+    private func counterIntersectsPoint(_ counter: CounterAnnotation, point: NSPoint, radius: CGFloat) -> Bool {
+        let counterRadius: CGFloat = 15.0
+        let dx = point.x - counter.position.x
+        let dy = point.y - counter.position.y
+        let distance = sqrt(dx * dx + dy * dy)
+        return distance <= (counterRadius + radius)
+    }
+
     // MARK: - Object Movement
     
     func moveSelectedObjects(by delta: NSPoint) {

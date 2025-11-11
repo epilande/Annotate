@@ -11,6 +11,7 @@ enum ToolType {
     case text
     case counter
     case select
+    case eraser
 }
 
 /// Represents a selected object for movement
@@ -105,6 +106,12 @@ struct CounterAnnotation {
     var creationTime: CFTimeInterval?
 }
 
+/// Represents an eraser stroke for visual feedback.
+struct EraserStroke {
+    var points: [TimedPoint]
+    var creationTime: CFTimeInterval
+}
+
 enum ClipboardItem {
     case arrow(Arrow)
     case line(Line)
@@ -147,6 +154,9 @@ enum DrawingAction {
         [CounterAnnotation])
     case pasteObjects([SelectedObject])  // For undo: remove pasted objects
     case cutObjects([SelectedObject])  // For undo: restore cut objects
+    case eraseAnnotations(
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
+        [CounterAnnotation])  // Stores all deleted items for undo
 }
 
 // Add to Models.swift

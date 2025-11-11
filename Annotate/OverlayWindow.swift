@@ -301,6 +301,13 @@ class OverlayWindow: NSWindow {
             break
         case .select:
             break
+        case .eraser:
+            let t = CACurrentMediaTime()
+            overlayView.currentEraserStroke = EraserStroke(
+                points: [TimedPoint(point: startPoint, timestamp: t)],
+                creationTime: t
+            )
+            overlayView.eraseAtPoint(startPoint)
         }
         overlayView.needsDisplay = true
     }
@@ -423,6 +430,10 @@ class OverlayWindow: NSWindow {
             break
         case .select:
             break
+        case .eraser:
+            let t = CACurrentMediaTime()
+            overlayView.currentEraserStroke?.points.append(TimedPoint(point: currentPoint, timestamp: t))
+            overlayView.eraseAtPoint(currentPoint)
         }
         overlayView.needsDisplay = true
     }
@@ -565,6 +576,8 @@ class OverlayWindow: NSWindow {
             break
         case .select:
             break
+        case .eraser:
+            overlayView.currentEraserStroke = nil
         }
         overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false
@@ -612,6 +625,9 @@ class OverlayWindow: NSWindow {
                 return
             case ShortcutManager.shared.getShortcut(for: .select):
                 AppDelegate.shared?.enableSelectMode(NSMenuItem())
+                return
+            case ShortcutManager.shared.getShortcut(for: .eraser):
+                AppDelegate.shared?.enableEraserMode(NSMenuItem())
                 return
             case ShortcutManager.shared.getShortcut(for: .colorPicker):
                 AppDelegate.shared?.showColorPicker(nil)
@@ -872,6 +888,9 @@ class OverlayWindow: NSWindow {
         case .select:
             toolName = "Select"
             icon = "👆"
+        case .eraser:
+            toolName = "Eraser"
+            icon = "🧹"
         }
 
         let currentWidth = overlayView.currentLineWidth
@@ -881,7 +900,7 @@ class OverlayWindow: NSWindow {
             let widthText = String(format: "%.2f px", currentWidth)
             let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)
-        case .counter, .text, .select:
+        case .counter, .text, .select, .eraser:
             let text = "\(icon) \(toolName)"
             showFeedback(text, lineColor: overlayView.currentColor)
         }
