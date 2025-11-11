@@ -27,15 +27,46 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testWindowInitialization() {
-        XCTAssertEqual(window.level, .normal)
+        XCTAssertGreaterThan(window.level.rawValue, NSWindow.Level.normal.rawValue)
         XCTAssertFalse(window.isOpaque)
         XCTAssertFalse(window.hasShadow)
         XCTAssertFalse(window.ignoresMouseEvents)
-        XCTAssertEqual(window.collectionBehavior, [.canJoinAllSpaces, .stationary])
+        XCTAssertEqual(window.collectionBehavior, [.canJoinAllSpaces, .transient])
 
-        // Test view hierarchy
         XCTAssertNotNil(window.contentView)
         XCTAssertNotNil(window.overlayView)
+    }
+
+    func testWindowLevelConfiguration() {
+        let menuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let popUpLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let assistiveLevel = Int(CGWindowLevelForKey(.assistiveTechHighWindow))
+        let screenSaverLevel = Int(CGWindowLevelForKey(.screenSaverWindow))
+
+        let expectedMinimumLevel = max(menuLevel, statusLevel, popUpLevel, assistiveLevel, screenSaverLevel) + 1
+
+        XCTAssertGreaterThanOrEqual(
+            window.level.rawValue,
+            expectedMinimumLevel,
+            "Window level should be at or above the highest system window level + 1"
+        )
+    }
+
+    func testNSPanelBehavior() {
+        XCTAssertFalse(window.canBecomeMain, "Overlay panel should not become main window")
+        XCTAssertTrue(window.canBecomeKey, "Overlay panel should be able to become key window for keyboard input")
+    }
+
+    func testNonactivatingPanelStyleMask() {
+        XCTAssertTrue(
+            window.styleMask.contains(.nonactivatingPanel),
+            "Window should have .nonactivatingPanel style mask to avoid activating the app"
+        )
+        XCTAssertTrue(
+            window.styleMask.contains(.borderless),
+            "Window should maintain borderless style"
+        )
     }
 
     func testFadeLoop() {

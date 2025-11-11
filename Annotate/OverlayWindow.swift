@@ -1,6 +1,6 @@
 import Cocoa
 
-class OverlayWindow: NSWindow {
+class OverlayWindow: NSPanel {
     var overlayView: OverlayView!
     var boardView: BoardView!
 
@@ -51,16 +51,16 @@ class OverlayWindow: NSWindow {
 
         super.init(
             contentRect: windowRect,
-            styleMask: style,
+            styleMask: style.union([.nonactivatingPanel]),
             backing: backingStoreType,
             defer: flag)
 
-        self.level = .normal
+        configureWindowLevel()
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = false
         self.ignoresMouseEvents = false
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        self.collectionBehavior = [.canJoinAllSpaces, .transient]
         self.setFrame(windowRect, display: true)
 
         let containerView = NSView(frame: NSRect(origin: .zero, size: windowRect.size))
@@ -81,6 +81,19 @@ class OverlayWindow: NSWindow {
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
+    }
+
+    private func configureWindowLevel() {
+        let levels = [
+            CGWindowLevelForKey(.mainMenuWindow),
+            CGWindowLevelForKey(.statusWindow),
+            CGWindowLevelForKey(.popUpMenuWindow),
+            CGWindowLevelForKey(.assistiveTechHighWindow),
+            CGWindowLevelForKey(.screenSaverWindow)
+        ]
+
+        let maxLevel = levels.map { Int($0) + 1 }.max() ?? Int(CGWindowLevelForKey(.statusWindow)) + 1
+        level = NSWindow.Level(rawValue: maxLevel)
     }
 
     func startFadeLoop() {
@@ -109,6 +122,10 @@ class OverlayWindow: NSWindow {
     }
 
     override var canBecomeKey: Bool { true }
+
+    override var canBecomeMain: Bool { false }
+
+    func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
         let startPoint = event.locationInWindow
