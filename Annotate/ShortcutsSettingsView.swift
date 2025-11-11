@@ -94,6 +94,13 @@ struct ShortcutsSettingsView: View {
                         shortcuts: $shortcuts,
                         editingShortcut: $editingShortcut
                     )
+                    ShortcutSettingRow(
+                        tool: .eraser,
+                        label: "Eraser",
+                        description: "Remove annotations by dragging",
+                        shortcuts: $shortcuts,
+                        editingShortcut: $editingShortcut
+                    )
                 }
 
                 Divider()
