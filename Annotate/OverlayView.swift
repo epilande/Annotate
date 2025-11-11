@@ -344,9 +344,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .eraseAnnotations(
             let paths, let arrows, let lines, let highlights, let rectangles, let circles,
             let textAnnotations, let counterAnnotations):
+            // Reciprocal undo pattern: eraseAnnotations ↔ restoreAnnotations
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    // Restore all erased items
                     target.paths.append(contentsOf: paths)
                     target.arrows.append(contentsOf: arrows)
                     target.lines.append(contentsOf: lines)
@@ -357,7 +357,30 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.counterAnnotations.append(contentsOf: counterAnnotations)
                     target.nextCounterNumber =
                         target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
-                    target.registerUndo(action: .eraseAnnotations([], [], [], [], [], [], [], []))
+                    target.registerUndo(action: .restoreAnnotations(
+                        paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
+                    ))
+                    target.needsDisplay = true
+                }
+            }
+        case .restoreAnnotations(
+            let paths, let arrows, let lines, let highlights, let rectangles, let circles,
+            let textAnnotations, let counterAnnotations):
+            manager?.registerUndo(withTarget: self) { target in
+                MainActor.assumeIsolated {
+                    target.paths.removeAll { item in paths.contains(item) }
+                    target.arrows.removeAll { item in arrows.contains(item) }
+                    target.lines.removeAll { item in lines.contains(item) }
+                    target.highlightPaths.removeAll { item in highlights.contains(item) }
+                    target.rectangles.removeAll { item in rectangles.contains(item) }
+                    target.circles.removeAll { item in circles.contains(item) }
+                    target.textAnnotations.removeAll { item in textAnnotations.contains(item) }
+                    target.counterAnnotations.removeAll { item in counterAnnotations.contains(item) }
+                    target.nextCounterNumber =
+                        target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
+                    target.registerUndo(action: .eraseAnnotations(
+                        paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
+                    ))
                     target.needsDisplay = true
                 }
             }

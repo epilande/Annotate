@@ -151,6 +151,9 @@ enum DrawingAction {
     case eraseAnnotations(
         [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
         [CounterAnnotation])  // Stores all deleted items for undo
+    case restoreAnnotations(
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
+        [CounterAnnotation])  // Reciprocal action for eraseAnnotations
 }
 
 // Add to Models.swift

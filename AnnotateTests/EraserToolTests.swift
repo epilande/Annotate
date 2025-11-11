@@ -323,6 +323,48 @@ final class EraserToolTests: XCTestCase, Sendable {
         XCTAssertFalse(testUndoManager.canUndo, "Undo manager should not register action when nothing was erased")
     }
 
+    func testEraserUndoRedoCycle() {
+        let window = TestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = overlayView
+        let testUndoManager = window.undoManager!
+
+        let line = Line(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 100),
+            color: .systemRed,
+            lineWidth: 3.0
+        )
+        let arrow = Arrow(
+            startPoint: NSPoint(x: 100, y: 105),
+            endPoint: NSPoint(x: 200, y: 105),
+            color: .systemBlue,
+            lineWidth: 3.0
+        )
+        overlayView.lines.append(line)
+        overlayView.arrows.append(arrow)
+        XCTAssertEqual(overlayView.lines.count, 1)
+        XCTAssertEqual(overlayView.arrows.count, 1)
+
+        overlayView.eraseAtPoint(NSPoint(x: 150, y: 102))
+        XCTAssertEqual(overlayView.lines.count, 0, "Items should be erased")
+        XCTAssertEqual(overlayView.arrows.count, 0, "Items should be erased")
+
+        XCTAssertTrue(testUndoManager.canUndo, "Should be able to undo")
+        testUndoManager.undo()
+        XCTAssertEqual(overlayView.lines.count, 1, "Undo should restore line")
+        XCTAssertEqual(overlayView.arrows.count, 1, "Undo should restore arrow")
+
+        XCTAssertTrue(testUndoManager.canRedo, "Should be able to redo")
+        testUndoManager.redo()
+        XCTAssertEqual(overlayView.lines.count, 0, "Redo should erase line again")
+        XCTAssertEqual(overlayView.arrows.count, 0, "Redo should erase arrow again")
+    }
+
     // MARK: - Edge Cases
 
     func testEraseAtPointWithNoAnnotations() {
