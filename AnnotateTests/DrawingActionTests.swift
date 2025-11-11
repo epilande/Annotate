@@ -175,4 +175,34 @@ final class DrawingActionTests: XCTestCase {
             XCTFail("Wrong action type")
         }
     }
+
+    func testEraseAnnotationsAction() {
+        let paths = [DrawingPath(points: [], color: .systemRed, lineWidth: 3.0)]
+        let arrows = [Arrow(startPoint: .zero, endPoint: .zero, color: .blue, lineWidth: 3.0)]
+        let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
+        let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
+        let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
+        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
+        let texts = [TextAnnotation(text: "Erased", position: .zero, color: .black, fontSize: 12)]
+        let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
+
+        let action = DrawingAction.eraseAnnotations(
+            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
+
+        if case .eraseAnnotations(
+            let actionPaths, let actionArrows, let actionLines, let actionHighlights,
+            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
+        {
+            XCTAssertEqual(actionPaths, paths)
+            XCTAssertEqual(actionArrows, arrows)
+            XCTAssertEqual(actionLines, lines)
+            XCTAssertEqual(actionHighlights, highlights)
+            XCTAssertEqual(actionRects, rectangles)
+            XCTAssertEqual(actionCircles, circles)
+            XCTAssertEqual(actionTexts, texts)
+            XCTAssertEqual(actionCounters, counters)
+        } else {
+            XCTFail("Wrong action type")
+        }
+    }
 }
