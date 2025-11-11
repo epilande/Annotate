@@ -106,12 +106,6 @@ struct CounterAnnotation {
     var creationTime: CFTimeInterval?
 }
 
-/// Represents an eraser stroke for visual feedback.
-struct EraserStroke {
-    var points: [TimedPoint]
-    var creationTime: CFTimeInterval
-}
-
 enum ClipboardItem {
     case arrow(Arrow)
     case line(Line)

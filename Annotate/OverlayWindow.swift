@@ -302,11 +302,6 @@ class OverlayWindow: NSWindow {
         case .select:
             break
         case .eraser:
-            let t = CACurrentMediaTime()
-            overlayView.currentEraserStroke = EraserStroke(
-                points: [TimedPoint(point: startPoint, timestamp: t)],
-                creationTime: t
-            )
             overlayView.eraseAtPoint(startPoint)
         }
         overlayView.needsDisplay = true
@@ -431,8 +426,6 @@ class OverlayWindow: NSWindow {
         case .select:
             break
         case .eraser:
-            let t = CACurrentMediaTime()
-            overlayView.currentEraserStroke?.points.append(TimedPoint(point: currentPoint, timestamp: t))
             overlayView.eraseAtPoint(currentPoint)
         }
         overlayView.needsDisplay = true
@@ -577,7 +570,7 @@ class OverlayWindow: NSWindow {
         case .select:
             break
         case .eraser:
-            overlayView.currentEraserStroke = nil
+            break
         }
         overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false

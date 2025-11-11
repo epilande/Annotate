@@ -33,8 +33,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var counterAnnotations: [CounterAnnotation] = []
     var nextCounterNumber: Int = 1
 
-    var eraserStrokes: [EraserStroke] = []
-    var currentEraserStroke: EraserStroke?
     let eraserRadius: CGFloat = 12.0
 
     var selectedObjects: Set<SelectedObject> = []
