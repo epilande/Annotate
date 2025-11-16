@@ -31,6 +31,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - 🌈 **Color Picker:** Easily select and persist your preferred color.
 - ↕️ **Line Width Control:** Adjust line thickness with an interactive picker or Command+Scroll wheel.
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
+- 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
 - ⌨️ **Keyboard Shortcuts:** Switch between modes and toggle the overlay with customizable keyboard shortcuts.

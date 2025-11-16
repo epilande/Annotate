@@ -390,7 +390,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if alwaysOnMode {
             toggleAlwaysOnMode()
         }
-        
+
         guard let currentScreen = getCurrentScreen(),
             let overlayWindow = overlayWindows[currentScreen]
         else {
@@ -412,7 +412,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
     
@@ -463,7 +462,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -576,16 +574,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     
     private func configureWindowForNormalMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.ignoresMouseEvents = false
-        overlayWindow.level = .normal
         overlayWindow.overlayView.isReadOnlyMode = false
 
         let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindow.overlayView.fadeMode = persistedFadeMode
     }
-    
+
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.ignoresMouseEvents = true
-        overlayWindow.level = .floating
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true
 
