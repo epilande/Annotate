@@ -182,6 +182,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             selectModeItem.keyEquivalentModifierMask = []
             menu.addItem(selectModeItem)
 
+            let eraserModeItem = NSMenuItem(
+                title: "Eraser",
+                action: #selector(enableEraserMode(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .eraser))
+            eraserModeItem.keyEquivalentModifierMask = []
+            menu.addItem(eraserModeItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let isDarkMode =
@@ -521,6 +528,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         updateCurrentToolMenuItem(to: "Select")
     }
 
+    @objc func enableEraserMode(_ sender: NSMenuItem) {
+        switchTool(to: .eraser)
+        updateCurrentToolMenuItem(to: "Eraser")
+    }
+
     @objc func toggleBoardVisibility(_ sender: Any?) {
         BoardManager.shared.toggle()
         updateBoardMenuItems()
@@ -671,6 +683,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
             case #selector(enableSelectMode(_:)):
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .select)
+            case #selector(enableEraserMode(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .eraser)
             case #selector(toggleBoardVisibility(_:)):
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
             default:
