@@ -6,6 +6,55 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.0.11</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.0.11</link>
+            <description><![CDATA[
+<h1>Annotate v1.0.11</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>This release introduces an <strong>Eraser Tool</strong> for precise annotation cleanup and delivers critical improvements to <strong>fullscreen mode support</strong>, making Annotate truly non-intrusive across all screen contexts.</p>
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="eraser-tool-28">Eraser Tool (#28)</h3>
+<ul>
+<li><strong>Interactive Eraser</strong>: Click and drag to delete annotations with brush-like precision</li>
+<li><strong>Universal Support</strong>: Works with all annotation types (pen, highlighter, arrows, lines, rectangles, circles, text, counters)</li>
+<li><strong>Smart Detection</strong>: 12pt radius collision detection for accurate erasure</li>
+<li><strong>Full Undo/Redo</strong>: Erased annotations can be restored with undo operations</li>
+<li><strong>Keyboard Shortcut</strong>: Press <code>E</code> to activate eraser mode</li>
+</ul>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<h3 id="fullscreen-mode-support-30">Fullscreen Mode Support (#30)</h3>
+<ul>
+<li><strong>Non-Intrusive Operation</strong>: App no longer activates or steals focus when overlay is toggled</li>
+<li><strong>Fullscreen Compatibility</strong>: Overlay now displays correctly above fullscreen applications (Safari, Chrome, presentations, etc.)</li>
+<li><strong>Improved Window Management</strong>: Refactored to use <code>NSPanel</code> with <code>.nonactivatingPanel</code> style for better system integration</li>
+<li><strong>Dynamic Window Levels</strong>: Automatically calculates optimal window level to stay above all system windows</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Settings UI</strong>: Added eraser shortcut configuration to settings panel</li>
+<li><strong>Keyboard Hints</strong>: Added modifier key requirement hints in settings for better discoverability</li>
+<li><strong>Enhanced Testing</strong>: Comprehensive unit test coverage for eraser tool and overlay window behavior</li>
+<li><strong>Code Quality</strong>:
+<ul>
+<li>Removed unnecessary app activation calls</li>
+<li>Simplified window level management</li>
+<li>Better panel behavior with <code>canBecomeMain</code> and <code>acceptsFirstMouse</code> implementations</li>
+</ul></li>
+<li><strong>Documentation</strong>: Updated README with eraser tool documentation and refreshed keyboard shortcuts table</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.0.11">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Tue, 18 Nov 2025 09:01:04 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.0.11/Annotate-1.0.11.zip"
+                       sparkle:version="1011"
+                       sparkle:shortVersionString="1.0.11"
+                       sparkle:edSignature="j/R8QvYFNhxFNP88oVgBHbWI40y+YL7s964UJoRmnL/dOQiJjOfbpLqcdNDEnr6gFkY0TRChnnvS7DEtPbctDw=="
+                       length="2602824"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.0.10</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.0.10</link>
             <description><![CDATA[
