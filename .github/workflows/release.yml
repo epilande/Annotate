@@ -179,7 +179,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Annotate ${{ github.ref_name }}"
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-test') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
           files: |
             ${{ env.DMG_PATH }}
             ${{ env.ZIP_PATH }}
@@ -187,6 +187,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate and update appcast entry
+        if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -206,6 +207,7 @@ jobs:
             "$DOWNLOAD_URL"
 
       - name: Commit updated appcast
+        if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') }}
         run: |
           # Configure git if not already set
           git config user.name "github-actions[bot]" 2>/dev/null || true
