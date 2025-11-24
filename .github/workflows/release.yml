@@ -66,7 +66,6 @@ jobs:
           p12-file-base64: ${{ secrets.MACOS_CERT_BASE64 }}
           p12-password: ${{ secrets.MACOS_CERT_PASSWORD }}
 
-
       - name: Install xcpretty
         run: gem install xcpretty --no-document
 
@@ -99,17 +98,9 @@ jobs:
 
       - name: Re-sign with hardened runtime
         run: |
-          # Expand variables in entitlements file
-          BUNDLE_ID="com.epilande.Annotate"
-          ENTITLEMENTS="build/expanded.entitlements"
-          sed "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$BUNDLE_ID/g" "$APP_NAME/$APP_NAME.entitlements" > "$ENTITLEMENTS"
-
-          echo "Expanded entitlements:"
-          cat "$ENTITLEMENTS"
-
           codesign --force --sign "Developer ID Application" \
             -o runtime --timestamp \
-            --entitlements "$ENTITLEMENTS" \
+            --entitlements "$APP_NAME/$APP_NAME.entitlements" \
             "$EXPORT_DIR/$APP_NAME.app"
 
           codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/$APP_NAME.app"
@@ -123,7 +114,7 @@ jobs:
           
           echo "📦 Creating ZIP archive: $ZIP_NAME"
           rm -f "$ZIP_PATH"
-          # Use ditto to preserve extended attributes (including notarization ticket)
+          # Use ditto to preserve extended attributes (code signatures)
           ditto -c -k --keepParent "$EXPORT_DIR/$APP_NAME.app" "$ZIP_PATH"
           echo "✅ ZIP created: $ZIP_PATH ($(stat -f%z "$ZIP_PATH") bytes)"
 
