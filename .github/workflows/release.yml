@@ -99,10 +99,18 @@ jobs:
 
       - name: Re-sign with hardened runtime
         run: |
+          ENTITLEMENTS="build/expanded.entitlements"
+          codesign -d --entitlements "$ENTITLEMENTS" --xml "$EXPORT_DIR/$APP_NAME.app"
+
+          echo "Extracted entitlements:"
+          cat "$ENTITLEMENTS"
+
           codesign --force --sign "Developer ID Application" \
             -o runtime --timestamp \
-            --entitlements "$APP_NAME/$APP_NAME.entitlements" \
+            --entitlements "$ENTITLEMENTS" \
             "$EXPORT_DIR/$APP_NAME.app"
+
+          codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/$APP_NAME.app"
 
       - name: Create ZIP for notarization
         run: |
