@@ -99,10 +99,12 @@ jobs:
 
       - name: Re-sign with hardened runtime
         run: |
+          # Expand variables in entitlements file
+          BUNDLE_ID="com.epilande.Annotate"
           ENTITLEMENTS="build/expanded.entitlements"
-          codesign -d --entitlements "$ENTITLEMENTS" --xml "$EXPORT_DIR/$APP_NAME.app"
+          sed "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$BUNDLE_ID/g" "$APP_NAME/$APP_NAME.entitlements" > "$ENTITLEMENTS"
 
-          echo "Extracted entitlements:"
+          echo "Expanded entitlements:"
           cat "$ENTITLEMENTS"
 
           codesign --force --sign "Developer ID Application" \
