@@ -6,6 +6,24 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.0.12</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.0.12</link>
+            <description><![CDATA[
+<h1>Annotate v1.0.12</h1>
+
+<p>This release resolves auto-update failures and improves the CI/CD pipeline for safer future releases.</p>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.0.12">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Tue, 25 Nov 2025 11:12:43 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.0.12/Annotate-1.0.12.zip"
+                       sparkle:version="1012"
+                       sparkle:shortVersionString="1.0.12"
+                       sparkle:edSignature="ahL7QttYkGLrkOY5wRiISjb82a2kXYOjrDWy0GtX8VY6rdTz8Vhr3YrhBWciuSGGlQyqie+t6P1aSZo8TP75Cg=="
+                       length="2602763"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.0.11</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.0.11</link>
             <description><![CDATA[
