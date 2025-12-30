@@ -162,32 +162,40 @@ struct GeneralSettingsView: View {
                     }
 
                     if clickEffectsEnabled {
-                        HStack(spacing: 16) {
-                            ColorPicker("Color", selection: $effectColor, supportsOpacity: false)
-                                .labelsHidden()
-                                .onChange(of: effectColor) { _, newValue in
-                                    CursorHighlightManager.shared.effectColor = NSColor(newValue)
-                                }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Effect Size")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                HStack(spacing: 8) {
-                                    Text("30")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                    Slider(value: $effectSize, in: 30...150)
-                                        .onChange(of: effectSize) { _, newValue in
-                                            CursorHighlightManager.shared.effectSize = CGFloat(newValue)
-                                        }
-                                    Text("150")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Effect Color")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 6) {
+                                ForEach(Array(colorPalette.enumerated()), id: \.offset) { _, color in
+                                    PresetColorButton(
+                                        color: color,
+                                        isSelected: NSColor(effectColor).isClose(to: color)
+                                    ) {
+                                        effectColor = Color(color)
+                                        CursorHighlightManager.shared.effectColor = color
+                                    }
                                 }
                             }
                         }
-                        .padding(.leading, 16)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Effect Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("30")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+                                Slider(value: $effectSize, in: 30...150)
+                                    .onChange(of: effectSize) { _, newValue in
+                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                    }
+                                Text("150")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                            }
+                        }
                     }
                 }
             }
@@ -203,5 +211,29 @@ struct GeneralSettingsView: View {
             effectSize = Double(CursorHighlightManager.shared.effectSize)
             highlightMode = CursorHighlightManager.shared.highlightMode
         }
+    }
+}
+
+private struct PresetColorButton: View {
+    let color: NSColor
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            SwiftUI.Circle()
+                .fill(Color(color))
+                .frame(width: 24, height: 24)
+                .overlay(
+                    SwiftUI.Circle()
+                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+                )
+                .overlay(
+                    SwiftUI.Circle()
+                        .strokeBorder(isSelected ? Color.primary : Color.clear, lineWidth: 2)
+                        .padding(-2)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }

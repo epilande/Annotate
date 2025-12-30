@@ -69,4 +69,41 @@ final class NSColorExtensionsTests: XCTestCase {
         XCTAssertNoThrow(hsbColor.contrastingColor())
         XCTAssertNotNil(hsbColor.contrastingColor())
     }
+
+    // MARK: - isClose(to:) Tests
+
+    func testIsCloseWithIdenticalColors() {
+        let colors: [NSColor] = [.systemRed, .systemBlue, .white, .black, .cyan]
+        for color in colors {
+            XCTAssertTrue(color.isClose(to: color), "\(color) should be close to itself")
+        }
+    }
+
+    func testIsCloseWithVerySimilarColors() {
+        let red1 = NSColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
+        let red2 = NSColor(red: 1.0, green: 0.005, blue: 0.005, alpha: 1.0)
+        XCTAssertTrue(red1.isClose(to: red2), "Very similar colors should be close")
+    }
+
+    func testIsCloseWithDifferentColors() {
+        XCTAssertFalse(NSColor.red.isClose(to: .blue), "Red should not be close to blue")
+        XCTAssertFalse(NSColor.white.isClose(to: .black), "White should not be close to black")
+        XCTAssertFalse(NSColor.systemYellow.isClose(to: .systemGreen), "Yellow should not be close to green")
+    }
+
+    func testIsCloseWithColorPaletteColors() {
+        // Verify all palette colors are distinguishable from each other
+        for (i, color1) in colorPalette.enumerated() {
+            for (j, color2) in colorPalette.enumerated() {
+                if i == j {
+                    XCTAssertTrue(color1.isClose(to: color2))
+                } else {
+                    XCTAssertFalse(
+                        color1.isClose(to: color2),
+                        "Palette color \(i) should not be close to color \(j)"
+                    )
+                }
+            }
+        }
+    }
 }

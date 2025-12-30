@@ -16,12 +16,6 @@ class ColorSwatchButton: NSButton {
 }
 
 class ColorPickerViewController: NSViewController {
-    let colorPalette: [NSColor] = [
-        .systemRed, .systemOrange, .systemYellow,
-        .systemGreen, .cyan, .systemIndigo,
-        .magenta, .white, .black,
-    ]
-
     private var keyMonitor: Any?
     private var buttons: [ColorSwatchButton] = []
     private let userDefaults: UserDefaults

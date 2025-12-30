@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
@@ -20,3 +20,9 @@ extension UserDefaults {
     static let clickRippleSizeKey = "ClickRippleSize"
     static let cursorHighlightModeKey = "CursorHighlightMode"
 }
+
+let colorPalette: [NSColor] = [
+    .systemRed, .systemOrange, .systemYellow,
+    .systemGreen, .cyan, .systemIndigo,
+    .magenta, .white, .black,
+]

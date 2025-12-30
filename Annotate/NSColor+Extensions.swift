@@ -16,4 +16,14 @@ extension NSColor {
 
         return luminance < 0.6 ? .white : .black
     }
+
+    /// Compares two colors for approximate equality within a small tolerance
+    func isClose(to other: NSColor) -> Bool {
+        guard let c1 = self.usingColorSpace(.deviceRGB),
+            let c2 = other.usingColorSpace(.deviceRGB)
+        else { return false }
+        return abs(c1.redComponent - c2.redComponent) < 0.01
+            && abs(c1.greenComponent - c2.greenComponent) < 0.01
+            && abs(c1.blueComponent - c2.blueComponent) < 0.01
+    }
 }
