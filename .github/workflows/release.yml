@@ -40,11 +40,9 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "semver=${TAG#v}" >> "$GITHUB_OUTPUT"
-          # Generate build number from version (keep only digits, fallback to "1" if empty)
-          BUILD_NUMBER=$(echo "${TAG#v}" | sed 's/[^0-9]//g')
-          if [ -z "$BUILD_NUMBER" ]; then
-            BUILD_NUMBER="1"
-          fi
+          # Use git commit count + offset for guaranteed monotonic build numbers
+          # Offset ensures compatibility with existing releases (v1.0.12 = build 1012)
+          BUILD_NUMBER=$(($(git rev-list --count HEAD) + 1000))
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
