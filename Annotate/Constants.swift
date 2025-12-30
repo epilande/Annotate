@@ -15,4 +15,8 @@ extension UserDefaults {
     static let alwaysOnModeKey = "AlwaysOnMode"
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
+    static let clickRippleEnabledKey = "ClickRippleEnabled"
+    static let clickRippleColorKey = "ClickRippleColor"
+    static let clickRippleSizeKey = "ClickRippleSize"
+    static let cursorHighlightModeKey = "CursorHighlightMode"
 }

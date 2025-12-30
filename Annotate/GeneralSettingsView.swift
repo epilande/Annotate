@@ -11,6 +11,10 @@ struct GeneralSettingsView: View {
     @AppStorage(UserDefaults.enableBoardKey)
     private var enableBoard = false
     @State private var boardOpacity: Double = BoardManager.shared.opacity
+    @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
+    @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
+    @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
+    @State private var highlightMode: CursorHighlightMode = CursorHighlightManager.shared.highlightMode
 
     var body: some View {
         ScrollView {
@@ -121,6 +125,71 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
+
+                Divider()
+
+                SettingsSection(
+                    icon: "cursorarrow.motionlines",
+                    title: "Click Effects",
+                    subtitle: "Visual feedback for mouse clicks"
+                ) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Visibility Mode")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("When click effects are visible")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("", selection: $highlightMode) {
+                            Text("Always On").tag(CursorHighlightMode.always)
+                            Text("Overlay Only").tag(CursorHighlightMode.overlayOnly)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                        .onChange(of: highlightMode) { _, newValue in
+                            CursorHighlightManager.shared.highlightMode = newValue
+                        }
+                    }
+
+                    SettingsToggleRow(
+                        title: "Enable Click Effects",
+                        description: "Ripple on click + highlight while holding",
+                        isOn: $clickEffectsEnabled
+                    ) {
+                        CursorHighlightManager.shared.clickEffectsEnabled = clickEffectsEnabled
+                    }
+
+                    if clickEffectsEnabled {
+                        HStack(spacing: 16) {
+                            ColorPicker("Color", selection: $effectColor, supportsOpacity: false)
+                                .labelsHidden()
+                                .onChange(of: effectColor) { _, newValue in
+                                    CursorHighlightManager.shared.effectColor = NSColor(newValue)
+                                }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Effect Size")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("30")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                    Slider(value: $effectSize, in: 30...150)
+                                        .onChange(of: effectSize) { _, newValue in
+                                            CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                        }
+                                    Text("150")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                        }
+                        .padding(.leading, 16)
+                    }
+                }
             }
             .padding(.horizontal, 24)
             .padding(.top, 24)
@@ -129,6 +198,10 @@ struct GeneralSettingsView: View {
         .onAppear {
             enableBoard = BoardManager.shared.isEnabled
             boardOpacity = BoardManager.shared.opacity
+            clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            effectColor = Color(CursorHighlightManager.shared.effectColor)
+            effectSize = Double(CursorHighlightManager.shared.effectSize)
+            highlightMode = CursorHighlightManager.shared.highlightMode
         }
     }
 }
