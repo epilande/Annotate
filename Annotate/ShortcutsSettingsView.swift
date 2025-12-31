@@ -131,6 +131,13 @@ struct ShortcutsSettingsView: View {
                         shortcuts: $shortcuts,
                         editingShortcut: $editingShortcut
                     )
+                    ShortcutSettingRow(
+                        tool: .toggleClickEffects,
+                        label: "Toggle Click Effects",
+                        description: "Enable or disable click visual feedback",
+                        shortcuts: $shortcuts,
+                        editingShortcut: $editingShortcut
+                    )
                 }
 
                 Divider()

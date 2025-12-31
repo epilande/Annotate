@@ -212,6 +212,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             toggleBoardItem.keyEquivalentModifierMask = []
             menu.addItem(toggleBoardItem)
 
+            let clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            let toggleClickEffectsItem = NSMenuItem(
+                title: clickEffectsEnabled ? "Disable Click Effects" : "Enable Click Effects",
+                action: #selector(toggleClickEffects(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .toggleClickEffects))
+            toggleClickEffectsItem.keyEquivalentModifierMask = []
+            menu.addItem(toggleClickEffectsItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let persistedFadeMode =
@@ -559,7 +567,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             item.title = boardEnabled ? "Hide \(boardType)" : "Show \(boardType)"
         }
     }
-    
+
+    @objc func toggleClickEffects(_ sender: Any?) {
+        CursorHighlightManager.shared.clickEffectsEnabled.toggle()
+        updateClickEffectsMenuItems()
+
+        let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+        let text = isEnabled ? "Click Effects On" : "Click Effects Off"
+        let icon = isEnabled ? "👆" : "🚫"
+        for (_, window) in overlayWindows where window.isVisible {
+            window.showToggleFeedback(text, icon: icon)
+        }
+    }
+
+    func updateClickEffectsMenuItems() {
+        guard let menu = statusItem.menu else { return }
+        if let item = menu.items.first(where: { $0.action == #selector(toggleClickEffects(_:)) }) {
+            let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            item.title = isEnabled ? "Disable Click Effects" : "Enable Click Effects"
+        }
+    }
+
     func updateAlwaysOnMenuItems() {
         guard let menu = statusItem.menu else { return }
         
@@ -694,6 +722,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .eraser)
             case #selector(toggleBoardVisibility(_:)):
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
+            case #selector(toggleClickEffects(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleClickEffects)
             default:
                 break
             }

@@ -672,6 +672,9 @@ class OverlayWindow: NSPanel {
             case ShortcutManager.shared.getShortcut(for: .toggleBoard):
                 AppDelegate.shared?.toggleBoardVisibility(nil)
                 return
+            case ShortcutManager.shared.getShortcut(for: .toggleClickEffects):
+                AppDelegate.shared?.toggleClickEffects(nil)
+                return
             default:
                 break
             }
@@ -886,6 +889,12 @@ class OverlayWindow: NSPanel {
         showFeedback(text, lineColor: overlayView.currentColor, lineWidth: width)
     }
     
+    func showToggleFeedback(_ text: String, icon: String) {
+        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        guard !hideToolFeedback else { return }
+        showFeedback("\(icon) \(text)")
+    }
+
     func showToolFeedback(_ tool: ToolType) {
         // Check if tool feedback is hidden in settings (default: false, meaning show feedback)
         let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
