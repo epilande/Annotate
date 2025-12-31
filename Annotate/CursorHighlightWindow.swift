@@ -28,6 +28,7 @@ class CursorHighlightWindow: NSPanel {
         isOpaque = false
         hasShadow = false
         ignoresMouseEvents = true
+        hidesOnDeactivate = false  // Stay visible even when app is hidden
         collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
 
         // Window level above overlay window so cursor highlight is visible when annotating

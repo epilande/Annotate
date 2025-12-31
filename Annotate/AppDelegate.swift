@@ -328,14 +328,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
 
         updateCursorHighlightWindowsForScreenChange()
-        updateOverlayVisibility()
-    }
-
-    /// Updates cursor highlight visibility based on aggregate overlay window state.
-    /// Call this after any overlay window visibility change to keep state in sync.
-    private func updateOverlayVisibility() {
-        let anyOverlayVisible = overlayWindows.values.contains { $0.isVisible } || alwaysOnMode
-        CursorHighlightManager.shared.isOverlayVisible = anyOverlayVisible
     }
 
     func getCurrentScreen() -> NSScreen? {
@@ -420,8 +412,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if overlayWindow.isVisible {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
-            NSApp.hide(nil)
-            updateOverlayVisibility()
         } else {
             configureWindowForNormalMode(overlayWindow)
 
@@ -433,7 +423,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            updateOverlayVisibility()
         }
     }
     
@@ -456,7 +445,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         userDefaults.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
         updateAlwaysOnMenuItems()
-        updateOverlayVisibility()
     }
 
     @objc func closeOverlay() {
@@ -466,7 +454,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
-            updateOverlayVisibility()
         }
     }
     
@@ -486,7 +473,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            updateOverlayVisibility()
         }
     }
 

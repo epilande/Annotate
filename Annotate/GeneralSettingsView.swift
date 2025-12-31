@@ -14,7 +14,6 @@ struct GeneralSettingsView: View {
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
-    @State private var highlightMode: CursorHighlightMode = CursorHighlightManager.shared.highlightMode
 
     var body: some View {
         ScrollView {
@@ -133,26 +132,6 @@ struct GeneralSettingsView: View {
                     title: "Click Effects",
                     subtitle: "Visual feedback for mouse clicks"
                 ) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Visibility Mode")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("When click effects are visible")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Picker("", selection: $highlightMode) {
-                            Text("Always On").tag(CursorHighlightMode.always)
-                            Text("Overlay Only").tag(CursorHighlightMode.overlayOnly)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 180)
-                        .onChange(of: highlightMode) { _, newValue in
-                            CursorHighlightManager.shared.highlightMode = newValue
-                        }
-                    }
-
                     SettingsToggleRow(
                         title: "Enable Click Effects",
                         description: "Ripple on click + highlight while holding",
@@ -209,7 +188,6 @@ struct GeneralSettingsView: View {
             clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
             effectColor = Color(CursorHighlightManager.shared.effectColor)
             effectSize = Double(CursorHighlightManager.shared.effectSize)
-            highlightMode = CursorHighlightManager.shared.highlightMode
         }
     }
 }

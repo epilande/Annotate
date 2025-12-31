@@ -1,10 +1,5 @@
 import Cocoa
 
-enum CursorHighlightMode: String {
-    case always = "always"
-    case overlayOnly = "overlay"
-}
-
 /// Animation state when mouse is released - ring expands and fades
 struct ReleaseAnimation {
     let center: NSPoint
@@ -37,30 +32,8 @@ class CursorHighlightManager: @unchecked Sendable {
     let appearDuration: TimeInterval = 0.15
     let releaseDuration: TimeInterval = 0.2
 
-    private var _isOverlayVisible: Bool = false
-    var isOverlayVisible: Bool {
-        get { _isOverlayVisible }
-        set {
-            _isOverlayVisible = newValue
-            notifyStateChanged()
-        }
-    }
-
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-    }
-
-    // MARK: - Highlight Mode
-
-    var highlightMode: CursorHighlightMode {
-        get {
-            let rawValue = userDefaults.string(forKey: UserDefaults.cursorHighlightModeKey) ?? "always"
-            return CursorHighlightMode(rawValue: rawValue) ?? .always
-        }
-        set {
-            userDefaults.set(newValue.rawValue, forKey: UserDefaults.cursorHighlightModeKey)
-            notifyStateChanged()
-        }
     }
 
     // MARK: - Click Effects Settings
@@ -116,14 +89,7 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool {
-        switch highlightMode {
-        case .always:
-            return clickEffectsEnabled
-        case .overlayOnly:
-            return clickEffectsEnabled && isOverlayVisible
-        }
-    }
+    var isActive: Bool { clickEffectsEnabled }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
