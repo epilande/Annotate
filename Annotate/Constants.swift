@@ -18,6 +18,7 @@ extension UserDefaults {
     static let clickRippleEnabledKey = "ClickRippleEnabled"
     static let clickRippleColorKey = "ClickRippleColor"
     static let clickRippleSizeKey = "ClickRippleSize"
+    static let cursorHighlightEnabledKey = "CursorHighlightEnabled"
 }
 
 let colorPalette: [NSColor] = [

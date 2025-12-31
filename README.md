@@ -31,6 +31,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - 🌈 **Color Picker:** Easily select and persist your preferred color.
 - ↕️ **Line Width Control:** Adjust line thickness with an interactive picker or Command+Scroll wheel.
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
+- 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -125,10 +126,11 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 
 | Key          | Tool             | Description                      |
 | ------------ | ---------------- | -------------------------------- |
-| <kbd>C</kbd> | **Color Picker** | Open color selection menu        |
-| <kbd>W</kbd> | **Line Width**   | Open line width picker           |
-| <kbd>V</kbd> | **Select**       | Select, move, and manage objects |
-| <kbd>B</kbd> | **Board**        | Toggle whiteboard/blackboard     |
+| <kbd>C</kbd> | **Color Picker**     | Open color selection menu                 |
+| <kbd>W</kbd> | **Line Width**       | Open line width picker                    |
+| <kbd>V</kbd> | **Select**           | Select, move, and manage objects          |
+| <kbd>B</kbd> | **Board**            | Toggle whiteboard/blackboard              |
+| <kbd>K</kbd> | **Cursor Highlight** | Toggle cursor highlight and click effects |
 
 #### ⚡ Quick Actions
 
@@ -309,6 +311,8 @@ Settings are organized into two tabs: **General** and **Shortcuts**.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Enable Board**: Show whiteboard or blackboard background.
 - **Board Opacity**: Adjust board background transparency (10-100%).
+- **Enable Cursor Highlight**: Show a visual spotlight following your cursor.
+- **Enable Click Effects**: Show ripple effect on mouse clicks.
 
 ### Keyboard Shortcuts
 

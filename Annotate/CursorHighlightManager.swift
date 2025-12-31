@@ -76,6 +76,14 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    var cursorHighlightEnabled: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.cursorHighlightEnabledKey)
+            notifyStateChanged()
+        }
+    }
+
     var holdRingStartSize: CGFloat { effectSize * 0.2 }
     var holdRingEndSize: CGFloat { effectSize * 0.65 }
 
@@ -92,6 +100,10 @@ class CursorHighlightManager: @unchecked Sendable {
     var isActive: Bool { clickEffectsEnabled }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
+
+    var shouldShowCursorHighlight: Bool {
+        cursorHighlightEnabled && !isMouseDown
+    }
 
     var hasActiveAnimation: Bool {
         releaseAnimation.map { !$0.isExpired } ?? false

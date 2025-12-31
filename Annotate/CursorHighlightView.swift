@@ -6,6 +6,7 @@ class CursorHighlightView: NSView {
 
     private var holdRingLayer: CAShapeLayer?
     private var releaseRingLayer: CAShapeLayer?
+    private var spotlightLayer: CAShapeLayer?
 
     override var isFlipped: Bool { false }
 
@@ -22,6 +23,13 @@ class CursorHighlightView: NSView {
     }
 
     private func setupLayers() {
+        // Spotlight layer (follows cursor when enabled)
+        let spotlight = CAShapeLayer()
+        spotlight.lineWidth = 0
+        spotlight.opacity = 0
+        layer?.addSublayer(spotlight)
+        spotlightLayer = spotlight
+
         // Hold ring layer (shown while mouse is down)
         let holdLayer = CAShapeLayer()
         holdLayer.lineWidth = strokeWidth
@@ -100,6 +108,46 @@ class CursorHighlightView: NSView {
             ringLayer.opacity = alpha
         } else {
             ringLayer.opacity = 0
+        }
+
+        CATransaction.commit()
+    }
+
+    func updateSpotlightPosition() {
+        guard let window = self.window, let spotlight = spotlightLayer else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let globalPosition = manager.cursorPosition
+        let cursorOnThisScreen = window.screen?.frame.contains(globalPosition) ?? false
+
+        if manager.shouldShowCursorHighlight && cursorOnThisScreen {
+            let windowPoint = window.convertPoint(fromScreen: globalPosition)
+            let localPoint = convert(windowPoint, from: nil)
+
+            // Size based on effect size (slightly smaller than click ring)
+            let size = manager.effectSize * 0.5
+            let rect = CGRect(
+                x: -size / 2,
+                y: -size / 2,
+                width: size,
+                height: size
+            )
+
+            spotlight.path = CGPath(ellipseIn: rect, transform: nil)
+            spotlight.position = localPoint
+
+            // Filled circle with glow effect via shadow
+            let color = manager.effectColor
+            spotlight.fillColor = color.withAlphaComponent(0.3).cgColor
+            spotlight.shadowColor = color.cgColor
+            spotlight.shadowRadius = size * 0.4
+            spotlight.shadowOpacity = 0.6
+            spotlight.shadowOffset = .zero
+            spotlight.opacity = 1
+        } else {
+            spotlight.opacity = 0
         }
 
         CATransaction.commit()

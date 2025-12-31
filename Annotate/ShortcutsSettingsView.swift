@@ -133,8 +133,8 @@ struct ShortcutsSettingsView: View {
                     )
                     ShortcutSettingRow(
                         tool: .toggleClickEffects,
-                        label: "Toggle Click Effects",
-                        description: "Enable or disable click visual feedback",
+                        label: "Toggle Cursor Highlight",
+                        description: "Enable or disable cursor visual feedback",
                         shortcuts: $shortcuts,
                         editingShortcut: $editingShortcut
                     )

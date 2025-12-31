@@ -214,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
             let clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
             let toggleClickEffectsItem = NSMenuItem(
-                title: clickEffectsEnabled ? "Disable Click Effects" : "Enable Click Effects",
+                title: clickEffectsEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight",
                 action: #selector(toggleClickEffects(_:)),
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .toggleClickEffects))
             toggleClickEffectsItem.keyEquivalentModifierMask = []
@@ -569,12 +569,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     @objc func toggleClickEffects(_ sender: Any?) {
-        CursorHighlightManager.shared.clickEffectsEnabled.toggle()
+        let newState = !CursorHighlightManager.shared.clickEffectsEnabled
+        CursorHighlightManager.shared.clickEffectsEnabled = newState
+        CursorHighlightManager.shared.cursorHighlightEnabled = newState
         updateClickEffectsMenuItems()
 
-        let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
-        let text = isEnabled ? "Click Effects On" : "Click Effects Off"
-        let icon = isEnabled ? "👆" : "🚫"
+        let text = newState ? "Cursor Highlight On" : "Cursor Highlight Off"
+        let icon = newState ? "👆" : "🚫"
         for (_, window) in overlayWindows where window.isVisible {
             window.showToggleFeedback(text, icon: icon)
         }
@@ -584,7 +585,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         guard let menu = statusItem.menu else { return }
         if let item = menu.items.first(where: { $0.action == #selector(toggleClickEffects(_:)) }) {
             let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
-            item.title = isEnabled ? "Disable Click Effects" : "Enable Click Effects"
+            item.title = isEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight"
         }
     }
 
@@ -975,13 +976,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         let manager = CursorHighlightManager.shared
         manager.cursorPosition = NSEvent.mouseLocation
 
-        guard manager.isActive, manager.isMouseDown else { return }
+        var needsAnimationLoop = false
 
-        for (_, window) in cursorHighlightWindows {
-            window.highlightView.updateHoldRingPosition()
+        if manager.shouldShowCursorHighlight {
+            for (_, window) in cursorHighlightWindows {
+                window.highlightView.updateSpotlightPosition()
+            }
+            needsAnimationLoop = true
         }
 
-        if let currentScreen = getCurrentScreen(),
+        if manager.isActive && manager.isMouseDown {
+            for (_, window) in cursorHighlightWindows {
+                window.highlightView.updateHoldRingPosition()
+            }
+            needsAnimationLoop = true
+        }
+
+        if needsAnimationLoop,
+           let currentScreen = getCurrentScreen(),
            let window = cursorHighlightWindows[currentScreen]
         {
             window.startAnimationLoop()

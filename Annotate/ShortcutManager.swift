@@ -37,7 +37,7 @@ enum ShortcutKey: String, CaseIterable {
         case .colorPicker: return "Color Picker"
         case .lineWidthPicker: return "Line Width"
         case .toggleBoard: return "Toggle Board"
-        case .toggleClickEffects: return "Toggle Click Effects"
+        case .toggleClickEffects: return "Toggle Cursor Highlight"
         }
     }
 }
