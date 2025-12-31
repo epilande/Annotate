@@ -30,16 +30,18 @@ class CursorHighlightWindow: NSPanel {
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
 
-        // Window level above normal windows but below overlay
-        let overlayLevel = [
+        // Window level above overlay window so cursor highlight is visible when annotating
+        let levels = [
             CGWindowLevelForKey(.mainMenuWindow),
             CGWindowLevelForKey(.statusWindow),
             CGWindowLevelForKey(.popUpMenuWindow),
             CGWindowLevelForKey(.assistiveTechHighWindow),
             CGWindowLevelForKey(.screenSaverWindow),
-        ].map { Int($0) }.max() ?? Int(CGWindowLevelForKey(.statusWindow))
+        ]
+        // OverlayWindow uses max + 1, so we use max + 2 to be above it
+        let cursorLevel = levels.map { Int($0) }.max().map { $0 + 2 } ?? Int(CGWindowLevelForKey(.statusWindow)) + 2
 
-        level = NSWindow.Level(rawValue: overlayLevel)
+        level = NSWindow.Level(rawValue: cursorLevel)
     }
 
     private func setupHighlightView() {

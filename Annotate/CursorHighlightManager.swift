@@ -160,4 +160,5 @@ class CursorHighlightManager: @unchecked Sendable {
 
 extension Notification.Name {
     static let cursorHighlightStateChanged = Notification.Name("CursorHighlightStateChangedNotification")
+    static let cursorHighlightNeedsUpdate = Notification.Name("CursorHighlightNeedsUpdateNotification")
 }

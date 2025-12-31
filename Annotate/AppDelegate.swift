@@ -917,10 +917,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             name: .cursorHighlightStateChanged,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cursorHighlightNeedsUpdate),
+            name: .cursorHighlightNeedsUpdate,
+            object: nil
+        )
+    }
+
+    @objc func cursorHighlightNeedsUpdate() {
+        triggerCursorHighlightUpdate()
     }
 
     @objc func cursorHighlightStateChanged() {
         updateAllCursorHighlightWindows()
+    }
+
+    /// Called from OverlayWindow to trigger cursor highlight updates for local mouse events
+    func triggerCursorHighlightUpdate() {
+        for (_, window) in cursorHighlightWindows {
+            window.highlightView.updateHoldRingPosition()
+            window.highlightView.needsDisplay = true
+        }
+
+        if let currentScreen = getCurrentScreen(),
+           let window = cursorHighlightWindows[currentScreen]
+        {
+            window.startAnimationLoop()
+        }
     }
 
     func handleGlobalMouseMove(_ event: NSEvent) {
