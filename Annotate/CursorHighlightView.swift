@@ -5,27 +5,38 @@ class CursorHighlightView: NSView {
     private let strokeWidth: CGFloat = 2.5
 
     private var holdRingLayer: CAShapeLayer?
+    private var releaseRingLayer: CAShapeLayer?
 
     override var isFlipped: Bool { false }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        setupHoldRingLayer()
+        setupLayers()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         wantsLayer = true
-        setupHoldRingLayer()
+        setupLayers()
     }
 
-    private func setupHoldRingLayer() {
-        let ringLayer = CAShapeLayer()
-        ringLayer.lineWidth = strokeWidth
-        ringLayer.opacity = 0
-        layer?.addSublayer(ringLayer)
-        holdRingLayer = ringLayer
+    private func setupLayers() {
+        // Hold ring layer (shown while mouse is down)
+        let holdLayer = CAShapeLayer()
+        holdLayer.lineWidth = strokeWidth
+        holdLayer.fillColor = nil
+        holdLayer.opacity = 0
+        layer?.addSublayer(holdLayer)
+        holdRingLayer = holdLayer
+
+        // Release ring layer (expands and fades on mouse up)
+        let releaseLayer = CAShapeLayer()
+        releaseLayer.lineWidth = strokeWidth
+        releaseLayer.fillColor = nil
+        releaseLayer.opacity = 0
+        layer?.addSublayer(releaseLayer)
+        releaseRingLayer = releaseLayer
     }
 
     func updateHoldRingPosition() {
@@ -61,13 +72,11 @@ class CursorHighlightView: NSView {
         CATransaction.commit()
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
+    func updateReleaseAnimation() {
+        guard let window = self.window, let ringLayer = releaseRingLayer else { return }
 
-        NSColor.clear.setFill()
-        dirtyRect.fill()
-
-        guard manager.isActive, let window = self.window else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
 
         if let animation = manager.releaseAnimation, !animation.isExpired {
             let windowPoint = window.convertPoint(fromScreen: animation.center)
@@ -75,32 +84,25 @@ class CursorHighlightView: NSView {
 
             let progress = animation.progress()
             let currentSize = lerp(animation.startSize, animation.maxSize, progress)
-            let alpha = 1.0 - progress
+            let alpha = Float(1.0 - progress)
 
-            drawRing(
-                at: localPoint,
-                size: currentSize,
-                alpha: alpha
+            let rect = CGRect(
+                x: -currentSize / 2,
+                y: -currentSize / 2,
+                width: currentSize,
+                height: currentSize
             )
+
+            ringLayer.path = CGPath(ellipseIn: rect, transform: nil)
+            ringLayer.position = localPoint
+            ringLayer.strokeColor = manager.effectColor.withAlphaComponent(0.8).cgColor
+            ringLayer.fillColor = manager.effectColor.withAlphaComponent(0.12).cgColor
+            ringLayer.opacity = alpha
+        } else {
+            ringLayer.opacity = 0
         }
-    }
 
-    private func drawRing(at position: NSPoint, size: CGFloat, alpha: Double) {
-        let rect = NSRect(
-            x: position.x - size / 2,
-            y: position.y - size / 2,
-            width: size,
-            height: size
-        )
-
-        let path = NSBezierPath(ovalIn: rect)
-        path.lineWidth = strokeWidth
-
-        manager.effectColor.withAlphaComponent(0.8 * alpha).setStroke()
-        path.stroke()
-
-        manager.effectColor.withAlphaComponent(0.12 * alpha).setFill()
-        path.fill()
+        CATransaction.commit()
     }
 
     private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: Double) -> CGFloat {

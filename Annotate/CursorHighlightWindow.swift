@@ -77,13 +77,9 @@ class CursorHighlightWindow: NSPanel {
         let manager = CursorHighlightManager.shared
 
         highlightView.updateHoldRingPosition()
+        highlightView.updateReleaseAnimation()
 
-        let hadAnimation = manager.hasActiveAnimation
         manager.cleanupExpiredAnimation()
-
-        if manager.hasActiveAnimation || hadAnimation {
-            highlightView.needsDisplay = true
-        }
 
         if !manager.shouldShowRing && !manager.hasActiveAnimation {
             stopAnimationLoop()
