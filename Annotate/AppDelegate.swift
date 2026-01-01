@@ -901,17 +901,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     // MARK: - Cursor Highlighting
 
+    private func createCursorHighlightWindow(for screen: NSScreen) -> CursorHighlightWindow {
+        let window = CursorHighlightWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.setFrameOrigin(screen.frame.origin)
+        return window
+    }
+
     func setupCursorHighlightWindows() {
         for screen in NSScreen.screens {
-            let highlightWindow = CursorHighlightWindow(
-                contentRect: screen.frame,
-                styleMask: .borderless,
-                backing: .buffered,
-                defer: false
-            )
-            highlightWindow.setFrameOrigin(screen.frame.origin)
-            cursorHighlightWindows[screen] = highlightWindow
-            highlightWindow.updateVisibility()
+            let window = createCursorHighlightWindow(for: screen)
+            cursorHighlightWindows[screen] = window
+            window.updateVisibility()
         }
     }
 
@@ -960,10 +965,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     /// Called from OverlayWindow to trigger cursor highlight updates for local mouse events
     func triggerCursorHighlightUpdate() {
-        for (_, window) in cursorHighlightWindows {
-            window.highlightView.updateHoldRingPosition()
-            window.highlightView.needsDisplay = true
-        }
+        cursorHighlightWindows.values.forEach { $0.highlightView.updateHoldRingPosition() }
 
         if let currentScreen = getCurrentScreen(),
            let window = cursorHighlightWindows[currentScreen]
@@ -976,24 +978,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         let manager = CursorHighlightManager.shared
         manager.cursorPosition = NSEvent.mouseLocation
 
-        var needsAnimationLoop = false
+        let shouldUpdateSpotlight = manager.shouldShowCursorHighlight
+        let shouldUpdateHoldRing = manager.isActive && manager.isMouseDown
 
-        if manager.shouldShowCursorHighlight {
-            for (_, window) in cursorHighlightWindows {
-                window.highlightView.updateSpotlightPosition()
-            }
-            needsAnimationLoop = true
+        guard shouldUpdateSpotlight || shouldUpdateHoldRing else { return }
+
+        cursorHighlightWindows.values.forEach { window in
+            if shouldUpdateSpotlight { window.highlightView.updateSpotlightPosition() }
+            if shouldUpdateHoldRing { window.highlightView.updateHoldRingPosition() }
         }
 
-        if manager.isActive && manager.isMouseDown {
-            for (_, window) in cursorHighlightWindows {
-                window.highlightView.updateHoldRingPosition()
-            }
-            needsAnimationLoop = true
-        }
-
-        if needsAnimationLoop,
-           let currentScreen = getCurrentScreen(),
+        if let currentScreen = getCurrentScreen(),
            let window = cursorHighlightWindows[currentScreen]
         {
             window.startAnimationLoop()
@@ -1027,25 +1022,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         manager.startReleaseAnimation()
         manager.isMouseDown = false
 
-        for (_, window) in cursorHighlightWindows {
-            window.highlightView.updateHoldRingPosition()
-        }
+        cursorHighlightWindows.values.forEach { $0.highlightView.updateHoldRingPosition() }
 
         if let currentScreen = getCurrentScreen(),
            let window = cursorHighlightWindows[currentScreen]
         {
-            window.highlightView.needsDisplay = true
             window.startAnimationLoop()
         }
     }
 
     func updateAllCursorHighlightWindows() {
-        for (_, window) in cursorHighlightWindows {
-            window.updateVisibility()
-        }
+        cursorHighlightWindows.values.forEach { $0.updateVisibility() }
     }
 
     func updateCursorHighlightWindowsForScreenChange() {
+        // Remove windows for disconnected screens
         cursorHighlightWindows = cursorHighlightWindows.filter { screen, window in
             let exists = NSScreen.screens.contains(screen)
             if !exists {
@@ -1055,16 +1046,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             return exists
         }
 
+        // Add windows for newly connected screens
         for screen in NSScreen.screens where cursorHighlightWindows[screen] == nil {
-            let highlightWindow = CursorHighlightWindow(
-                contentRect: screen.frame,
-                styleMask: .borderless,
-                backing: .buffered,
-                defer: false
-            )
-            highlightWindow.setFrameOrigin(screen.frame.origin)
-            cursorHighlightWindows[screen] = highlightWindow
-            highlightWindow.updateVisibility()
+            let window = createCursorHighlightWindow(for: screen)
+            cursorHighlightWindows[screen] = window
+            window.updateVisibility()
         }
     }
 }

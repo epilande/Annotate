@@ -115,15 +115,15 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(
             ShortcutManager.shared.getShortcut(for: .toggleClickEffects),
             ShortcutKey.toggleClickEffects.defaultKey,
-            "Default shortcut for Toggle Click Effects should be 'k'"
+            "Default shortcut for Toggle Cursor Highlight should be 'k'"
         )
 
-        // Set a custom shortcut for toggle click effects
+        // Set a custom shortcut for toggle cursor highlight
         ShortcutManager.shared.setShortcut("z", for: .toggleClickEffects)
         XCTAssertEqual(
             ShortcutManager.shared.getShortcut(for: .toggleClickEffects),
             "z",
-            "Toggle Click Effects shortcut should be updated to 'z'"
+            "Toggle Cursor Highlight shortcut should be updated to 'z'"
         )
 
         // Reset to default
@@ -131,7 +131,7 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(
             ShortcutManager.shared.getShortcut(for: .toggleClickEffects),
             ShortcutKey.toggleClickEffects.defaultKey,
-            "Toggle Click Effects shortcut should be reset to default"
+            "Toggle Cursor Highlight shortcut should be reset to default"
         )
     }
 
@@ -151,7 +151,7 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(ShortcutKey.colorPicker.defaultKey, "c", "Color Picker should be 'c'")
         XCTAssertEqual(ShortcutKey.lineWidthPicker.defaultKey, "w", "Line Width should be 'w'")
         XCTAssertEqual(ShortcutKey.toggleBoard.defaultKey, "b", "Board should be 'b'")
-        XCTAssertEqual(ShortcutKey.toggleClickEffects.defaultKey, "k", "Toggle Click Effects should be 'k'")
+        XCTAssertEqual(ShortcutKey.toggleClickEffects.defaultKey, "k", "Toggle Cursor Highlight should be 'k'")
     }
     
     func testNoShortcutConflicts() {

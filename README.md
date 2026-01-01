@@ -311,8 +311,8 @@ Settings are organized into two tabs: **General** and **Shortcuts**.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Enable Board**: Show whiteboard or blackboard background.
 - **Board Opacity**: Adjust board background transparency (10-100%).
-- **Enable Cursor Highlight**: Show a visual spotlight following your cursor.
-- **Enable Click Effects**: Show ripple effect on mouse clicks.
+- **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
+- **Enable Click Effect**: Show ripple effect on mouse clicks.
 
 ### Keyboard Shortcuts
 

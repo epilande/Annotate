@@ -15,6 +15,7 @@ struct GeneralSettingsView: View {
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
+    @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
 
     var body: some View {
         ScrollView {
@@ -130,23 +131,65 @@ struct GeneralSettingsView: View {
 
                 SettingsSection(
                     icon: "cursorarrow.motionlines",
-                    title: "Click Effects",
-                    subtitle: "Visual feedback for mouse clicks"
+                    title: "Cursor Highlight",
+                    subtitle: "Spotlight and click effects for cursor visibility"
                 ) {
                     SettingsToggleRow(
-                        title: "Enable Cursor Highlight",
+                        title: "Enable Cursor Spotlight",
                         description: "Show spotlight following cursor",
                         isOn: $cursorHighlightEnabled
                     ) {
                         CursorHighlightManager.shared.cursorHighlightEnabled = cursorHighlightEnabled
                     }
 
+                    if cursorHighlightEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Spotlight Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("30")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+                                Slider(value: $spotlightSize, in: 30...100)
+                                    .onChange(of: spotlightSize) { _, newValue in
+                                        CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                    }
+                                Text("100")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                            }
+                        }
+                    }
+
                     SettingsToggleRow(
-                        title: "Enable Click Effects",
+                        title: "Enable Click Effect",
                         description: "Ripple on click + highlight while holding",
                         isOn: $clickEffectsEnabled
                     ) {
                         CursorHighlightManager.shared.clickEffectsEnabled = clickEffectsEnabled
+                    }
+
+                    if clickEffectsEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Click Effect Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("30")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+                                Slider(value: $effectSize, in: 30...100)
+                                    .onChange(of: effectSize) { _, newValue in
+                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                    }
+                                Text("100")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                            }
+                        }
                     }
 
                     if clickEffectsEnabled || cursorHighlightEnabled {
@@ -165,25 +208,6 @@ struct GeneralSettingsView: View {
                                 }
                             }
                         }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Effect Size")
-                                .font(.system(size: 13, weight: .semibold))
-                            HStack(spacing: 8) {
-                                Text("30")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 24, alignment: .trailing)
-                                Slider(value: $effectSize, in: 30...150)
-                                    .onChange(of: effectSize) { _, newValue in
-                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
-                                    }
-                                Text("150")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 28, alignment: .leading)
-                            }
-                        }
                     }
                 }
             }
@@ -198,6 +222,7 @@ struct GeneralSettingsView: View {
             cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
             effectColor = Color(CursorHighlightManager.shared.effectColor)
             effectSize = Double(CursorHighlightManager.shared.effectSize)
+            spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
         }
     }
 }

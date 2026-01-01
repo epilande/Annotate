@@ -68,7 +68,7 @@ class CursorHighlightManager: @unchecked Sendable {
     var effectSize: CGFloat {
         get {
             let stored = userDefaults.double(forKey: UserDefaults.clickRippleSizeKey)
-            return stored > 0 ? CGFloat(stored) : 80.0
+            return stored > 0 ? CGFloat(stored) : 70.0
         }
         set {
             userDefaults.set(Double(newValue), forKey: UserDefaults.clickRippleSizeKey)
@@ -80,6 +80,17 @@ class CursorHighlightManager: @unchecked Sendable {
         get { userDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey) }
         set {
             userDefaults.set(newValue, forKey: UserDefaults.cursorHighlightEnabledKey)
+            notifyStateChanged()
+        }
+    }
+
+    var spotlightSize: CGFloat {
+        get {
+            let stored = userDefaults.double(forKey: UserDefaults.spotlightSizeKey)
+            return stored > 0 ? CGFloat(stored) : 50.0
+        }
+        set {
+            userDefaults.set(Double(newValue), forKey: UserDefaults.spotlightSizeKey)
             notifyStateChanged()
         }
     }

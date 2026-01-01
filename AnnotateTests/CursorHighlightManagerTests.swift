@@ -146,8 +146,8 @@ final class CursorHighlightManagerTests: XCTestCase {
 
     // MARK: - effectSize Tests
 
-    func testEffectSizeDefaultsTo80() {
-        XCTAssertEqual(manager.effectSize, 80.0, "effectSize should default to 80.0")
+    func testEffectSizeDefaultsTo70() {
+        XCTAssertEqual(manager.effectSize, 70.0, "effectSize should default to 70.0")
     }
 
     func testEffectSizePersistsToUserDefaults() {
@@ -156,6 +156,28 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertEqual(manager.effectSize, 120.0, "effectSize should be updated")
         let persistedValue = testDefaults.double(forKey: UserDefaults.clickRippleSizeKey)
         XCTAssertEqual(persistedValue, 120.0, "effectSize should be persisted to UserDefaults")
+    }
+
+    // MARK: - spotlightSize Tests
+
+    func testSpotlightSizeDefaultsTo50() {
+        XCTAssertEqual(manager.spotlightSize, 50.0, "spotlightSize should default to 50.0")
+    }
+
+    func testSpotlightSizePersistsToUserDefaults() {
+        manager.spotlightSize = 150.0
+
+        XCTAssertEqual(manager.spotlightSize, 150.0, "spotlightSize should be updated")
+        let persistedValue = testDefaults.double(forKey: UserDefaults.spotlightSizeKey)
+        XCTAssertEqual(persistedValue, 150.0, "spotlightSize should be persisted to UserDefaults")
+    }
+
+    func testSettingSpotlightSizePostsNotification() {
+        let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
+
+        manager.spotlightSize = 100.0
+
+        wait(for: [expectation], timeout: 1.0)
     }
 
     // MARK: - holdRingSize Computed Properties Tests

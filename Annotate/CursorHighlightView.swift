@@ -126,8 +126,7 @@ class CursorHighlightView: NSView {
             let windowPoint = window.convertPoint(fromScreen: globalPosition)
             let localPoint = convert(windowPoint, from: nil)
 
-            // Size based on effect size (slightly smaller than click ring)
-            let size = manager.effectSize * 0.5
+            let size = manager.spotlightSize
             let rect = CGRect(
                 x: -size / 2,
                 y: -size / 2,
