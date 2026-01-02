@@ -28,16 +28,16 @@ final class ColorPickerViewControllerTests: XCTestCase, Sendable {
     }
 
     func testColorPaletteInitialization() {
-        XCTAssertEqual(colorPicker.colorPalette.count, 9)
-        XCTAssertEqual(colorPicker.colorPalette[0], .systemRed)
-        XCTAssertEqual(colorPicker.colorPalette[1], .systemOrange)
-        XCTAssertEqual(colorPicker.colorPalette[2], .systemYellow)
-        XCTAssertEqual(colorPicker.colorPalette[3], .systemGreen)
-        XCTAssertEqual(colorPicker.colorPalette[4], .cyan)
-        XCTAssertEqual(colorPicker.colorPalette[5], .systemIndigo)
-        XCTAssertEqual(colorPicker.colorPalette[6], .magenta)
-        XCTAssertEqual(colorPicker.colorPalette[7], .white)
-        XCTAssertEqual(colorPicker.colorPalette[8], .black)
+        XCTAssertEqual(colorPalette.count, 9)
+        XCTAssertEqual(colorPalette[0], .systemRed)
+        XCTAssertEqual(colorPalette[1], .systemOrange)
+        XCTAssertEqual(colorPalette[2], .systemYellow)
+        XCTAssertEqual(colorPalette[3], .systemGreen)
+        XCTAssertEqual(colorPalette[4], .cyan)
+        XCTAssertEqual(colorPalette[5], .systemIndigo)
+        XCTAssertEqual(colorPalette[6], .magenta)
+        XCTAssertEqual(colorPalette[7], .white)
+        XCTAssertEqual(colorPalette[8], .black)
     }
 
     func testViewSetup() {
@@ -61,7 +61,7 @@ final class ColorPickerViewControllerTests: XCTestCase, Sendable {
             let buttons = stackView.arrangedSubviews.compactMap { $0 as? ColorSwatchButton }
             totalButtons += buttons.count
         }
-        XCTAssertEqual(totalButtons, colorPicker.colorPalette.count)
+        XCTAssertEqual(totalButtons, colorPalette.count)
     }
 
     func testColorSelection() {

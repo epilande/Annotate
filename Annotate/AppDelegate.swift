@@ -19,6 +19,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var updaterController: SPUStandardUpdaterController!
     let userDefaults: UserDefaults
 
+    // Cursor Highlight
+    var cursorHighlightWindows: [NSScreen: CursorHighlightWindow] = [:]
+    var globalMouseMoveMonitor: Any?
+    var globalMouseClickMonitor: Any?
+    var globalMouseUpMonitor: Any?
+    var localMouseMoveMonitor: Any?
+    var localMouseClickMonitor: Any?
+    var localMouseUpMonitor: Any?
+
     override init() {
         self.userDefaults = .standard
         super.init()
@@ -72,6 +81,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         )
 
         setupApplicationMenu()
+
+        setupCursorHighlightWindows()
+        setupGlobalMouseMonitors()
+        setupCursorHighlightObservers()
     }
 
     @MainActor
@@ -202,6 +215,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             toggleBoardItem.keyEquivalentModifierMask = []
             menu.addItem(toggleBoardItem)
 
+            let clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            let toggleClickEffectsItem = NSMenuItem(
+                title: clickEffectsEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight",
+                action: #selector(toggleClickEffects(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .toggleClickEffects))
+            toggleClickEffectsItem.keyEquivalentModifierMask = []
+            menu.addItem(toggleClickEffectsItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let persistedFadeMode =
@@ -312,10 +333,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
                 let savedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
                 overlayWindow.overlayView.currentLineWidth = CGFloat(savedLineWidth)
-                
+
                 overlayWindows[screen] = overlayWindow
             }
         }
+
+        updateCursorHighlightWindowsForScreenChange()
     }
 
     func getCurrentScreen() -> NSScreen? {
@@ -400,7 +423,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if overlayWindow.isVisible {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
-            NSApp.hide(nil)
         } else {
             configureWindowForNormalMode(overlayWindow)
 
@@ -417,7 +439,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     
     @objc func toggleAlwaysOnMode() {
         alwaysOnMode.toggle()
-        
+
         overlayWindows.values.forEach { overlayWindow in
             if alwaysOnMode {
                 configureWindowForAlwaysOnMode(overlayWindow)
@@ -426,7 +448,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.orderOut(nil)
             }
         }
-        
+
         let iconColor = alwaysOnMode
             ? currentColor.withAlphaComponent(0.7)
             : .gray
@@ -548,7 +570,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             item.title = boardEnabled ? "Hide \(boardType)" : "Show \(boardType)"
         }
     }
-    
+
+    @objc func toggleClickEffects(_ sender: Any?) {
+        let newState = !CursorHighlightManager.shared.clickEffectsEnabled
+        CursorHighlightManager.shared.clickEffectsEnabled = newState
+        CursorHighlightManager.shared.cursorHighlightEnabled = newState
+        updateClickEffectsMenuItems()
+
+        let text = newState ? "Cursor Highlight On" : "Cursor Highlight Off"
+        let icon = newState ? "👆" : "🚫"
+        for (_, window) in overlayWindows where window.isVisible {
+            window.showToggleFeedback(text, icon: icon)
+        }
+    }
+
+    func updateClickEffectsMenuItems() {
+        guard let menu = statusItem.menu else { return }
+        if let item = menu.items.first(where: { $0.action == #selector(toggleClickEffects(_:)) }) {
+            let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            item.title = isEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight"
+        }
+    }
+
     func updateAlwaysOnMenuItems() {
         guard let menu = statusItem.menu else { return }
         
@@ -683,6 +726,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .eraser)
             case #selector(toggleBoardVisibility(_:)):
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
+            case #selector(toggleClickEffects(_:)):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleClickEffects)
             default:
                 break
             }
@@ -855,5 +900,183 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     
     @objc func checkForUpdates() {
         updaterController.checkForUpdates(nil)
+    }
+
+    // MARK: - Cursor Highlighting
+
+    private func createCursorHighlightWindow(for screen: NSScreen) -> CursorHighlightWindow {
+        let window = CursorHighlightWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.setFrameOrigin(screen.frame.origin)
+        return window
+    }
+
+    func setupCursorHighlightWindows() {
+        for screen in NSScreen.screens {
+            let window = createCursorHighlightWindow(for: screen)
+            cursorHighlightWindows[screen] = window
+            window.updateVisibility()
+        }
+    }
+
+    func setupGlobalMouseMonitors() {
+        // Global monitors - receive events when app is NOT frontmost
+        globalMouseMoveMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] event in
+            self?.handleGlobalMouseMove(event)
+        }
+
+        globalMouseClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            self?.handleGlobalMouseDown(event)
+        }
+
+        globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseUp, .rightMouseUp]
+        ) { [weak self] event in
+            self?.handleGlobalMouseUp(event)
+        }
+
+        // Local monitors - receive events when app IS frontmost (e.g., Settings window open)
+        localMouseMoveMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] event in
+            self?.handleGlobalMouseMove(event)
+            return event
+        }
+
+        localMouseClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            self?.handleGlobalMouseDown(event)
+            return event
+        }
+
+        localMouseUpMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseUp, .rightMouseUp]
+        ) { [weak self] event in
+            self?.handleGlobalMouseUp(event)
+            return event
+        }
+    }
+
+    func setupCursorHighlightObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cursorHighlightStateChanged),
+            name: .cursorHighlightStateChanged,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cursorHighlightNeedsUpdate),
+            name: .cursorHighlightNeedsUpdate,
+            object: nil
+        )
+    }
+
+    @objc func cursorHighlightNeedsUpdate() {
+        triggerCursorHighlightUpdate()
+    }
+
+    @objc func cursorHighlightStateChanged() {
+        updateAllCursorHighlightWindows()
+    }
+
+    /// Called from OverlayWindow to trigger cursor highlight updates for local mouse events
+    func triggerCursorHighlightUpdate() {
+        cursorHighlightWindows.values.forEach { $0.highlightView.updateHoldRingPosition() }
+
+        if let currentScreen = getCurrentScreen(),
+           let window = cursorHighlightWindows[currentScreen]
+        {
+            window.startAnimationLoop()
+        }
+    }
+
+    func handleGlobalMouseMove(_ event: NSEvent) {
+        let manager = CursorHighlightManager.shared
+        manager.cursorPosition = NSEvent.mouseLocation
+
+        let shouldUpdateSpotlight = manager.shouldShowCursorHighlight
+        let shouldUpdateHoldRing = manager.isActive && manager.isMouseDown
+
+        guard shouldUpdateSpotlight || shouldUpdateHoldRing else { return }
+
+        cursorHighlightWindows.values.forEach { window in
+            if shouldUpdateSpotlight { window.highlightView.updateSpotlightPosition() }
+            if shouldUpdateHoldRing { window.highlightView.updateHoldRingPosition() }
+        }
+
+        if let currentScreen = getCurrentScreen(),
+           let window = cursorHighlightWindows[currentScreen]
+        {
+            window.startAnimationLoop()
+        }
+    }
+
+    func handleGlobalMouseDown(_ event: NSEvent) {
+        let manager = CursorHighlightManager.shared
+        guard manager.isActive else { return }
+
+        manager.isMouseDown = true
+        manager.mouseDownTime = CACurrentMediaTime()
+        manager.cursorPosition = NSEvent.mouseLocation
+
+        if let currentScreen = getCurrentScreen(),
+           let window = cursorHighlightWindows[currentScreen]
+        {
+            window.highlightView.updateHoldRingPosition()
+            window.startAnimationLoop()
+        }
+    }
+
+    func handleGlobalMouseUp(_ event: NSEvent) {
+        let manager = CursorHighlightManager.shared
+
+        guard manager.isActive else {
+            manager.isMouseDown = false
+            return
+        }
+
+        manager.startReleaseAnimation()
+        manager.isMouseDown = false
+
+        cursorHighlightWindows.values.forEach { $0.highlightView.updateHoldRingPosition() }
+
+        if let currentScreen = getCurrentScreen(),
+           let window = cursorHighlightWindows[currentScreen]
+        {
+            window.startAnimationLoop()
+        }
+    }
+
+    func updateAllCursorHighlightWindows() {
+        cursorHighlightWindows.values.forEach { $0.updateVisibility() }
+    }
+
+    func updateCursorHighlightWindowsForScreenChange() {
+        // Remove windows for disconnected screens
+        cursorHighlightWindows = cursorHighlightWindows.filter { screen, window in
+            let exists = NSScreen.screens.contains(screen)
+            if !exists {
+                window.stopAnimationLoop()
+                window.orderOut(nil)
+            }
+            return exists
+        }
+
+        // Add windows for newly connected screens
+        for screen in NSScreen.screens where cursorHighlightWindows[screen] == nil {
+            let window = createCursorHighlightWindow(for: screen)
+            cursorHighlightWindows[screen] = window
+            window.updateVisibility()
+        }
     }
 }

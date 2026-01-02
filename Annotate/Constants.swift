@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
@@ -15,4 +15,15 @@ extension UserDefaults {
     static let alwaysOnModeKey = "AlwaysOnMode"
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
+    static let clickRippleEnabledKey = "ClickRippleEnabled"
+    static let clickRippleColorKey = "ClickRippleColor"
+    static let clickRippleSizeKey = "ClickRippleSize"
+    static let cursorHighlightEnabledKey = "CursorHighlightEnabled"
+    static let spotlightSizeKey = "SpotlightSize"
 }
+
+let colorPalette: [NSColor] = [
+    .systemRed, .systemOrange, .systemYellow,
+    .systemGreen, .cyan, .systemIndigo,
+    .magenta, .white, .black,
+]

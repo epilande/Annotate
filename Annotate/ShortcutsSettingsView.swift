@@ -131,6 +131,13 @@ struct ShortcutsSettingsView: View {
                         shortcuts: $shortcuts,
                         editingShortcut: $editingShortcut
                     )
+                    ShortcutSettingRow(
+                        tool: .toggleClickEffects,
+                        label: "Toggle Cursor Highlight",
+                        description: "Enable or disable cursor visual feedback",
+                        shortcuts: $shortcuts,
+                        editingShortcut: $editingShortcut
+                    )
                 }
 
                 Divider()

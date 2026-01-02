@@ -128,6 +128,16 @@ class OverlayWindow: NSPanel {
     func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        // Update cursor highlight for local events (global monitors don't capture our own app's events)
+        let cursorManager = CursorHighlightManager.shared
+        if cursorManager.isActive {
+            cursorManager.cursorPosition = NSEvent.mouseLocation
+            cursorManager.isMouseDown = true
+            cursorManager.mouseDownTime = CACurrentMediaTime()
+            // Only notify on mouseDown to start animation loop
+            NotificationCenter.default.post(name: .cursorHighlightNeedsUpdate, object: nil)
+        }
+
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
         overlayView.lastMousePosition = startPoint  // Track mouse position for paste
@@ -338,6 +348,13 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        // Update cursor highlight position during drag (animation loop handles rendering)
+        let cursorManager = CursorHighlightManager.shared
+        if cursorManager.isActive && cursorManager.isMouseDown {
+            cursorManager.cursorPosition = NSEvent.mouseLocation
+            // No notification needed - animation loop already running from mouseDown
+        }
+
         overlayView.needsDisplay = true
         let currentPoint = event.locationInWindow
         overlayView.lastMousePosition = currentPoint  // Track mouse position for paste
@@ -449,8 +466,15 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let cursorManager = CursorHighlightManager.shared
+        if cursorManager.isActive {
+            cursorManager.startReleaseAnimation()
+            cursorManager.isMouseDown = false
+            NotificationCenter.default.post(name: .cursorHighlightNeedsUpdate, object: nil)
+        }
+
         overlayView.needsDisplay = true
-        
+
         // Handle rectangle selection end
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
             if let start = overlayView.selectionRectStart, let end = overlayView.selectionRectEnd {
@@ -647,6 +671,9 @@ class OverlayWindow: NSPanel {
                 return
             case ShortcutManager.shared.getShortcut(for: .toggleBoard):
                 AppDelegate.shared?.toggleBoardVisibility(nil)
+                return
+            case ShortcutManager.shared.getShortcut(for: .toggleClickEffects):
+                AppDelegate.shared?.toggleClickEffects(nil)
                 return
             default:
                 break
@@ -862,6 +889,12 @@ class OverlayWindow: NSPanel {
         showFeedback(text, lineColor: overlayView.currentColor, lineWidth: width)
     }
     
+    func showToggleFeedback(_ text: String, icon: String) {
+        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        guard !hideToolFeedback else { return }
+        showFeedback("\(icon) \(text)")
+    }
+
     func showToolFeedback(_ tool: ToolType) {
         // Check if tool feedback is hidden in settings (default: false, meaning show feedback)
         let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)

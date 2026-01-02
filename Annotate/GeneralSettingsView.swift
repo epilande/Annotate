@@ -11,6 +11,11 @@ struct GeneralSettingsView: View {
     @AppStorage(UserDefaults.enableBoardKey)
     private var enableBoard = false
     @State private var boardOpacity: Double = BoardManager.shared.opacity
+    @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
+    @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
+    @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
+    @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
+    @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
 
     var body: some View {
         ScrollView {
@@ -121,6 +126,90 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
+
+                Divider()
+
+                SettingsSection(
+                    icon: "cursorarrow.motionlines",
+                    title: "Cursor Highlight",
+                    subtitle: "Spotlight and click effects for cursor visibility"
+                ) {
+                    SettingsToggleRow(
+                        title: "Enable Cursor Spotlight",
+                        description: "Show spotlight following cursor",
+                        isOn: $cursorHighlightEnabled
+                    ) {
+                        CursorHighlightManager.shared.cursorHighlightEnabled = cursorHighlightEnabled
+                    }
+
+                    if cursorHighlightEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Spotlight Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("30")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+                                Slider(value: $spotlightSize, in: 30...100)
+                                    .onChange(of: spotlightSize) { _, newValue in
+                                        CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                    }
+                                Text("100")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                            }
+                        }
+                    }
+
+                    SettingsToggleRow(
+                        title: "Enable Click Effect",
+                        description: "Ripple on click + highlight while holding",
+                        isOn: $clickEffectsEnabled
+                    ) {
+                        CursorHighlightManager.shared.clickEffectsEnabled = clickEffectsEnabled
+                    }
+
+                    if clickEffectsEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Click Effect Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("30")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+                                Slider(value: $effectSize, in: 30...100)
+                                    .onChange(of: effectSize) { _, newValue in
+                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                    }
+                                Text("100")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                            }
+                        }
+                    }
+
+                    if clickEffectsEnabled || cursorHighlightEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Effect Color")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 6) {
+                                ForEach(Array(colorPalette.enumerated()), id: \.offset) { _, color in
+                                    PresetColorButton(
+                                        color: color,
+                                        isSelected: NSColor(effectColor).isClose(to: color)
+                                    ) {
+                                        effectColor = Color(color)
+                                        CursorHighlightManager.shared.effectColor = color
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 24)
             .padding(.top, 24)
@@ -129,6 +218,35 @@ struct GeneralSettingsView: View {
         .onAppear {
             enableBoard = BoardManager.shared.isEnabled
             boardOpacity = BoardManager.shared.opacity
+            clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+            cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
+            effectColor = Color(CursorHighlightManager.shared.effectColor)
+            effectSize = Double(CursorHighlightManager.shared.effectSize)
+            spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
         }
+    }
+}
+
+private struct PresetColorButton: View {
+    let color: NSColor
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            SwiftUI.Circle()
+                .fill(Color(color))
+                .frame(width: 24, height: 24)
+                .overlay(
+                    SwiftUI.Circle()
+                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+                )
+                .overlay(
+                    SwiftUI.Circle()
+                        .strokeBorder(isSelected ? Color.primary : Color.clear, lineWidth: 2)
+                        .padding(-2)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
