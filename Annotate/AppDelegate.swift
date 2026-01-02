@@ -24,6 +24,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var globalMouseMoveMonitor: Any?
     var globalMouseClickMonitor: Any?
     var globalMouseUpMonitor: Any?
+    var localMouseMoveMonitor: Any?
+    var localMouseClickMonitor: Any?
+    var localMouseUpMonitor: Any?
 
     override init() {
         self.userDefaults = .standard
@@ -921,6 +924,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func setupGlobalMouseMonitors() {
+        // Global monitors - receive events when app is NOT frontmost
         globalMouseMoveMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         ) { [weak self] event in
@@ -937,6 +941,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             matching: [.leftMouseUp, .rightMouseUp]
         ) { [weak self] event in
             self?.handleGlobalMouseUp(event)
+        }
+
+        // Local monitors - receive events when app IS frontmost (e.g., Settings window open)
+        localMouseMoveMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] event in
+            self?.handleGlobalMouseMove(event)
+            return event
+        }
+
+        localMouseClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            self?.handleGlobalMouseDown(event)
+            return event
+        }
+
+        localMouseUpMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseUp, .rightMouseUp]
+        ) { [weak self] event in
+            self?.handleGlobalMouseUp(event)
+            return event
         }
     }
 
