@@ -38,6 +38,47 @@
 
 <p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.1.0">full changelog</a> for details.</p>
             ]]></description>
+            <pubDate>Sat, 03 Jan 2026 08:41:51 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.1.0/Annotate-1.1.0.zip"
+                       sparkle:version="1159"
+                       sparkle:shortVersionString="1.1.0"
+                       sparkle:edSignature="3N4ZmQMAU6rY+OPRxIeOizCtLy0Y60cSz+C0P7CU9TmMLNKl7tUu/qAV3L5XRrBfbwzkvleiqLZpjP2796wICQ=="
+                       length="2623645"
+                       type="application/octet-stream" />
+        </item>
+        <item>
+            <title>Version v1.1.0</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.1.0</link>
+            <description><![CDATA[
+<h1>Annotate v1.1.0</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>This release introduces a cursor highlighting system with spotlight and click effects, designed to enhance cursor visibility during presentations and screen recordings. The spotlight effect creates a customizable glow that follows your cursor, while click effects provide visual feedback with ring animations when clicking.</p>
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="cursor-highlight-system-33">Cursor Highlight System (#33)</h3>
+<ul>
+<li><strong>Spotlight Effect</strong>: Configurable glow that follows the cursor across all screens (size: 30-100px)</li>
+<li><strong>Click Effects</strong>: Ring animation on mouse down/up with visual hold state feedback</li>
+<li><strong>Color Customization</strong>: Preset color palette for personalizing effect colors</li>
+<li><strong>Size Controls</strong>: Adjustable sliders for effect and spotlight sizes</li>
+<li><strong>Keyboard Shortcut</strong>: Toggle click effects on/off with configurable shortcut (<code>K</code> by default)</li>
+<li><strong>Multi-Screen Support</strong>: Works seamlessly across all connected displays</li>
+</ul>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<ul>
+<li><strong>Local Mouse Monitors</strong>: Fixed cursor effects to properly handle frontmost app events (#33)</li>
+<li><strong>Overlay Integration</strong>: Enabled click effects on the annotation overlay for consistent behavior</li>
+<li><strong>CI Build Numbers</strong>: Fixed build numbering to use git commit count for monotonic versioning</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Rendering Performance</strong>: Refactored to use CAShapeLayer for efficient release animation rendering</li>
+<li><strong>Simplified Architecture</strong>: Streamlined click effects to always-on mode when enabled</li>
+<li><strong>Test Coverage</strong>: Added comprehensive test suite for CursorHighlightManager</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.1.0">full changelog</a> for details.</p>
+            ]]></description>
             <pubDate>Fri, 02 Jan 2026 21:27:17 +0000</pubDate>
             <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.1.0/Annotate-1.1.0.zip"
                        sparkle:version="1157"
