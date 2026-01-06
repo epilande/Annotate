@@ -6,6 +6,45 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.1.1</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.1.1</link>
+            <description><![CDATA[
+<h1>Annotate v1.1.1</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>Annotate now supports Intel Macs with a universal binary and runs on macOS 14.0 (Sonoma) and later, expanding compatibility for more users.</p>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<h3 id="intel-mac-support-26-35">Intel Mac Support (#26, #35)</h3>
+<ul>
+<li><strong>Problem Solved</strong>: App was not supported on Intel-based Macs and some Sequoia systems</li>
+<li><strong>Impact</strong>: Users on Intel Macs can now install and run Annotate</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Compatibility</strong>:
+<ul>
+<li>Lowered deployment target from macOS 15.2 to macOS 14.0 (Sonoma)</li>
+<li>Built universal binary with both arm64 and x86_64 architectures</li>
+<li>Replaced macOS 15+ APIs with backward-compatible alternatives:
+<ul>
+<li>SwiftUI.Rectangle() instead of .contentShape(.rect)</li>
+<li>NSEvent monitor instead of .onKeyPress/.onExitCommand</li>
+<li>Removed .focusEffectDisabled() modifier</li>
+</ul></li>
+</ul></li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.1.1">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Tue, 06 Jan 2026 09:30:06 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.1.1/Annotate-1.1.1.zip"
+                       sparkle:version="1161"
+                       sparkle:shortVersionString="1.1.1"
+                       sparkle:edSignature="QmQQcfsLV5SVBXlojD87/KNux3M6/a/MekSuGxjl7a66rHIn+yZg/Q/IqvookqVGdQ/YSVW0BUq8miaAPjnlBQ=="
+                       length="2972105"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.1.0</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.1.0</link>
             <description><![CDATA[
