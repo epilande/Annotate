@@ -81,7 +81,7 @@ jobs:
             -configuration "$CONFIG" \
             -archivePath "$ARCHIVE_PATH" \
             -destination "generic/platform=macOS" \
-            ARCHS=arm64 \
+            ARCHS="arm64 x86_64" \
             CODE_SIGNING_ALLOWED=NO \
             MARKETING_VERSION=${{ steps.version.outputs.semver }} \
             CURRENT_PROJECT_VERSION=${{ steps.version.outputs.build_number }} \

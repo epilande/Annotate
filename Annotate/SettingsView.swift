@@ -77,9 +77,8 @@ struct CustomTabButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 60)
             .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
-            .contentShape(.rect)
+            .contentShape(SwiftUI.Rectangle())
         }
         .buttonStyle(.plain)
-        .focusEffectDisabled()
     }
 }
