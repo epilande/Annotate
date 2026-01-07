@@ -120,8 +120,10 @@ class CursorHighlightManager: @unchecked Sendable {
             return ActiveCursorStyle(rawValue: stored) ?? .none
         }
         set {
+            let oldValue = activeCursorStyle
             userDefaults.set(newValue.rawValue, forKey: UserDefaults.activeCursorStyleKey)
             notifyStateChanged()
+            updateSystemCursorVisibility(oldStyle: oldValue, newStyle: newValue)
         }
     }
 
@@ -130,6 +132,7 @@ class CursorHighlightManager: @unchecked Sendable {
         didSet {
             if oldValue != isOverlayActive {
                 notifyStateChanged()
+                updateSystemCursorVisibility(wasActive: oldValue, isActive: isOverlayActive)
             }
         }
     }
@@ -190,6 +193,46 @@ class CursorHighlightManager: @unchecked Sendable {
         if let animation = releaseAnimation, animation.isExpired {
             releaseAnimation = nil
         }
+    }
+
+    // MARK: - System Cursor Visibility
+
+    private var isSystemCursorHidden = false
+
+    private func updateSystemCursorVisibility(wasActive: Bool, isActive: Bool) {
+        let shouldHide = isActive && activeCursorStyle != .none
+        let wasHidden = wasActive && activeCursorStyle != .none
+
+        if shouldHide && !wasHidden {
+            hideSystemCursor()
+        } else if !shouldHide && wasHidden {
+            showSystemCursor()
+        }
+    }
+
+    private func updateSystemCursorVisibility(oldStyle: ActiveCursorStyle, newStyle: ActiveCursorStyle) {
+        guard isOverlayActive else { return }
+
+        let shouldHide = newStyle != .none
+        let wasHidden = oldStyle != .none
+
+        if shouldHide && !wasHidden {
+            hideSystemCursor()
+        } else if !shouldHide && wasHidden {
+            showSystemCursor()
+        }
+    }
+
+    private func hideSystemCursor() {
+        guard !isSystemCursorHidden else { return }
+        NSCursor.hide()
+        isSystemCursorHidden = true
+    }
+
+    private func showSystemCursor() {
+        guard isSystemCursorHidden else { return }
+        NSCursor.unhide()
+        isSystemCursorHidden = false
     }
 
     // MARK: - Notifications
