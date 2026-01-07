@@ -16,6 +16,7 @@ struct GeneralSettingsView: View {
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
+    @State private var activeCursorStyle: ActiveCursorStyle = CursorHighlightManager.shared.activeCursorStyle
 
     var body: some View {
         ScrollView {
@@ -134,6 +135,23 @@ struct GeneralSettingsView: View {
                     title: "Cursor Highlight",
                     subtitle: "Spotlight and click effects for cursor visibility"
                 ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Active Cursor")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Cursor style when overlay is active")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $activeCursorStyle) {
+                            ForEach(ActiveCursorStyle.allCases, id: \.self) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: activeCursorStyle) { _, newValue in
+                            CursorHighlightManager.shared.activeCursorStyle = newValue
+                        }
+                    }
+
                     SettingsToggleRow(
                         title: "Enable Cursor Spotlight",
                         description: "Show spotlight following cursor",
@@ -223,6 +241,7 @@ struct GeneralSettingsView: View {
             effectColor = Color(CursorHighlightManager.shared.effectColor)
             effectSize = Double(CursorHighlightManager.shared.effectSize)
             spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
+            activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
         }
     }
 }

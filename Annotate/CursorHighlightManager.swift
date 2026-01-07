@@ -1,5 +1,22 @@
 import Cocoa
 
+/// Cursor style options for active overlay indicator
+enum ActiveCursorStyle: String, CaseIterable {
+    case none = "none"
+    case outline = "outline"
+    case dot = "dot"
+    case crosshair = "crosshair"
+
+    var displayName: String {
+        switch self {
+        case .none: return "Default"
+        case .outline: return "Outline"
+        case .dot: return "Dot"
+        case .crosshair: return "Crosshair"
+        }
+    }
+}
+
 /// Animation state when mouse is released - ring expands and fades
 struct ReleaseAnimation {
     let center: NSPoint
@@ -95,6 +112,37 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    // MARK: - Active Cursor Settings
+
+    var activeCursorStyle: ActiveCursorStyle {
+        get {
+            let stored = userDefaults.string(forKey: UserDefaults.activeCursorStyleKey) ?? "none"
+            return ActiveCursorStyle(rawValue: stored) ?? .none
+        }
+        set {
+            userDefaults.set(newValue.rawValue, forKey: UserDefaults.activeCursorStyleKey)
+            notifyStateChanged()
+        }
+    }
+
+    /// Whether the annotation overlay is currently active/visible
+    var isOverlayActive: Bool = false {
+        didSet {
+            if oldValue != isOverlayActive {
+                notifyStateChanged()
+            }
+        }
+    }
+
+    /// Current annotation color (synced from AppDelegate)
+    var annotationColor: NSColor = .systemRed {
+        didSet {
+            if oldValue != annotationColor {
+                notifyStateChanged()
+            }
+        }
+    }
+
     var holdRingStartSize: CGFloat { effectSize * 0.2 }
     var holdRingEndSize: CGFloat { effectSize * 0.65 }
 
@@ -114,6 +162,10 @@ class CursorHighlightManager: @unchecked Sendable {
 
     var shouldShowCursorHighlight: Bool {
         cursorHighlightEnabled && !isMouseDown
+    }
+
+    var shouldShowActiveCursor: Bool {
+        isOverlayActive && activeCursorStyle != .none
     }
 
     var hasActiveAnimation: Bool {

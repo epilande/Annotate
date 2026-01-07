@@ -49,6 +49,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             currentColor = unarchivedColor
         }
 
+        // Sync annotation color to cursor highlight manager
+        CursorHighlightManager.shared.annotationColor = currentColor
+
         setupStatusBarItem()
         setupOverlayWindows()
 
@@ -423,6 +426,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if overlayWindow.isVisible {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
+            CursorHighlightManager.shared.isOverlayActive = false
         } else {
             configureWindowForNormalMode(overlayWindow)
 
@@ -434,6 +438,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
+            CursorHighlightManager.shared.isOverlayActive = true
+            CursorHighlightManager.shared.annotationColor = currentColor
         }
     }
     
@@ -454,6 +460,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             : .gray
         updateStatusBarIcon(with: iconColor)
 
+        // Update active cursor state
+        CursorHighlightManager.shared.isOverlayActive = alwaysOnMode
+        if alwaysOnMode {
+            CursorHighlightManager.shared.annotationColor = currentColor
+        }
+
         userDefaults.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
         updateAlwaysOnMenuItems()
     }
@@ -465,6 +477,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
+            CursorHighlightManager.shared.isOverlayActive = false
         }
     }
     
@@ -484,6 +497,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
+            CursorHighlightManager.shared.isOverlayActive = true
+            CursorHighlightManager.shared.annotationColor = currentColor
         }
     }
 

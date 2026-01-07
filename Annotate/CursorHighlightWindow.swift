@@ -80,10 +80,11 @@ class CursorHighlightWindow: NSPanel {
         highlightView.updateSpotlightPosition()
         highlightView.updateHoldRingPosition()
         highlightView.updateReleaseAnimation()
+        highlightView.updateActiveCursor()
 
         manager.cleanupExpiredAnimation()
 
-        if !manager.shouldShowCursorHighlight && !manager.shouldShowRing && !manager.hasActiveAnimation {
+        if !manager.shouldShowCursorHighlight && !manager.shouldShowRing && !manager.hasActiveAnimation && !manager.shouldShowActiveCursor {
             stopAnimationLoop()
         }
     }
@@ -93,7 +94,7 @@ class CursorHighlightWindow: NSPanel {
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
-        if manager.isActive || manager.cursorHighlightEnabled {
+        if manager.isActive || manager.cursorHighlightEnabled || manager.shouldShowActiveCursor {
             orderFront(nil)
             startAnimationLoop()
         } else {
