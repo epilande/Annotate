@@ -1,3 +1,4 @@
+import Combine
 import KeyboardShortcuts
 import SwiftUI
 
@@ -281,16 +282,23 @@ struct GeneralSettingsView: View {
             .padding(.bottom, 60)
         }
         .onAppear {
-            enableBoard = BoardManager.shared.isEnabled
-            boardOpacity = BoardManager.shared.opacity
-            clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
-            cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
-            effectColor = Color(CursorHighlightManager.shared.effectColor)
-            effectSize = Double(CursorHighlightManager.shared.effectSize)
-            spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
-            activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
-            activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
+            syncState()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorHighlightStateChanged)) { _ in
+            syncState()
+        }
+    }
+
+    private func syncState() {
+        enableBoard = BoardManager.shared.isEnabled
+        boardOpacity = BoardManager.shared.opacity
+        clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
+        cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
+        effectColor = Color(CursorHighlightManager.shared.effectColor)
+        effectSize = Double(CursorHighlightManager.shared.effectSize)
+        spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
+        activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
+        activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
     }
 }
 

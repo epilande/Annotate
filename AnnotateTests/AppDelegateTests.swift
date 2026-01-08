@@ -300,4 +300,57 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
         BoardManager.shared.isEnabled = initialState
     }
+
+    // MARK: - Toggle Click Effects Tests
+
+    func testToggleClickEffectsTogglesBothSettings() {
+        let cursorManager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = cursorManager
+
+        // Start with both disabled
+        cursorManager.clickEffectsEnabled = false
+        cursorManager.cursorHighlightEnabled = false
+
+        XCTAssertFalse(cursorManager.clickEffectsEnabled)
+        XCTAssertFalse(cursorManager.cursorHighlightEnabled)
+
+        // Toggle on - should enable both
+        appDelegate.toggleClickEffects(nil)
+
+        XCTAssertTrue(
+            CursorHighlightManager.shared.clickEffectsEnabled,
+            "clickEffectsEnabled should be true after toggle")
+        XCTAssertTrue(
+            CursorHighlightManager.shared.cursorHighlightEnabled,
+            "cursorHighlightEnabled should be true after toggle")
+
+        // Toggle off - should disable both
+        appDelegate.toggleClickEffects(nil)
+
+        XCTAssertFalse(
+            CursorHighlightManager.shared.clickEffectsEnabled,
+            "clickEffectsEnabled should be false after second toggle")
+        XCTAssertFalse(
+            CursorHighlightManager.shared.cursorHighlightEnabled,
+            "cursorHighlightEnabled should be false after second toggle")
+
+        CursorHighlightManager.shared = CursorHighlightManager()
+    }
+
+    func testToggleClickEffectsPostsNotification() {
+        let cursorManager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = cursorManager
+
+        cursorManager.clickEffectsEnabled = false
+        cursorManager.cursorHighlightEnabled = false
+
+        let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
+        expectation.expectedFulfillmentCount = 2  // One for each property set
+
+        appDelegate.toggleClickEffects(nil)
+
+        wait(for: [expectation], timeout: 1.0)
+
+        CursorHighlightManager.shared = CursorHighlightManager()
+    }
 }
