@@ -32,6 +32,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ↕️ **Line Width Control:** Adjust line thickness with an interactive picker or Command+Scroll wheel.
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
+- 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -65,7 +66,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
    - Open your **Applications** folder and double-click `Annotate.app` to launch it.
 
 > [!NOTE]
-> Make sure your macOS version is 15 or later.
+> Requires macOS 14 (Sonoma) or later. Supports both Apple Silicon and Intel Macs.
 >
 > The app is code-signed and notarized for macOS Gatekeeper compatibility.
 
@@ -311,6 +312,8 @@ Settings are organized into two tabs: **General** and **Shortcuts**.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Enable Board**: Show whiteboard or blackboard background.
 - **Board Opacity**: Adjust board background transparency (10-100%).
+- **Cursor Style**: Choose how the cursor appears while annotating (None, Outline, Circle, Crosshair).
+- **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
 - **Enable Click Effect**: Show ripple effect on mouse clicks.
 
