@@ -48,16 +48,12 @@ class CursorHighlightView: NSView {
         layer?.addSublayer(releaseLayer)
         releaseRingLayer = releaseLayer
 
-        // Active cursor outline layer (drawn first, behind the fill)
         let cursorOutline = CAShapeLayer()
-        cursorOutline.lineWidth = 1.5
         cursorOutline.opacity = 0
         layer?.addSublayer(cursorOutline)
         activeCursorOutlineLayer = cursorOutline
 
-        // Active cursor layer (overlay indicator)
         let cursorLayer = CAShapeLayer()
-        cursorLayer.lineWidth = 1.0
         cursorLayer.opacity = 0
         layer?.addSublayer(cursorLayer)
         activeCursorLayer = cursorLayer
@@ -190,7 +186,6 @@ class CursorHighlightView: NSView {
             let localPoint = convert(windowPoint, from: nil)
 
             let color = manager.annotationColor
-            let contrastColor = color.contrastingColor()
 
             switch manager.activeCursorStyle {
             case .none:
@@ -198,31 +193,41 @@ class CursorHighlightView: NSView {
                 outlineLayer.opacity = 0
 
             case .outline:
-                let path = createArrowPath()
-                cursorLayer.path = path
-                cursorLayer.position = localPoint
-                cursorLayer.fillColor = NSColor.black.cgColor
-                cursorLayer.strokeColor = color.cgColor
-                cursorLayer.lineWidth = 1.0
-                cursorLayer.opacity = 1
-
-                outlineLayer.opacity = 0
-
-            case .dot:
-                let size: CGFloat = 20
-                let rect = CGRect(x: -size / 2, y: -size / 2, width: size, height: size)
-                let path = CGPath(ellipseIn: rect, transform: nil)
-
-                // Outline layer (contrast)
-                outlineLayer.path = path
+                let outerPath = createCursorOuterPath()
+                outlineLayer.path = outerPath
                 outlineLayer.position = localPoint
-                outlineLayer.fillColor = nil
-                outlineLayer.strokeColor = contrastColor.cgColor
-                outlineLayer.lineWidth = 3.0
+                outlineLayer.fillColor = color.cgColor
+                outlineLayer.strokeColor = nil
+                outlineLayer.lineWidth = 0
                 outlineLayer.opacity = 1
 
-                // Main layer (filled with color)
-                cursorLayer.path = path
+                let innerPath = createCursorInnerPath()
+                cursorLayer.path = innerPath
+                cursorLayer.position = localPoint
+                cursorLayer.fillColor = NSColor.black.cgColor
+                cursorLayer.strokeColor = nil
+                cursorLayer.lineWidth = 0
+                cursorLayer.opacity = 1
+
+            case .circle:
+                let size = manager.activeCursorSize
+                let innerSize = size * 0.4
+                let strokeWidth = max(2.0, size / 10)
+
+                let outerRect = CGRect(x: -size / 2, y: -size / 2, width: size, height: size)
+                let outerPath = CGPath(ellipseIn: outerRect, transform: nil)
+
+                outlineLayer.path = outerPath
+                outlineLayer.position = localPoint
+                outlineLayer.fillColor = nil
+                outlineLayer.strokeColor = color.cgColor
+                outlineLayer.lineWidth = strokeWidth
+                outlineLayer.opacity = 1
+
+                let innerRect = CGRect(x: -innerSize / 2, y: -innerSize / 2, width: innerSize, height: innerSize)
+                let innerPath = CGPath(ellipseIn: innerRect, transform: nil)
+
+                cursorLayer.path = innerPath
                 cursorLayer.position = localPoint
                 cursorLayer.fillColor = color.cgColor
                 cursorLayer.strokeColor = nil
@@ -230,20 +235,12 @@ class CursorHighlightView: NSView {
                 cursorLayer.opacity = 1
 
             case .crosshair:
-                let size: CGFloat = 20
-                let thickness: CGFloat = 2.5
-                let path = createCrosshairPath(size: size, thickness: thickness)
+                let size = manager.activeCursorSize
+                let thickness = max(2.5, size / 5)
 
-                // Outline layer (contrast)
-                outlineLayer.path = path
-                outlineLayer.position = localPoint
-                outlineLayer.fillColor = nil
-                outlineLayer.strokeColor = contrastColor.cgColor
-                outlineLayer.lineWidth = 3.0
-                outlineLayer.opacity = 1
+                outlineLayer.opacity = 0
 
-                // Main layer (colored stroke)
-                cursorLayer.path = path
+                cursorLayer.path = createCrosshairPath(size: size)
                 cursorLayer.position = localPoint
                 cursorLayer.fillColor = nil
                 cursorLayer.strokeColor = color.cgColor
@@ -258,35 +255,42 @@ class CursorHighlightView: NSView {
         CATransaction.commit()
     }
 
-    /// Creates a macOS-style arrow cursor path
-    private func createArrowPath() -> CGPath {
+    private func createCrosshairPath(size: CGFloat) -> CGPath {
         let path = CGMutablePath()
-        // Arrow pointing up-left, with tip at origin
-        // Coordinates are in view space (y increases upward in non-flipped view)
-        path.move(to: CGPoint(x: 0, y: 0))           // Tip
-        path.addLine(to: CGPoint(x: 0, y: -17))     // Left edge down
-        path.addLine(to: CGPoint(x: 4, y: -13))     // Notch inner
-        path.addLine(to: CGPoint(x: 8, y: -21))     // Tail bottom-left
-        path.addLine(to: CGPoint(x: 11, y: -19))    // Tail bottom-right
-        path.addLine(to: CGPoint(x: 7, y: -11))     // Back to body
-        path.addLine(to: CGPoint(x: 12, y: -11))    // Right point
+        let halfSize = size / 2
+        path.move(to: CGPoint(x: -halfSize, y: 0))
+        path.addLine(to: CGPoint(x: halfSize, y: 0))
+        path.move(to: CGPoint(x: 0, y: -halfSize))
+        path.addLine(to: CGPoint(x: 0, y: halfSize))
+        return path
+    }
+
+    private func createCursorOuterPath() -> CGPath {
+        let path = CGMutablePath()
+        let yOffset: CGFloat = 1
+        path.move(to: CGPoint(x: 0, y: yOffset))
+        path.addLine(to: CGPoint(x: 0, y: -16 + yOffset))
+        path.addLine(to: CGPoint(x: 3.3, y: -13.2 + yOffset))
+        path.addLine(to: CGPoint(x: 6.1, y: -18.5 + yOffset))
+        path.addLine(to: CGPoint(x: 8, y: -17.5 + yOffset))
+        path.addLine(to: CGPoint(x: 9.6, y: -16.6 + yOffset))
+        path.addLine(to: CGPoint(x: 7, y: -11.8 + yOffset))
+        path.addLine(to: CGPoint(x: 11.4, y: -11.8 + yOffset))
         path.closeSubpath()
         return path
     }
 
-    /// Creates a crosshair (+) path
-    private func createCrosshairPath(size: CGFloat, thickness: CGFloat) -> CGPath {
+    private func createCursorInnerPath() -> CGPath {
         let path = CGMutablePath()
-        let halfSize = size / 2
-
-        // Horizontal line
-        path.move(to: CGPoint(x: -halfSize, y: 0))
-        path.addLine(to: CGPoint(x: halfSize, y: 0))
-
-        // Vertical line
-        path.move(to: CGPoint(x: 0, y: -halfSize))
-        path.addLine(to: CGPoint(x: 0, y: halfSize))
-
+        let yOffset: CGFloat = 1
+        path.move(to: CGPoint(x: 1, y: -2.8 + yOffset))
+        path.addLine(to: CGPoint(x: 1, y: -14 + yOffset))
+        path.addLine(to: CGPoint(x: 3.5, y: -11.6 + yOffset))
+        path.addLine(to: CGPoint(x: 6.3, y: -16.8 + yOffset))
+        path.addLine(to: CGPoint(x: 8.2, y: -15.9 + yOffset))
+        path.addLine(to: CGPoint(x: 5.4, y: -10.7 + yOffset))
+        path.addLine(to: CGPoint(x: 9, y: -10.7 + yOffset))
+        path.closeSubpath()
         return path
     }
 }

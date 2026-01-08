@@ -4,14 +4,14 @@ import Cocoa
 enum ActiveCursorStyle: String, CaseIterable {
     case none = "none"
     case outline = "outline"
-    case dot = "dot"
+    case circle = "circle"
     case crosshair = "crosshair"
 
     var displayName: String {
         switch self {
         case .none: return "Default"
         case .outline: return "Outline"
-        case .dot: return "Dot"
+        case .circle: return "Circle"
         case .crosshair: return "Crosshair"
         }
     }
@@ -120,10 +120,19 @@ class CursorHighlightManager: @unchecked Sendable {
             return ActiveCursorStyle(rawValue: stored) ?? .none
         }
         set {
-            let oldValue = activeCursorStyle
             userDefaults.set(newValue.rawValue, forKey: UserDefaults.activeCursorStyleKey)
             notifyStateChanged()
-            updateSystemCursorVisibility(oldStyle: oldValue, newStyle: newValue)
+        }
+    }
+
+    var activeCursorSize: CGFloat {
+        get {
+            let stored = userDefaults.double(forKey: UserDefaults.activeCursorSizeKey)
+            return stored > 0 ? CGFloat(stored) : 14.0
+        }
+        set {
+            userDefaults.set(Double(newValue), forKey: UserDefaults.activeCursorSizeKey)
+            notifyStateChanged()
         }
     }
 
@@ -132,7 +141,6 @@ class CursorHighlightManager: @unchecked Sendable {
         didSet {
             if oldValue != isOverlayActive {
                 notifyStateChanged()
-                updateSystemCursorVisibility(wasActive: oldValue, isActive: isOverlayActive)
             }
         }
     }
@@ -197,42 +205,26 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - System Cursor Visibility
 
-    private var isSystemCursorHidden = false
+    private var isCursorHidden = false
 
-    private func updateSystemCursorVisibility(wasActive: Bool, isActive: Bool) {
-        let shouldHide = isActive && activeCursorStyle != .none
-        let wasHidden = wasActive && activeCursorStyle != .none
-
-        if shouldHide && !wasHidden {
-            hideSystemCursor()
-        } else if !shouldHide && wasHidden {
-            showSystemCursor()
-        }
-    }
-
-    private func updateSystemCursorVisibility(oldStyle: ActiveCursorStyle, newStyle: ActiveCursorStyle) {
-        guard isOverlayActive else { return }
-
-        let shouldHide = newStyle != .none
-        let wasHidden = oldStyle != .none
-
-        if shouldHide && !wasHidden {
-            hideSystemCursor()
-        } else if !shouldHide && wasHidden {
-            showSystemCursor()
-        }
-    }
-
-    private func hideSystemCursor() {
-        guard !isSystemCursorHidden else { return }
+    func hideSystemCursor() {
+        guard !isCursorHidden else { return }
         NSCursor.hide()
-        isSystemCursorHidden = true
+        isCursorHidden = true
     }
 
-    private func showSystemCursor() {
-        guard isSystemCursorHidden else { return }
+    func showSystemCursor() {
+        guard isCursorHidden else { return }
         NSCursor.unhide()
-        isSystemCursorHidden = false
+        isCursorHidden = false
+    }
+
+    func updateCursorVisibility() {
+        if shouldShowActiveCursor {
+            hideSystemCursor()
+        } else {
+            showSystemCursor()
+        }
     }
 
     // MARK: - Notifications

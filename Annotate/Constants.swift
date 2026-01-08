@@ -21,6 +21,7 @@ extension UserDefaults {
     static let cursorHighlightEnabledKey = "CursorHighlightEnabled"
     static let spotlightSizeKey = "SpotlightSize"
     static let activeCursorStyleKey = "ActiveCursorStyle"
+    static let activeCursorSizeKey = "ActiveCursorSize"
 }
 
 let colorPalette: [NSColor] = [

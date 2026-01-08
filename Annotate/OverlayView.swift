@@ -54,12 +54,73 @@ class OverlayView: NSView, NSTextFieldDelegate {
     let fadeDuration: CFTimeInterval = 1.25
     var isReadOnlyMode: Bool = false
 
+    private var cursorTrackingArea: NSTrackingArea?
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        updateCursorTrackingArea()
     }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        updateCursorTrackingArea()
+    }
+
+    // MARK: - Cursor Management
+
+    private static let transparentCursor: NSCursor = {
+        let size = NSSize(width: 16, height: 16)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.clear.setFill()
+            rect.fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))
+    }()
+
+    private func updateCursorTrackingArea() {
+        if let existing = cursorTrackingArea {
+            removeTrackingArea(existing)
+        }
+
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        cursorTrackingArea = trackingArea
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        updateCursorTrackingArea()
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        updateCursor()
+        if !CursorHighlightManager.shared.shouldShowActiveCursor {
+            super.cursorUpdate(with: event)
+        }
+    }
+
+    func updateCursor() {
+        let manager = CursorHighlightManager.shared
+        if manager.shouldShowActiveCursor {
+            Self.transparentCursor.set()
+            manager.hideSystemCursor()
+        } else {
+            manager.showSystemCursor()
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let manager = CursorHighlightManager.shared
+        if manager.shouldShowActiveCursor {
+            addCursorRect(bounds, cursor: Self.transparentCursor)
+        }
     }
 
     override var undoManager: UndoManager? {

@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var localMouseMoveMonitor: Any?
     var localMouseClickMonitor: Any?
     var localMouseUpMonitor: Any?
+    var localFlagsChangedMonitor: Any?
 
     override init() {
         self.userDefaults = .standard
@@ -979,6 +980,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             self?.handleGlobalMouseUp(event)
             return event
         }
+
+        // Modifier keys from hotkeys can trigger cursor resets
+        localFlagsChangedMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.flagsChanged]
+        ) { [weak self] event in
+            self?.handleFlagsChanged(event)
+            return event
+        }
+    }
+
+    func handleFlagsChanged(_ event: NSEvent) {
+        let manager = CursorHighlightManager.shared
+        if manager.shouldShowActiveCursor {
+            manager.hideSystemCursor()
+        }
     }
 
     func setupCursorHighlightObservers() {
@@ -1002,6 +1018,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     @objc func cursorHighlightStateChanged() {
         updateAllCursorHighlightWindows()
+        CursorHighlightManager.shared.updateCursorVisibility()
+        overlayWindows.values.forEach { window in
+            window.overlayView.updateCursor()
+            window.overlayView.window?.invalidateCursorRects(for: window.overlayView)
+        }
     }
 
     /// Called from OverlayWindow to trigger cursor highlight updates for local mouse events

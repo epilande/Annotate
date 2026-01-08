@@ -744,6 +744,8 @@ class OverlayWindow: NSPanel {
 
         isOptionCurrentlyPressed = optionPressed
         isShiftCurrentlyPressed = shiftPressed
+
+        overlayView.updateCursor()
     }
 
     private func recenterAnchorForCurrentShape() {
