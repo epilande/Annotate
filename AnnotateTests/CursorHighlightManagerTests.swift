@@ -316,36 +316,6 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertEqual(persistedValue, "outline", "activeCursorStyle should be persisted to UserDefaults")
     }
 
-    func testShouldShowActiveCursorReturnsFalseWhenStyleIsNone() {
-        manager.isOverlayActive = true
-        manager.activeCursorStyle = .none
-
-        XCTAssertFalse(
-            manager.shouldShowActiveCursor,
-            "shouldShowActiveCursor should return false when activeCursorStyle is .none"
-        )
-    }
-
-    func testShouldShowActiveCursorReturnsFalseWhenOverlayNotActive() {
-        manager.isOverlayActive = false
-        manager.activeCursorStyle = .outline
-
-        XCTAssertFalse(
-            manager.shouldShowActiveCursor,
-            "shouldShowActiveCursor should return false when overlay is not active"
-        )
-    }
-
-    func testShouldShowActiveCursorReturnsTrueWhenActiveAndStyleSet() {
-        manager.isOverlayActive = true
-        manager.activeCursorStyle = .outline
-
-        XCTAssertTrue(
-            manager.shouldShowActiveCursor,
-            "shouldShowActiveCursor should return true when overlay is active and style is set"
-        )
-    }
-
     // MARK: - Per-Screen Active Cursor Tests
 
     func testShouldShowActiveCursorOnScreenReturnsFalseWhenStyleIsNone() {

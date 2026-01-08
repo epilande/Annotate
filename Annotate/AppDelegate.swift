@@ -427,7 +427,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if overlayWindow.isVisible {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
-            CursorHighlightManager.shared.isOverlayActive = false
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         } else {
             configureWindowForNormalMode(overlayWindow)
 
@@ -439,11 +439,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            CursorHighlightManager.shared.isOverlayActive = true
             CursorHighlightManager.shared.annotationColor = currentColor
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
-    
+
     @objc func toggleAlwaysOnMode() {
         alwaysOnMode.toggle()
 
@@ -472,10 +472,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
-            CursorHighlightManager.shared.isOverlayActive = false
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
-    
+
     @objc func closeOverlayAndEnableAlwaysOn() {
         if !alwaysOnMode {
             toggleAlwaysOnMode()
@@ -492,8 +492,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
-            CursorHighlightManager.shared.isOverlayActive = true
             CursorHighlightManager.shared.annotationColor = currentColor
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
 

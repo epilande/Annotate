@@ -136,15 +136,6 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
-    /// Whether the annotation overlay is currently active/visible
-    var isOverlayActive: Bool = false {
-        didSet {
-            if oldValue != isOverlayActive {
-                notifyStateChanged()
-            }
-        }
-    }
-
     /// Current annotation color (synced from AppDelegate)
     var annotationColor: NSColor = .systemRed {
         didSet {
@@ -175,18 +166,18 @@ class CursorHighlightManager: @unchecked Sendable {
         cursorHighlightEnabled && !isMouseDown
     }
 
-    var shouldShowActiveCursor: Bool {
-        isOverlayActive && activeCursorStyle != .none
-    }
-
     var hasActiveAnimation: Bool {
         releaseAnimation.map { !$0.isExpired } ?? false
     }
 
     // MARK: - Per-Screen Active Cursor
-    // Active cursor visibility is determined per-screen based on actual overlay window visibility,
-    // not the global isOverlayActive flag. This allows multiple monitors to have independent
-    // overlay states - closing the overlay on one screen won't affect the cursor on other screens.
+    // Active cursor visibility is determined per-screen based on actual overlay window visibility.
+    // This allows multiple monitors to have independent overlay states.
+
+    /// Called when overlay visibility changes to trigger cursor updates
+    func overlayVisibilityChanged() {
+        notifyStateChanged()
+    }
 
     func isOverlayActiveOnScreen(_ screen: NSScreen) -> Bool {
         AppDelegate.shared?.overlayWindows[screen]?.isVisible ?? false

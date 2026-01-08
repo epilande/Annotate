@@ -189,21 +189,15 @@ class CursorHighlightView: NSView {
             let color = manager.annotationColor
 
             switch manager.activeCursorStyle {
-            case .none:
-                cursorLayer.opacity = 0
-                outlineLayer.opacity = 0
-
             case .outline:
-                let outerPath = createCursorOuterPath()
-                outlineLayer.path = outerPath
+                outlineLayer.path = Self.cursorOuterPath
                 outlineLayer.position = localPoint
                 outlineLayer.fillColor = color.cgColor
                 outlineLayer.strokeColor = nil
                 outlineLayer.lineWidth = 0
                 outlineLayer.opacity = 1
 
-                let innerPath = createCursorInnerPath()
-                cursorLayer.path = innerPath
+                cursorLayer.path = Self.cursorInnerPath
                 cursorLayer.position = localPoint
                 cursorLayer.fillColor = NSColor.black.cgColor
                 cursorLayer.strokeColor = nil
@@ -247,6 +241,9 @@ class CursorHighlightView: NSView {
                 cursorLayer.strokeColor = color.cgColor
                 cursorLayer.lineWidth = thickness
                 cursorLayer.opacity = 1
+
+            case .none:
+                break
             }
         } else {
             cursorLayer.opacity = 0
@@ -266,32 +263,32 @@ class CursorHighlightView: NSView {
         return path
     }
 
-    private func createCursorOuterPath() -> CGPath {
-        let path = CGMutablePath()
-        let yOffset: CGFloat = 1
-        path.move(to: CGPoint(x: 0, y: yOffset))
-        path.addLine(to: CGPoint(x: 0, y: -16 + yOffset))
-        path.addLine(to: CGPoint(x: 3.3, y: -13.2 + yOffset))
-        path.addLine(to: CGPoint(x: 6.1, y: -18.5 + yOffset))
-        path.addLine(to: CGPoint(x: 8, y: -17.5 + yOffset))
-        path.addLine(to: CGPoint(x: 9.6, y: -16.6 + yOffset))
-        path.addLine(to: CGPoint(x: 7, y: -11.8 + yOffset))
-        path.addLine(to: CGPoint(x: 11.4, y: -11.8 + yOffset))
-        path.closeSubpath()
-        return path
-    }
+    // MARK: - Static Cursor Paths
 
-    private func createCursorInnerPath() -> CGPath {
+    private static let cursorOuterPath: CGPath = {
         let path = CGMutablePath()
-        let yOffset: CGFloat = 1
-        path.move(to: CGPoint(x: 1, y: -2.8 + yOffset))
-        path.addLine(to: CGPoint(x: 1, y: -14 + yOffset))
-        path.addLine(to: CGPoint(x: 3.5, y: -11.6 + yOffset))
-        path.addLine(to: CGPoint(x: 6.3, y: -16.8 + yOffset))
-        path.addLine(to: CGPoint(x: 8.2, y: -15.9 + yOffset))
-        path.addLine(to: CGPoint(x: 5.4, y: -10.7 + yOffset))
-        path.addLine(to: CGPoint(x: 9, y: -10.7 + yOffset))
+        path.move(to: CGPoint(x: 0, y: 1))
+        path.addLine(to: CGPoint(x: 0, y: -15))
+        path.addLine(to: CGPoint(x: 3.3, y: -12.2))
+        path.addLine(to: CGPoint(x: 6.1, y: -17.5))
+        path.addLine(to: CGPoint(x: 8, y: -16.5))
+        path.addLine(to: CGPoint(x: 9.6, y: -15.6))
+        path.addLine(to: CGPoint(x: 7, y: -10.8))
+        path.addLine(to: CGPoint(x: 11.4, y: -10.8))
         path.closeSubpath()
         return path
-    }
+    }()
+
+    private static let cursorInnerPath: CGPath = {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 1, y: -1.8))
+        path.addLine(to: CGPoint(x: 1, y: -13))
+        path.addLine(to: CGPoint(x: 3.5, y: -10.6))
+        path.addLine(to: CGPoint(x: 6.3, y: -15.8))
+        path.addLine(to: CGPoint(x: 8.2, y: -14.9))
+        path.addLine(to: CGPoint(x: 5.4, y: -9.7))
+        path.addLine(to: CGPoint(x: 9, y: -9.7))
+        path.closeSubpath()
+        return path
+    }()
 }
