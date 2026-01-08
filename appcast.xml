@@ -6,6 +6,58 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.2.0</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.2.0</link>
+            <description><![CDATA[
+<h1>Annotate v1.2.0</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>This release introduces a customizable <strong>Active Cursor Indicator</strong> that provides clear visual feedback when annotation mode is active. Choose from multiple cursor styles with configurable sizes that sync with your annotation color.</p>
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="active-cursor-visual-indicator-36">Active Cursor Visual Indicator (#36)</h3>
+<ul>
+<li><strong>Multiple Cursor Styles</strong>: Choose from Default (system), Outline (colored cursor outline), Circle (ring with center dot), or Crosshair</li>
+<li><strong>Configurable Size</strong>: Adjustable cursor size (8-24px) for circle and crosshair styles</li>
+<li><strong>Color Sync</strong>: Active cursor automatically uses the current annotation color for visual consistency</li>
+<li><strong>Per-Screen Awareness</strong>: Cursor indicator only appears on screens where the overlay is actually visible</li>
+<li><strong>System Cursor Management</strong>: Hides system cursor when custom indicator is active to avoid visual clutter</li>
+<li><strong>Live Preview</strong>: Settings include a real-time preview component for immediate visual feedback</li>
+</ul>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<h3 id="settings-sync">Settings Sync</h3>
+<ul>
+<li><strong>Cursor Highlight Toggles</strong>: Fixed synchronization of cursor highlight toggle states when hotkey changes occur</li>
+<li><strong>Per-Screen Visibility</strong>: Cursor indicator now correctly tracks which screen has an active overlay</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Performance</strong>:
+<ul>
+<li>Optimized animation loop with caching and selective updates</li>
+<li>Cached CGColor conversions to avoid per-frame allocations</li>
+<li>Cached CGPath objects for repeated shapes</li>
+<li>Position tracking to skip redundant layer updates</li>
+</ul></li>
+<li><strong>Code Quality</strong>:
+<ul>
+<li>Simplified active cursor state management</li>
+<li>Added unit tests for cursor highlight manager and app delegate</li>
+<li>Added proper cleanup routines and MainActor compliance for cursor highlight management</li>
+</ul></li>
+<li><strong>Documentation</strong>: Updated README with active cursor indicator details and system requirements</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.2.0">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Thu, 08 Jan 2026 10:11:03 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.2.0/Annotate-1.2.0.zip"
+                       sparkle:version="1172"
+                       sparkle:shortVersionString="1.2.0"
+                       sparkle:edSignature="NjDCfmdklh1r/2iviY8xPCYbbHrCZwdV8mhkMn7AvUUbg+LvANgIuV6G1AVbAvhLG8hURNA4Cf7XfngkWpKcCQ=="
+                       length="3011700"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.1.1</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.1.1</link>
             <description><![CDATA[
