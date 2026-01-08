@@ -49,8 +49,31 @@ class CursorHighlightManager: @unchecked Sendable {
     let appearDuration: TimeInterval = 0.15
     let releaseDuration: TimeInterval = 0.2
 
+    // MARK: - Cached CGColors for Performance
+    // These are updated when source colors change, avoiding per-frame allocations
+
+    private(set) var effectColorCG: CGColor = NSColor.systemYellow.cgColor
+    private(set) var effectColorStrokeCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.8).cgColor
+    private(set) var effectColorFillCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.12).cgColor
+    private(set) var effectColorSpotlightCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.3).cgColor
+    private(set) var annotationColorCG: CGColor = NSColor.systemRed.cgColor
+
+    private func updateEffectColorCache(_ color: NSColor) {
+        effectColorCG = color.cgColor
+        effectColorStrokeCG = color.withAlphaComponent(0.8).cgColor
+        effectColorFillCG = color.withAlphaComponent(0.12).cgColor
+        effectColorSpotlightCG = color.withAlphaComponent(0.3).cgColor
+    }
+
+    private func updateAnnotationColorCache(_ color: NSColor) {
+        annotationColorCG = color.cgColor
+    }
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        // Initialize color caches from stored values
+        updateEffectColorCache(effectColor)
+        updateAnnotationColorCache(annotationColor)
     }
 
     // MARK: - Click Effects Settings
@@ -78,6 +101,7 @@ class CursorHighlightManager: @unchecked Sendable {
             {
                 userDefaults.set(data, forKey: UserDefaults.clickRippleColorKey)
             }
+            updateEffectColorCache(newValue)
             notifyStateChanged()
         }
     }
@@ -140,6 +164,7 @@ class CursorHighlightManager: @unchecked Sendable {
     var annotationColor: NSColor = .systemRed {
         didSet {
             if oldValue != annotationColor {
+                updateAnnotationColorCache(annotationColor)
                 notifyStateChanged()
             }
         }
@@ -168,6 +193,11 @@ class CursorHighlightManager: @unchecked Sendable {
 
     var hasActiveAnimation: Bool {
         releaseAnimation.map { !$0.isExpired } ?? false
+    }
+
+    /// Whether the animation loop should continue running
+    var needsAnimationLoop: Bool {
+        shouldShowCursorHighlight || shouldShowRing || hasActiveAnimation || shouldShowActiveCursorOnAnyScreen()
     }
 
     // MARK: - Per-Screen Active Cursor

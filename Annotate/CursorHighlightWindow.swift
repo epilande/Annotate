@@ -6,6 +6,13 @@ class CursorHighlightWindow: NSPanel {
     private var animationTimer: Timer?
     private let animationInterval: TimeInterval = 1.0 / 60.0
 
+    // Track previous frame state to ensure update functions run one extra frame
+    // when transitioning to inactive (needed to set layer opacity to 0)
+    private var wasShowingSpotlight = false
+    private var wasShowingRing = false
+    private var wasShowingReleaseAnimation = false
+    private var wasShowingActiveCursor = false
+
     override init(
         contentRect: NSRect,
         styleMask style: NSWindow.StyleMask,
@@ -77,14 +84,35 @@ class CursorHighlightWindow: NSPanel {
     @objc private func updateAnimation() {
         let manager = CursorHighlightManager.shared
 
-        highlightView.updateSpotlightPosition()
-        highlightView.updateHoldRingPosition()
-        highlightView.updateReleaseAnimation()
-        highlightView.updateActiveCursor()
+        // Only call update functions for active features (or when transitioning to inactive to hide)
+        let showingSpotlight = manager.shouldShowCursorHighlight
+        if showingSpotlight || wasShowingSpotlight {
+            highlightView.updateSpotlightPosition()
+        }
+        wasShowingSpotlight = showingSpotlight
 
-        manager.cleanupExpiredAnimation()
+        let showingRing = manager.shouldShowRing
+        if showingRing || wasShowingRing {
+            highlightView.updateHoldRingPosition()
+        }
+        wasShowingRing = showingRing
 
-        if !manager.shouldShowCursorHighlight && !manager.shouldShowRing && !manager.hasActiveAnimation && !manager.shouldShowActiveCursorOnAnyScreen() {
+        let showingReleaseAnimation = manager.hasActiveAnimation
+        if showingReleaseAnimation || wasShowingReleaseAnimation {
+            highlightView.updateReleaseAnimation()
+        }
+        if showingReleaseAnimation {
+            manager.cleanupExpiredAnimation()
+        }
+        wasShowingReleaseAnimation = showingReleaseAnimation
+
+        let showingActiveCursor = manager.shouldShowActiveCursorOnAnyScreen()
+        if showingActiveCursor || wasShowingActiveCursor {
+            highlightView.updateActiveCursor()
+        }
+        wasShowingActiveCursor = showingActiveCursor
+
+        if !manager.needsAnimationLoop {
             stopAnimationLoop()
         }
     }
