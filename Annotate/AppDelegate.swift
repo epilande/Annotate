@@ -91,6 +91,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         setupCursorHighlightObservers()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        let monitors: [Any?] = [
+            globalMouseMoveMonitor,
+            globalMouseClickMonitor,
+            globalMouseUpMonitor,
+            localMouseMoveMonitor,
+            localMouseClickMonitor,
+            localMouseUpMonitor,
+            localFlagsChangedMonitor
+        ]
+        monitors.compactMap { $0 }.forEach { NSEvent.removeMonitor($0) }
+
+        globalMouseMoveMonitor = nil
+        globalMouseClickMonitor = nil
+        globalMouseUpMonitor = nil
+        localMouseMoveMonitor = nil
+        localMouseClickMonitor = nil
+        localMouseUpMonitor = nil
+        localFlagsChangedMonitor = nil
+    }
+
     @MainActor
     func updateDockIconVisibility() {
         guard NSApplication.shared.delegate != nil else { return }

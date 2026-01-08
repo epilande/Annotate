@@ -35,6 +35,7 @@ class CursorHighlightWindow: NSPanel {
         isOpaque = false
         hasShadow = false
         ignoresMouseEvents = true
+        isRestorable = false
         hidesOnDeactivate = false  // Stay visible even when app is hidden
         collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
 

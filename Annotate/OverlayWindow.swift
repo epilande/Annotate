@@ -60,6 +60,7 @@ class OverlayWindow: NSPanel {
         self.isOpaque = false
         self.hasShadow = false
         self.ignoresMouseEvents = false
+        self.isRestorable = false
         self.collectionBehavior = [.canJoinAllSpaces, .transient]
         self.setFrame(windowRect, display: true)
 

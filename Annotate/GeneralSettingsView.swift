@@ -175,7 +175,9 @@ struct GeneralSettingsView: View {
                                     .frame(width: 20, alignment: .trailing)
                                 Slider(value: $activeCursorSize, in: 8...24)
                                     .onChange(of: activeCursorSize) { _, newValue in
-                                        CursorHighlightManager.shared.activeCursorSize = CGFloat(newValue)
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.activeCursorSize = CGFloat(newValue)
+                                        }
                                     }
                                 Text("24")
                                     .font(.system(size: 11))
@@ -212,7 +214,9 @@ struct GeneralSettingsView: View {
                                     .frame(width: 24, alignment: .trailing)
                                 Slider(value: $spotlightSize, in: 30...100)
                                     .onChange(of: spotlightSize) { _, newValue in
-                                        CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                        }
                                     }
                                 Text("100")
                                     .font(.system(size: 11))
@@ -241,7 +245,9 @@ struct GeneralSettingsView: View {
                                     .frame(width: 24, alignment: .trailing)
                                 Slider(value: $effectSize, in: 30...100)
                                     .onChange(of: effectSize) { _, newValue in
-                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                        }
                                     }
                                 Text("100")
                                     .font(.system(size: 11))
