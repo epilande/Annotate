@@ -1,5 +1,22 @@
 import Cocoa
 
+/// Cursor style options for active overlay indicator
+enum ActiveCursorStyle: String, CaseIterable {
+    case none = "none"
+    case outline = "outline"
+    case circle = "circle"
+    case crosshair = "crosshair"
+
+    var displayName: String {
+        switch self {
+        case .none: return "Default"
+        case .outline: return "Outline"
+        case .circle: return "Circle"
+        case .crosshair: return "Crosshair"
+        }
+    }
+}
+
 /// Animation state when mouse is released - ring expands and fades
 struct ReleaseAnimation {
     let center: NSPoint
@@ -32,8 +49,31 @@ class CursorHighlightManager: @unchecked Sendable {
     let appearDuration: TimeInterval = 0.15
     let releaseDuration: TimeInterval = 0.2
 
+    // MARK: - Cached CGColors for Performance
+    // These are updated when source colors change, avoiding per-frame allocations
+
+    private(set) var effectColorCG: CGColor = NSColor.systemYellow.cgColor
+    private(set) var effectColorStrokeCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.8).cgColor
+    private(set) var effectColorFillCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.12).cgColor
+    private(set) var effectColorSpotlightCG: CGColor = NSColor.systemYellow.withAlphaComponent(0.3).cgColor
+    private(set) var annotationColorCG: CGColor = NSColor.systemRed.cgColor
+
+    private func updateEffectColorCache(_ color: NSColor) {
+        effectColorCG = color.cgColor
+        effectColorStrokeCG = color.withAlphaComponent(0.8).cgColor
+        effectColorFillCG = color.withAlphaComponent(0.12).cgColor
+        effectColorSpotlightCG = color.withAlphaComponent(0.3).cgColor
+    }
+
+    private func updateAnnotationColorCache(_ color: NSColor) {
+        annotationColorCG = color.cgColor
+    }
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        // Initialize color caches from stored values
+        updateEffectColorCache(effectColor)
+        updateAnnotationColorCache(annotationColor)
     }
 
     // MARK: - Click Effects Settings
@@ -61,6 +101,7 @@ class CursorHighlightManager: @unchecked Sendable {
             {
                 userDefaults.set(data, forKey: UserDefaults.clickRippleColorKey)
             }
+            updateEffectColorCache(newValue)
             notifyStateChanged()
         }
     }
@@ -95,6 +136,40 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    // MARK: - Active Cursor Settings
+
+    var activeCursorStyle: ActiveCursorStyle {
+        get {
+            let stored = userDefaults.string(forKey: UserDefaults.activeCursorStyleKey) ?? "none"
+            return ActiveCursorStyle(rawValue: stored) ?? .none
+        }
+        set {
+            userDefaults.set(newValue.rawValue, forKey: UserDefaults.activeCursorStyleKey)
+            notifyStateChanged()
+        }
+    }
+
+    var activeCursorSize: CGFloat {
+        get {
+            let stored = userDefaults.double(forKey: UserDefaults.activeCursorSizeKey)
+            return stored > 0 ? CGFloat(stored) : 14.0
+        }
+        set {
+            userDefaults.set(Double(newValue), forKey: UserDefaults.activeCursorSizeKey)
+            notifyStateChanged()
+        }
+    }
+
+    /// Current annotation color (synced from AppDelegate)
+    var annotationColor: NSColor = .systemRed {
+        didSet {
+            if oldValue != annotationColor {
+                updateAnnotationColorCache(annotationColor)
+                notifyStateChanged()
+            }
+        }
+    }
+
     var holdRingStartSize: CGFloat { effectSize * 0.2 }
     var holdRingEndSize: CGFloat { effectSize * 0.65 }
 
@@ -120,6 +195,37 @@ class CursorHighlightManager: @unchecked Sendable {
         releaseAnimation.map { !$0.isExpired } ?? false
     }
 
+    /// Whether the animation loop should continue running
+    var needsAnimationLoop: Bool {
+        shouldShowCursorHighlight || shouldShowRing || hasActiveAnimation || shouldShowActiveCursorOnAnyScreen()
+    }
+
+    // MARK: - Per-Screen Active Cursor
+    // Active cursor visibility is determined per-screen based on actual overlay window visibility.
+    // This allows multiple monitors to have independent overlay states.
+
+    /// Called when overlay visibility changes to trigger cursor updates
+    func overlayVisibilityChanged() {
+        notifyStateChanged()
+    }
+
+    func isOverlayActiveOnScreen(_ screen: NSScreen) -> Bool {
+        AppDelegate.shared?.overlayWindows[screen]?.isVisible ?? false
+    }
+
+    func shouldShowActiveCursorOnScreen(_ screen: NSScreen) -> Bool {
+        isOverlayActiveOnScreen(screen) && activeCursorStyle != .none
+    }
+
+    func hasAnyActiveOverlay() -> Bool {
+        AppDelegate.shared?.overlayWindows.values.contains { $0.isVisible } ?? false
+    }
+
+    /// Used to keep cursor highlight windows active when any overlay is visible
+    func shouldShowActiveCursorOnAnyScreen() -> Bool {
+        hasAnyActiveOverlay() && activeCursorStyle != .none
+    }
+
     // MARK: - Release Animation
 
     func startReleaseAnimation() {
@@ -137,6 +243,39 @@ class CursorHighlightManager: @unchecked Sendable {
     func cleanupExpiredAnimation() {
         if let animation = releaseAnimation, animation.isExpired {
             releaseAnimation = nil
+        }
+    }
+
+    // MARK: - System Cursor Visibility
+
+    private var isCursorHidden = false
+
+    func hideSystemCursor() {
+        guard !isCursorHidden else { return }
+        NSCursor.hide()
+        isCursorHidden = true
+    }
+
+    func showSystemCursor() {
+        guard isCursorHidden else { return }
+        NSCursor.unhide()
+        isCursorHidden = false
+    }
+
+    func updateCursorVisibility() {
+        // Find which screen the cursor is on
+        guard let currentScreen = NSScreen.screens.first(where: {
+            $0.frame.contains(cursorPosition)
+        }) else {
+            showSystemCursor()
+            return
+        }
+
+        // Only hide system cursor if cursor is on a screen with active overlay
+        if shouldShowActiveCursorOnScreen(currentScreen) {
+            hideSystemCursor()
+        } else {
+            showSystemCursor()
         }
     }
 

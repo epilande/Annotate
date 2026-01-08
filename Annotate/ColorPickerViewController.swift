@@ -158,6 +158,7 @@ class ColorPickerViewController: NSViewController {
         appDelegate.currentColor = selectedColor
         appDelegate.overlayWindows.values.forEach { $0.currentColor = selectedColor }
         appDelegate.updateStatusBarIcon(with: selectedColor)
+        CursorHighlightManager.shared.annotationColor = selectedColor
 
         if let popover = AppDelegate.shared?.colorPopover {
             popover.performClose(nil)

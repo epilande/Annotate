@@ -16,6 +16,8 @@ struct GeneralSettingsView: View {
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
+    @State private var activeCursorStyle: ActiveCursorStyle = CursorHighlightManager.shared.activeCursorStyle
+    @State private var activeCursorSize: Double = Double(CursorHighlightManager.shared.activeCursorSize)
 
     var body: some View {
         ScrollView {
@@ -130,9 +132,68 @@ struct GeneralSettingsView: View {
                 Divider()
 
                 SettingsSection(
+                    icon: "cursorarrow",
+                    title: "Active Cursor",
+                    subtitle: "Cursor appearance when overlay is active"
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cursor Style")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Choose how the cursor appears while annotating")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            ActiveCursorPreview(
+                                style: activeCursorStyle,
+                                color: CursorHighlightManager.shared.annotationColor,
+                                size: CGFloat(activeCursorSize)
+                            )
+                        }
+                        Picker("", selection: $activeCursorStyle) {
+                            ForEach(ActiveCursorStyle.allCases, id: \.self) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .onChange(of: activeCursorStyle) { _, newValue in
+                            CursorHighlightManager.shared.activeCursorStyle = newValue
+                        }
+                    }
+
+                    if activeCursorStyle == .circle || activeCursorStyle == .crosshair {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Cursor Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("8")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20, alignment: .trailing)
+                                Slider(value: $activeCursorSize, in: 8...24)
+                                    .onChange(of: activeCursorSize) { _, newValue in
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.activeCursorSize = CGFloat(newValue)
+                                        }
+                                    }
+                                Text("24")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                SettingsSection(
                     icon: "cursorarrow.motionlines",
                     title: "Cursor Highlight",
-                    subtitle: "Spotlight and click effects for cursor visibility"
+                    subtitle: "Spotlight and click effects for presentations"
                 ) {
                     SettingsToggleRow(
                         title: "Enable Cursor Spotlight",
@@ -153,7 +214,9 @@ struct GeneralSettingsView: View {
                                     .frame(width: 24, alignment: .trailing)
                                 Slider(value: $spotlightSize, in: 30...100)
                                     .onChange(of: spotlightSize) { _, newValue in
-                                        CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
+                                        }
                                     }
                                 Text("100")
                                     .font(.system(size: 11))
@@ -182,7 +245,9 @@ struct GeneralSettingsView: View {
                                     .frame(width: 24, alignment: .trailing)
                                 Slider(value: $effectSize, in: 30...100)
                                     .onChange(of: effectSize) { _, newValue in
-                                        CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                        Task { @MainActor in
+                                            CursorHighlightManager.shared.effectSize = CGFloat(newValue)
+                                        }
                                     }
                                 Text("100")
                                     .font(.system(size: 11))
@@ -223,6 +288,8 @@ struct GeneralSettingsView: View {
             effectColor = Color(CursorHighlightManager.shared.effectColor)
             effectSize = Double(CursorHighlightManager.shared.effectSize)
             spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
+            activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
+            activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
         }
     }
 }
@@ -248,5 +315,75 @@ private struct PresetColorButton: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct ActiveCursorPreview: View {
+    let style: ActiveCursorStyle
+    let color: NSColor
+    let size: CGFloat
+
+    var body: some View {
+        Canvas { context, canvasSize in
+            let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+
+            switch style {
+            case .none:
+                drawPointerCursor(context: context, center: center, outerColor: .white)
+
+            case .outline:
+                drawPointerCursor(context: context, center: center, outerColor: Color(color))
+
+            case .circle:
+                let innerSize = size * 0.4
+                let strokeWidth = max(2.0, size / 10)
+                let outerRect = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
+                let innerRect = CGRect(x: center.x - innerSize / 2, y: center.y - innerSize / 2, width: innerSize, height: innerSize)
+
+                context.stroke(Path(ellipseIn: outerRect), with: .color(Color(color)), lineWidth: strokeWidth)
+                context.fill(Path(ellipseIn: innerRect), with: .color(Color(color)))
+
+            case .crosshair:
+                var path = Path()
+                path.move(to: CGPoint(x: center.x - size / 2, y: center.y))
+                path.addLine(to: CGPoint(x: center.x + size / 2, y: center.y))
+                path.move(to: CGPoint(x: center.x, y: center.y - size / 2))
+                path.addLine(to: CGPoint(x: center.x, y: center.y + size / 2))
+
+                context.stroke(path, with: .color(Color(color)), lineWidth: max(2.5, size / 5))
+            }
+        }
+        .frame(width: 40, height: 40)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(6)
+    }
+
+    private func drawPointerCursor(context: GraphicsContext, center: CGPoint, outerColor: Color) {
+        let offsetX = center.x - 5.7
+        let offsetY = center.y - 9.25
+
+        var outerPath = Path()
+        outerPath.move(to: CGPoint(x: offsetX, y: offsetY))
+        outerPath.addLine(to: CGPoint(x: offsetX, y: offsetY + 16))
+        outerPath.addLine(to: CGPoint(x: offsetX + 3.3, y: offsetY + 13.2))
+        outerPath.addLine(to: CGPoint(x: offsetX + 6.1, y: offsetY + 18.5))
+        outerPath.addLine(to: CGPoint(x: offsetX + 8, y: offsetY + 17.5))
+        outerPath.addLine(to: CGPoint(x: offsetX + 9.6, y: offsetY + 16.6))
+        outerPath.addLine(to: CGPoint(x: offsetX + 7, y: offsetY + 11.8))
+        outerPath.addLine(to: CGPoint(x: offsetX + 11.4, y: offsetY + 11.8))
+        outerPath.closeSubpath()
+
+        var innerPath = Path()
+        innerPath.move(to: CGPoint(x: offsetX + 1, y: offsetY + 2.8))
+        innerPath.addLine(to: CGPoint(x: offsetX + 1, y: offsetY + 14))
+        innerPath.addLine(to: CGPoint(x: offsetX + 3.5, y: offsetY + 11.6))
+        innerPath.addLine(to: CGPoint(x: offsetX + 6.3, y: offsetY + 16.8))
+        innerPath.addLine(to: CGPoint(x: offsetX + 8.2, y: offsetY + 15.9))
+        innerPath.addLine(to: CGPoint(x: offsetX + 5.4, y: offsetY + 10.7))
+        innerPath.addLine(to: CGPoint(x: offsetX + 9, y: offsetY + 10.7))
+        innerPath.closeSubpath()
+
+        context.fill(outerPath, with: .color(outerColor))
+        context.fill(innerPath, with: .color(.black))
     }
 }

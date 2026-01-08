@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var localMouseMoveMonitor: Any?
     var localMouseClickMonitor: Any?
     var localMouseUpMonitor: Any?
+    var localFlagsChangedMonitor: Any?
 
     override init() {
         self.userDefaults = .standard
@@ -48,6 +49,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             currentColor = unarchivedColor
         }
+
+        // Sync annotation color to cursor highlight manager
+        CursorHighlightManager.shared.annotationColor = currentColor
 
         setupStatusBarItem()
         setupOverlayWindows()
@@ -85,6 +89,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         setupCursorHighlightWindows()
         setupGlobalMouseMonitors()
         setupCursorHighlightObservers()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        let monitors: [Any?] = [
+            globalMouseMoveMonitor,
+            globalMouseClickMonitor,
+            globalMouseUpMonitor,
+            localMouseMoveMonitor,
+            localMouseClickMonitor,
+            localMouseUpMonitor,
+            localFlagsChangedMonitor
+        ]
+        monitors.compactMap { $0 }.forEach { NSEvent.removeMonitor($0) }
+
+        globalMouseMoveMonitor = nil
+        globalMouseClickMonitor = nil
+        globalMouseUpMonitor = nil
+        localMouseMoveMonitor = nil
+        localMouseClickMonitor = nil
+        localMouseUpMonitor = nil
+        localFlagsChangedMonitor = nil
     }
 
     @MainActor
@@ -423,6 +448,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         if overlayWindow.isVisible {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         } else {
             configureWindowForNormalMode(overlayWindow)
 
@@ -434,9 +460,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
+            CursorHighlightManager.shared.annotationColor = currentColor
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
-    
+
     @objc func toggleAlwaysOnMode() {
         alwaysOnMode.toggle()
 
@@ -465,9 +493,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
-    
+
     @objc func closeOverlayAndEnableAlwaysOn() {
         if !alwaysOnMode {
             toggleAlwaysOnMode()
@@ -484,6 +513,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
+            CursorHighlightManager.shared.annotationColor = currentColor
+            CursorHighlightManager.shared.overlayVisibilityChanged()
         }
     }
 
@@ -964,6 +995,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             self?.handleGlobalMouseUp(event)
             return event
         }
+
+        // Modifier keys from hotkeys can trigger cursor resets
+        localFlagsChangedMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.flagsChanged]
+        ) { [weak self] event in
+            self?.handleFlagsChanged(event)
+            return event
+        }
+    }
+
+    func handleFlagsChanged(_ event: NSEvent) {
+        CursorHighlightManager.shared.updateCursorVisibility()
     }
 
     func setupCursorHighlightObservers() {
@@ -987,6 +1030,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     @objc func cursorHighlightStateChanged() {
         updateAllCursorHighlightWindows()
+        CursorHighlightManager.shared.updateCursorVisibility()
+        overlayWindows.values.forEach { window in
+            window.overlayView.updateCursor()
+            window.overlayView.window?.invalidateCursorRects(for: window.overlayView)
+        }
     }
 
     /// Called from OverlayWindow to trigger cursor highlight updates for local mouse events
@@ -1003,6 +1051,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     func handleGlobalMouseMove(_ event: NSEvent) {
         let manager = CursorHighlightManager.shared
         manager.cursorPosition = NSEvent.mouseLocation
+        manager.updateCursorVisibility()
 
         let shouldUpdateSpotlight = manager.shouldShowCursorHighlight
         let shouldUpdateHoldRing = manager.isActive && manager.isMouseDown
