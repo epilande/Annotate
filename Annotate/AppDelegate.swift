@@ -461,12 +461,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             : .gray
         updateStatusBarIcon(with: iconColor)
 
-        // Update active cursor state
-        CursorHighlightManager.shared.isOverlayActive = alwaysOnMode
-        if alwaysOnMode {
-            CursorHighlightManager.shared.annotationColor = currentColor
-        }
-
         userDefaults.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
         updateAlwaysOnMenuItems()
     }
@@ -991,10 +985,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func handleFlagsChanged(_ event: NSEvent) {
-        let manager = CursorHighlightManager.shared
-        if manager.shouldShowActiveCursor {
-            manager.hideSystemCursor()
-        }
+        CursorHighlightManager.shared.updateCursorVisibility()
     }
 
     func setupCursorHighlightObservers() {
@@ -1039,6 +1030,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     func handleGlobalMouseMove(_ event: NSEvent) {
         let manager = CursorHighlightManager.shared
         manager.cursorPosition = NSEvent.mouseLocation
+        manager.updateCursorVisibility()
 
         let shouldUpdateSpotlight = manager.shouldShowCursorHighlight
         let shouldUpdateHoldRing = manager.isActive && manager.isMouseDown

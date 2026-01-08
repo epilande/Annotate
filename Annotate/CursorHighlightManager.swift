@@ -183,6 +183,28 @@ class CursorHighlightManager: @unchecked Sendable {
         releaseAnimation.map { !$0.isExpired } ?? false
     }
 
+    // MARK: - Per-Screen Active Cursor
+    // Active cursor visibility is determined per-screen based on actual overlay window visibility,
+    // not the global isOverlayActive flag. This allows multiple monitors to have independent
+    // overlay states - closing the overlay on one screen won't affect the cursor on other screens.
+
+    func isOverlayActiveOnScreen(_ screen: NSScreen) -> Bool {
+        AppDelegate.shared?.overlayWindows[screen]?.isVisible ?? false
+    }
+
+    func shouldShowActiveCursorOnScreen(_ screen: NSScreen) -> Bool {
+        isOverlayActiveOnScreen(screen) && activeCursorStyle != .none
+    }
+
+    func hasAnyActiveOverlay() -> Bool {
+        AppDelegate.shared?.overlayWindows.values.contains { $0.isVisible } ?? false
+    }
+
+    /// Used to keep cursor highlight windows active when any overlay is visible
+    func shouldShowActiveCursorOnAnyScreen() -> Bool {
+        hasAnyActiveOverlay() && activeCursorStyle != .none
+    }
+
     // MARK: - Release Animation
 
     func startReleaseAnimation() {
@@ -220,7 +242,16 @@ class CursorHighlightManager: @unchecked Sendable {
     }
 
     func updateCursorVisibility() {
-        if shouldShowActiveCursor {
+        // Find which screen the cursor is on
+        guard let currentScreen = NSScreen.screens.first(where: {
+            $0.frame.contains(cursorPosition)
+        }) else {
+            showSystemCursor()
+            return
+        }
+
+        // Only hide system cursor if cursor is on a screen with active overlay
+        if shouldShowActiveCursorOnScreen(currentScreen) {
             hideSystemCursor()
         } else {
             showSystemCursor()

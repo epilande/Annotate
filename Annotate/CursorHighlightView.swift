@@ -180,8 +180,9 @@ class CursorHighlightView: NSView {
 
         let globalPosition = manager.cursorPosition
         let cursorOnThisScreen = window.screen?.frame.contains(globalPosition) ?? false
+        let screenHasActiveOverlay = window.screen.map { manager.isOverlayActiveOnScreen($0) } ?? false
 
-        if manager.shouldShowActiveCursor && cursorOnThisScreen {
+        if screenHasActiveOverlay && cursorOnThisScreen && manager.activeCursorStyle != .none {
             let windowPoint = window.convertPoint(fromScreen: globalPosition)
             let localPoint = convert(windowPoint, from: nil)
 

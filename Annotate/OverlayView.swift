@@ -100,14 +100,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func cursorUpdate(with event: NSEvent) {
         updateCursor()
-        if !CursorHighlightManager.shared.shouldShowActiveCursor {
+        if !shouldShowActiveCursorForThisOverlay() {
             super.cursorUpdate(with: event)
         }
     }
 
+    private func shouldShowActiveCursorForThisOverlay() -> Bool {
+        guard let screen = window?.screen else { return false }
+        return CursorHighlightManager.shared.shouldShowActiveCursorOnScreen(screen)
+    }
+
     func updateCursor() {
         let manager = CursorHighlightManager.shared
-        if manager.shouldShowActiveCursor {
+        if shouldShowActiveCursorForThisOverlay() {
             Self.transparentCursor.set()
             manager.hideSystemCursor()
         } else {
@@ -117,8 +122,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        let manager = CursorHighlightManager.shared
-        if manager.shouldShowActiveCursor {
+        if shouldShowActiveCursorForThisOverlay() {
             addCursorRect(bounds, cursor: Self.transparentCursor)
         }
     }

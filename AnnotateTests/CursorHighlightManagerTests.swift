@@ -301,4 +301,74 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertNotNil(manager.releaseAnimation, "releaseAnimation should be created when active")
         XCTAssertEqual(manager.releaseAnimation?.center, NSPoint(x: 100, y: 200), "Animation center should match cursor position")
     }
+
+    // MARK: - Active Cursor Style Tests
+
+    func testActiveCursorStyleDefaultsToNone() {
+        XCTAssertEqual(manager.activeCursorStyle, .none, "activeCursorStyle should default to .none")
+    }
+
+    func testActiveCursorStylePersistsToUserDefaults() {
+        manager.activeCursorStyle = .outline
+
+        XCTAssertEqual(manager.activeCursorStyle, .outline, "activeCursorStyle should be updated")
+        let persistedValue = testDefaults.string(forKey: UserDefaults.activeCursorStyleKey)
+        XCTAssertEqual(persistedValue, "outline", "activeCursorStyle should be persisted to UserDefaults")
+    }
+
+    func testShouldShowActiveCursorReturnsFalseWhenStyleIsNone() {
+        manager.isOverlayActive = true
+        manager.activeCursorStyle = .none
+
+        XCTAssertFalse(
+            manager.shouldShowActiveCursor,
+            "shouldShowActiveCursor should return false when activeCursorStyle is .none"
+        )
+    }
+
+    func testShouldShowActiveCursorReturnsFalseWhenOverlayNotActive() {
+        manager.isOverlayActive = false
+        manager.activeCursorStyle = .outline
+
+        XCTAssertFalse(
+            manager.shouldShowActiveCursor,
+            "shouldShowActiveCursor should return false when overlay is not active"
+        )
+    }
+
+    func testShouldShowActiveCursorReturnsTrueWhenActiveAndStyleSet() {
+        manager.isOverlayActive = true
+        manager.activeCursorStyle = .outline
+
+        XCTAssertTrue(
+            manager.shouldShowActiveCursor,
+            "shouldShowActiveCursor should return true when overlay is active and style is set"
+        )
+    }
+
+    // MARK: - Per-Screen Active Cursor Tests
+
+    func testShouldShowActiveCursorOnScreenReturnsFalseWhenStyleIsNone() {
+        manager.activeCursorStyle = .none
+
+        // Even with a valid screen, should return false when style is .none
+        if let screen = NSScreen.main {
+            XCTAssertFalse(
+                manager.shouldShowActiveCursorOnScreen(screen),
+                "shouldShowActiveCursorOnScreen should return false when activeCursorStyle is .none"
+            )
+        }
+    }
+
+    func testShouldShowActiveCursorOnScreenReturnsFalseWhenNoOverlayOnScreen() {
+        manager.activeCursorStyle = .outline
+
+        // With no overlay windows set up, should return false
+        if let screen = NSScreen.main {
+            XCTAssertFalse(
+                manager.shouldShowActiveCursorOnScreen(screen),
+                "shouldShowActiveCursorOnScreen should return false when no overlay is active on screen"
+            )
+        }
+    }
 }
