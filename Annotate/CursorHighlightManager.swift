@@ -160,6 +160,13 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    /// System cursor scale from Accessibility settings (1.0 = default, up to 4.0 = max)
+    var systemCursorScale: CGFloat {
+        let accessibilityDefaults = UserDefaults(suiteName: "com.apple.universalaccess")
+        let scale = accessibilityDefaults?.float(forKey: "mouseDriverCursorSize") ?? 0
+        return scale > 0 ? CGFloat(scale) : 1.0
+    }
+
     /// Current annotation color (synced from AppDelegate)
     var annotationColor: NSColor = .systemRed {
         didSet {

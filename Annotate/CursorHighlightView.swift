@@ -22,6 +22,10 @@ class CursorHighlightView: NSView {
     private var cachedCrosshairPath: CGPath?
     private var cachedCrosshairSize: CGFloat = 0
 
+    private var cachedOutlineOuterPath: CGPath?
+    private var cachedOutlineInnerPath: CGPath?
+    private var cachedOutlineScale: CGFloat = 0
+
     // MARK: - Position Tracking (skip redundant updates)
 
     private var lastSpotlightPosition: CGPoint = .zero
@@ -209,14 +213,17 @@ class CursorHighlightView: NSView {
 
             switch manager.activeCursorStyle {
             case .outline:
-                outlineLayer.path = Self.cursorOuterPath
+                let scale = manager.systemCursorScale
+                let paths = outlineCursorPaths(for: scale)
+
+                outlineLayer.path = paths.outer
                 outlineLayer.position = localPoint
                 outlineLayer.fillColor = manager.annotationColorCG
                 outlineLayer.strokeColor = nil
                 outlineLayer.lineWidth = 0
                 outlineLayer.opacity = 1
 
-                cursorLayer.path = Self.cursorInnerPath
+                cursorLayer.path = paths.inner
                 cursorLayer.position = localPoint
                 cursorLayer.fillColor = Self.blackCG
                 cursorLayer.strokeColor = nil
@@ -301,6 +308,16 @@ class CursorHighlightView: NSView {
             cachedCrosshairSize = size
         }
         return cachedCrosshairPath!
+    }
+
+    private func outlineCursorPaths(for scale: CGFloat) -> (outer: CGPath, inner: CGPath) {
+        if scale != cachedOutlineScale || cachedOutlineOuterPath == nil {
+            var transform = CGAffineTransform(scaleX: scale, y: scale)
+            cachedOutlineOuterPath = Self.cursorOuterPath.copy(using: &transform)
+            cachedOutlineInnerPath = Self.cursorInnerPath.copy(using: &transform)
+            cachedOutlineScale = scale
+        }
+        return (cachedOutlineOuterPath!, cachedOutlineInnerPath!)
     }
 
     // MARK: - Static Constants

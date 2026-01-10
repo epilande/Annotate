@@ -341,4 +341,15 @@ final class CursorHighlightManagerTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - System Cursor Scale Tests
+
+    func testSystemCursorScaleReturnsValidValue() {
+        // systemCursorScale reads from system accessibility settings
+        // Valid range is 1.0 (default) to 4.0 (max)
+        let scale = manager.systemCursorScale
+
+        XCTAssertGreaterThanOrEqual(scale, 1.0, "systemCursorScale should be at least 1.0")
+        XCTAssertLessThanOrEqual(scale, 4.0, "systemCursorScale should be at most 4.0")
+    }
 }
