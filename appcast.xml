@@ -6,6 +6,30 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.3.0</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.3.0</link>
+            <description><![CDATA[
+<h1>Annotate v1.3.0</h1>
+
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="shift-key-constraint-for-shapes-39">Shift Key Constraint for Shapes (#39)</h3>
+<ul>
+<li><strong>Perfect Squares &amp; Circles</strong>: Hold <strong>Shift</strong> while drawing rectangles or circles to constrain them to perfect squares and circles</li>
+<li><strong>Combo with Center Mode</strong>: Works with <strong>Option</strong> key for drawing from center - combine both modifiers for centered perfect shapes</li>
+<li><strong>Consistent Behavior</strong>: Brings rectangle and circle tools in line with other tools (pen, highlighter, line, arrow) that already support Shift constraint</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.3.0">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Fri, 16 Jan 2026 10:08:38 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.3.0/Annotate-1.3.0.zip"
+                       sparkle:version="1177"
+                       sparkle:shortVersionString="1.3.0"
+                       sparkle:edSignature="qrWzaV+OC2iKLiDKeUHYlGTQjNnW/cQDYdR/+xaqRI+NLIrxd9vzSpOaNyeU+k5M5u7W5AVZExaiZks2pUl+DQ=="
+                       length="3013033"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.2.1</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.2.1</link>
             <description><![CDATA[
