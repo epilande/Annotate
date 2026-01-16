@@ -111,22 +111,22 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 
 #### 🎨 Drawing Tools
 
-| Key          | Tool            | Description                                         |
-| ------------ | --------------- | --------------------------------------------------- |
-| <kbd>P</kbd> | **Pen**         | Freehand drawing                                    |
-| <kbd>L</kbd> | **Line**        | Draw straight lines                                 |
-| <kbd>H</kbd> | **Highlighter** | Highlight areas with semi-transparent brush         |
-| <kbd>R</kbd> | **Rectangle**   | Draw rectangles (hold <kbd>Option</kbd> for center) |
-| <kbd>O</kbd> | **Circle**      | Draw circles (hold <kbd>Option</kbd> for center)    |
-| <kbd>A</kbd> | **Arrow**       | Draw directional arrows                             |
-| <kbd>N</kbd> | **Counter**     | Add sequential numbered circles (1, 2, 3...)        |
-| <kbd>T</kbd> | **Text**        | Add text annotations                                |
-| <kbd>E</kbd> | **Eraser**      | Remove annotations by dragging over them            |
+| Key          | Tool            | Description                                                                |
+| ------------ | --------------- | -------------------------------------------------------------------------- |
+| <kbd>P</kbd> | **Pen**         | Freehand drawing                                                           |
+| <kbd>L</kbd> | **Line**        | Draw straight lines                                                        |
+| <kbd>H</kbd> | **Highlighter** | Highlight areas with semi-transparent brush                                |
+| <kbd>R</kbd> | **Rectangle**   | Draw rectangles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: square)      |
+| <kbd>O</kbd> | **Circle**      | Draw circles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: perfect circle) |
+| <kbd>A</kbd> | **Arrow**       | Draw directional arrows                                                    |
+| <kbd>N</kbd> | **Counter**     | Add sequential numbered circles (1, 2, 3...)                               |
+| <kbd>T</kbd> | **Text**        | Add text annotations                                                       |
+| <kbd>E</kbd> | **Eraser**      | Remove annotations by dragging over them                                   |
 
 #### 🎯 Tool Settings & Selection
 
-| Key          | Tool             | Description                      |
-| ------------ | ---------------- | -------------------------------- |
+| Key          | Tool                 | Description                               |
+| ------------ | -------------------- | ----------------------------------------- |
 | <kbd>C</kbd> | **Color Picker**     | Open color selection menu                 |
 | <kbd>W</kbd> | **Line Width**       | Open line width picker                    |
 | <kbd>V</kbd> | **Select**           | Select, move, and manage objects          |
@@ -135,17 +135,17 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 
 #### ⚡ Quick Actions
 
-| Shortcut                                             | Action               | Description                                       |
-| ---------------------------------------------------- | -------------------- | ------------------------------------------------- |
-| <kbd>Space</kbd>                                     | **Toggle Fade Mode** | Switch between fade and persist modes             |
-| <kbd>Delete</kbd>                                    | **Delete**           | Remove selected objects or most recent annotation |
-| <kbd>Option</kbd> + <kbd>Delete</kbd>                | **Clear All**        | Remove all annotations                            |
-| <kbd>Command</kbd> + <kbd>Z</kbd>                    | **Undo**             | Undo the last action                              |
-| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | **Redo**             | Redo the last undone action                       |
-| Mouse Backward Button                                | **Undo**             | Undo the last action (mouse button 3)             |
-| Mouse Forward Button                                 | **Redo**             | Redo the last undone action (mouse button 4)      |
-| <kbd>Command</kbd> + <kbd>Scroll</kbd>               | **Adjust Width**     | Quickly change line width                         |
-| <kbd>Shift</kbd> (while drawing)                     | **Constrain**        | Lines: 45° angles; Pen/Highlighter: straight      |
+| Shortcut                                             | Action               | Description                                                                |
+| ---------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
+| <kbd>Space</kbd>                                     | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
+| <kbd>Delete</kbd>                                    | **Delete**           | Remove selected objects or most recent annotation                          |
+| <kbd>Option</kbd> + <kbd>Delete</kbd>                | **Clear All**        | Remove all annotations                                                     |
+| <kbd>Command</kbd> + <kbd>Z</kbd>                    | **Undo**             | Undo the last action                                                       |
+| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | **Redo**             | Redo the last undone action                                                |
+| Mouse Backward Button                                | **Undo**             | Undo the last action (mouse button 3)                                      |
+| Mouse Forward Button                                 | **Redo**             | Redo the last undone action (mouse button 4)                               |
+| <kbd>Command</kbd> + <kbd>Scroll</kbd>               | **Adjust Width**     | Quickly change line width                                                  |
+| <kbd>Shift</kbd> (while drawing)                     | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
 
 #### 📋 Copy/Paste (Select Mode Only)
 
@@ -196,7 +196,9 @@ Annotate provides flexible line width control:
 #### Shapes (Rectangle, Circle)
 
 - Click and drag to create shapes
-- Hold <kbd>Option</kbd> while drawing rectangles or circles to expand from the center point
+- Hold <kbd>Shift</kbd> while drawing to constrain rectangles to squares and circles to perfect circles
+- Hold <kbd>Option</kbd> while drawing to expand from the center point
+- Combine <kbd>Shift</kbd> + <kbd>Option</kbd> for constrained shapes that expand from center
 
 #### Arrow & Line
 

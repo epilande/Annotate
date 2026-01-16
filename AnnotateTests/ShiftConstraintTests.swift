@@ -60,6 +60,31 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         window.mouseUp(with: mouseUpEvent!)
     }
 
+    private func performDragWithModifiers(
+        from start: NSPoint,
+        to end: NSPoint,
+        shift: Bool = false,
+        option: Bool = false
+    ) {
+        var modifierFlags: NSEvent.ModifierFlags = []
+        if shift { modifierFlags.insert(.shift) }
+        if option { modifierFlags.insert(.option) }
+
+        let mouseDownEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: start,
+            modifierFlags: modifierFlags
+        )
+        window.mouseDown(with: mouseDownEvent!)
+
+        let mouseDragEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: end,
+            modifierFlags: modifierFlags
+        )
+        window.mouseDragged(with: mouseDragEvent!)
+    }
+
     private func assertLineAngle(_ line: Line, equals expectedAngle: CGFloat, accuracy: CGFloat = 0.01) {
         let dx = line.endPoint.x - line.startPoint.x
         let dy = line.endPoint.y - line.startPoint.y
@@ -440,6 +465,200 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
             let angle = atan2(dy, dx)
             let normalizedAngle = round(angle / (.pi / 4)) * (.pi / 4)
             XCTAssertEqual(angle, normalizedAngle, accuracy: 0.01)
+        }
+    }
+
+    // MARK: - Rectangle Shift Constraint Tests
+
+    func testRectangleShiftConstraintsToSquare() {
+        window.overlayView.currentTool = .rectangle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)  // Non-square dimensions
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        if let rect = window.overlayView.currentRectangle {
+            let width = abs(rect.endPoint.x - rect.startPoint.x)
+            let height = abs(rect.endPoint.y - rect.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Rectangle should be constrained to square")
+        }
+    }
+
+    func testRectangleWithoutShiftIsNotConstrained() {
+        window.overlayView.currentTool = .rectangle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)  // Non-square dimensions
+
+        performDragGesture(from: start, to: end)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        if let rect = window.overlayView.currentRectangle {
+            XCTAssertEqual(rect.endPoint, end, "Rectangle should not be constrained without shift")
+        }
+    }
+
+    func testRectangleShiftPreservesDirection() {
+        window.overlayView.currentTool = .rectangle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        if let rect = window.overlayView.currentRectangle {
+            XCTAssertGreaterThan(rect.endPoint.x, rect.startPoint.x, "X should increase when dragging right")
+            XCTAssertGreaterThan(rect.endPoint.y, rect.startPoint.y, "Y should increase when dragging down")
+        }
+    }
+
+    func testRectangleShiftUsesLargerDimension() {
+        window.overlayView.currentTool = .rectangle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 130)  // Width 100, Height 30
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        if let rect = window.overlayView.currentRectangle {
+            let width = abs(rect.endPoint.x - rect.startPoint.x)
+            let height = abs(rect.endPoint.y - rect.startPoint.y)
+            XCTAssertEqual(width, 100, accuracy: 0.1, "Square should use larger dimension (100)")
+            XCTAssertEqual(height, 100, accuracy: 0.1, "Square should use larger dimension (100)")
+        }
+    }
+
+    // MARK: - Circle Shift Constraint Tests
+
+    func testCircleShiftConstrainsToPerfectCircle() {
+        window.overlayView.currentTool = .circle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)  // Non-square bounding box
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        if let circle = window.overlayView.currentCircle {
+            let width = abs(circle.endPoint.x - circle.startPoint.x)
+            let height = abs(circle.endPoint.y - circle.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Circle should have square bounding box")
+        }
+    }
+
+    func testCircleWithoutShiftIsNotConstrained() {
+        window.overlayView.currentTool = .circle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)  // Non-square bounding box
+
+        performDragGesture(from: start, to: end)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        if let circle = window.overlayView.currentCircle {
+            XCTAssertEqual(circle.endPoint, end, "Circle should not be constrained without shift")
+        }
+    }
+
+    func testCircleShiftPreservesDirection() {
+        window.overlayView.currentTool = .circle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        if let circle = window.overlayView.currentCircle {
+            XCTAssertGreaterThan(circle.endPoint.x, circle.startPoint.x, "X should increase when dragging right")
+            XCTAssertGreaterThan(circle.endPoint.y, circle.startPoint.y, "Y should increase when dragging down")
+        }
+    }
+
+    func testCircleShiftUsesLargerDimension() {
+        window.overlayView.currentTool = .circle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 130)  // Width 100, Height 30
+
+        performDragGesture(from: start, to: end, withShift: true)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        if let circle = window.overlayView.currentCircle {
+            let width = abs(circle.endPoint.x - circle.startPoint.x)
+            let height = abs(circle.endPoint.y - circle.startPoint.y)
+            XCTAssertEqual(width, 100, accuracy: 0.1, "Circle should use larger dimension (100)")
+            XCTAssertEqual(height, 100, accuracy: 0.1, "Circle should use larger dimension (100)")
+        }
+    }
+
+    // MARK: - Shift + Center Mode (Option) Combined Tests
+
+    func testRectangleShiftPlusCenterMode() {
+        window.overlayView.currentTool = .rectangle
+        let anchor = NSPoint(x: 200, y: 200)
+        let end = NSPoint(x: 250, y: 230)  // Non-square drag
+
+        performDragWithModifiers(from: anchor, to: end, shift: true, option: true)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        if let rect = window.overlayView.currentRectangle {
+            let width = abs(rect.endPoint.x - rect.startPoint.x)
+            let height = abs(rect.endPoint.y - rect.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Should be square")
+
+            // Center mode: anchor should be at center of the shape
+            let centerX = (rect.startPoint.x + rect.endPoint.x) / 2
+            let centerY = (rect.startPoint.y + rect.endPoint.y) / 2
+            XCTAssertEqual(centerX, anchor.x, accuracy: 0.1, "Center X should be at anchor")
+            XCTAssertEqual(centerY, anchor.y, accuracy: 0.1, "Center Y should be at anchor")
+        }
+    }
+
+    func testCircleShiftPlusCenterMode() {
+        window.overlayView.currentTool = .circle
+        let anchor = NSPoint(x: 200, y: 200)
+        let end = NSPoint(x: 250, y: 230)  // Non-square drag
+
+        performDragWithModifiers(from: anchor, to: end, shift: true, option: true)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        if let circle = window.overlayView.currentCircle {
+            let width = abs(circle.endPoint.x - circle.startPoint.x)
+            let height = abs(circle.endPoint.y - circle.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Should be perfect circle")
+
+            // Center mode: anchor should be at center of the shape
+            let centerX = (circle.startPoint.x + circle.endPoint.x) / 2
+            let centerY = (circle.startPoint.y + circle.endPoint.y) / 2
+            XCTAssertEqual(centerX, anchor.x, accuracy: 0.1, "Center X should be at anchor")
+            XCTAssertEqual(centerY, anchor.y, accuracy: 0.1, "Center Y should be at anchor")
+        }
+    }
+
+    func testRectangleShiftCreatesAndFinalizesSquare() {
+        window.overlayView.currentTool = .rectangle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)
+
+        performDragGesture(from: start, to: end, withShift: true)
+        completeDragGesture(at: end, withShift: true)
+
+        XCTAssertEqual(window.overlayView.rectangles.count, 1)
+        if let rect = window.overlayView.rectangles.first {
+            let width = abs(rect.endPoint.x - rect.startPoint.x)
+            let height = abs(rect.endPoint.y - rect.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Finalized rectangle should be square")
+        }
+    }
+
+    func testCircleShiftCreatesAndFinalizesPerfectCircle() {
+        window.overlayView.currentTool = .circle
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 200, y: 150)
+
+        performDragGesture(from: start, to: end, withShift: true)
+        completeDragGesture(at: end, withShift: true)
+
+        XCTAssertEqual(window.overlayView.circles.count, 1)
+        if let circle = window.overlayView.circles.first {
+            let width = abs(circle.endPoint.x - circle.startPoint.x)
+            let height = abs(circle.endPoint.y - circle.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Finalized circle should be perfect")
         }
     }
 }
