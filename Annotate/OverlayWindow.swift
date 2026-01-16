@@ -433,27 +433,41 @@ class OverlayWindow: NSPanel {
                     TimedPoint(point: currentPoint, timestamp: t))
             }
         case .rectangle:
+            var newStart = anchorPoint
+            var newEnd = currentPoint
+
             if isCenterModeActive {
                 let dx = currentPoint.x - anchorPoint.x
                 let dy = currentPoint.y - anchorPoint.y
-                let newStart = NSPoint(x: anchorPoint.x - dx, y: anchorPoint.y - dy)
-                let newEnd = NSPoint(x: anchorPoint.x + dx, y: anchorPoint.y + dy)
-                overlayView.currentRectangle?.startPoint = newStart
-                overlayView.currentRectangle?.endPoint = newEnd
-            } else {
-                overlayView.currentRectangle?.endPoint = currentPoint
+                newStart = NSPoint(x: anchorPoint.x - dx, y: anchorPoint.y - dy)
+                newEnd = NSPoint(x: anchorPoint.x + dx, y: anchorPoint.y + dy)
             }
+
+            if isShiftConstraintActive {
+                (newStart, newEnd) = constrainToSquare(
+                    start: newStart, end: newEnd, anchor: anchorPoint, centerMode: isCenterModeActive)
+            }
+
+            overlayView.currentRectangle?.startPoint = newStart
+            overlayView.currentRectangle?.endPoint = newEnd
         case .circle:
+            var newStart = anchorPoint
+            var newEnd = currentPoint
+
             if isCenterModeActive {
                 let dx = currentPoint.x - anchorPoint.x
                 let dy = currentPoint.y - anchorPoint.y
-                let newStart = NSPoint(x: anchorPoint.x - dx, y: anchorPoint.y - dy)
-                let newEnd = NSPoint(x: anchorPoint.x + dx, y: anchorPoint.y + dy)
-                overlayView.currentCircle?.startPoint = newStart
-                overlayView.currentCircle?.endPoint = newEnd
-            } else {
-                overlayView.currentCircle?.endPoint = currentPoint
+                newStart = NSPoint(x: anchorPoint.x - dx, y: anchorPoint.y - dy)
+                newEnd = NSPoint(x: anchorPoint.x + dx, y: anchorPoint.y + dy)
             }
+
+            if isShiftConstraintActive {
+                (newStart, newEnd) = constrainToSquare(
+                    start: newStart, end: newEnd, anchor: anchorPoint, centerMode: isCenterModeActive)
+            }
+
+            overlayView.currentCircle?.startPoint = newStart
+            overlayView.currentCircle?.endPoint = newEnd
         case .text:
             break
         case .counter:
@@ -789,11 +803,31 @@ class OverlayWindow: NSPanel {
         path = currentPath
     }
 
+    /// Constrains a bounding box to a square while preserving drag direction
+    private func constrainToSquare(
+        start: NSPoint,
+        end: NSPoint,
+        anchor: NSPoint,
+        centerMode: Bool
+    ) -> (start: NSPoint, end: NSPoint) {
+        let width = abs(end.x - start.x)
+        let height = abs(end.y - start.y)
+        let size = max(width, height)
+
+        let signX: CGFloat = end.x >= start.x ? 1.0 : -1.0
+        let signY: CGFloat = end.y >= start.y ? 1.0 : -1.0
+
+        if centerMode {
+            return (
+                NSPoint(x: anchor.x - signX * size, y: anchor.y - signY * size),
+                NSPoint(x: anchor.x + signX * size, y: anchor.y + signY * size)
+            )
+        } else {
+            return (start, NSPoint(x: start.x + signX * size, y: start.y + signY * size))
+        }
+    }
+
     /// Snaps a point to the nearest 45-degree angle from a start point
-    /// - Parameters:
-    ///   - start: The starting point (anchor point)
-    ///   - current: The current mouse position
-    /// - Returns: A new point snapped to the nearest 45-degree increment
     private func snapToStraightLine(from start: NSPoint, to current: NSPoint) -> NSPoint {
         let dx = current.x - start.x
         let dy = current.y - start.y
