@@ -737,22 +737,23 @@ class OverlayWindow: NSPanel {
         let shiftPressed = event.modifierFlags.contains(.shift)
 
         // Handle Option key for center mode (rectangles and circles)
-        if !wasOptionPressedOnMouseDown {
-            if !isOptionCurrentlyPressed && optionPressed {
+        if !isOptionCurrentlyPressed && optionPressed {
+            if !wasOptionPressedOnMouseDown {
                 recenterAnchorForCurrentShape()
-                isCenterModeActive = true
-            } else if isOptionCurrentlyPressed && !optionPressed {
-                isCenterModeActive = false
             }
+            isCenterModeActive = true
+        } else if isOptionCurrentlyPressed && !optionPressed {
+            if isCenterModeActive {
+                reanchorFromCenterToCorner()
+            }
+            isCenterModeActive = false
         }
 
         // Handle Shift key for straight line constraint
         if !wasShiftPressedOnMouseDown {
             if !isShiftCurrentlyPressed && shiftPressed {
-                // Shift pressed mid-drag - activate constraint
                 isShiftConstraintActive = true
             } else if isShiftCurrentlyPressed && !shiftPressed {
-                // Shift released mid-drag - deactivate constraint
                 isShiftConstraintActive = false
             }
         }
@@ -780,6 +781,15 @@ class OverlayWindow: NSPanel {
                 height: abs(circle.endPoint.y - circle.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
+        }
+    }
+
+    /// Reanchors the shape from center mode to corner mode by setting anchor to the shape's startPoint
+    private func reanchorFromCenterToCorner() {
+        if let rect = overlayView.currentRectangle {
+            anchorPoint = rect.startPoint
+        } else if let circle = overlayView.currentCircle {
+            anchorPoint = circle.startPoint
         }
     }
 

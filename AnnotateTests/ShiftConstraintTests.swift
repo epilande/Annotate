@@ -661,4 +661,223 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
             XCTAssertEqual(width, height, accuracy: 0.1, "Finalized circle should be perfect")
         }
     }
+
+    // MARK: - Option Key Release Mid-Drag Tests
+
+    private func performDragWithOption(from start: NSPoint, to end: NSPoint) {
+        let mouseDownEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: start,
+            modifierFlags: .option
+        )
+        window.mouseDown(with: mouseDownEvent!)
+
+        let mouseDragEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: end,
+            modifierFlags: .option
+        )
+        window.mouseDragged(with: mouseDragEvent!)
+    }
+
+    private func releaseOptionKey() {
+        let flagsEvent = TestEvents.createKeyEvent(
+            type: .flagsChanged,
+            keyCode: 58,  // Option key
+            modifierFlags: []
+        )
+        window.flagsChanged(with: flagsEvent!)
+    }
+
+    private func continueDragWithoutOption(to location: NSPoint) {
+        let mouseDragEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: location,
+            modifierFlags: []
+        )
+        window.mouseDragged(with: mouseDragEvent!)
+    }
+
+    func testRectangleOptionReleaseMidDragDoesNotJump() {
+        window.overlayView.currentTool = .rectangle
+        let anchor = NSPoint(x: 200, y: 200)
+        let dragPoint1 = NSPoint(x: 250, y: 230)
+
+        performDragWithOption(from: anchor, to: dragPoint1)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        guard let rectBefore = window.overlayView.currentRectangle else { return }
+        let endPointBefore = rectBefore.endPoint
+
+        releaseOptionKey()
+        continueDragWithoutOption(to: dragPoint1)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        guard let rectAfter = window.overlayView.currentRectangle else { return }
+
+        XCTAssertEqual(rectAfter.endPoint.x, endPointBefore.x, accuracy: 1.0,
+            "Rectangle should not jump when Option is released")
+        XCTAssertEqual(rectAfter.endPoint.y, endPointBefore.y, accuracy: 1.0,
+            "Rectangle should not jump when Option is released")
+    }
+
+    func testCircleOptionReleaseMidDragDoesNotJump() {
+        window.overlayView.currentTool = .circle
+        let anchor = NSPoint(x: 200, y: 200)
+        let dragPoint1 = NSPoint(x: 250, y: 230)
+
+        performDragWithOption(from: anchor, to: dragPoint1)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        guard let circleBefore = window.overlayView.currentCircle else { return }
+        let endPointBefore = circleBefore.endPoint
+
+        releaseOptionKey()
+        continueDragWithoutOption(to: dragPoint1)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        guard let circleAfter = window.overlayView.currentCircle else { return }
+
+        XCTAssertEqual(circleAfter.endPoint.x, endPointBefore.x, accuracy: 1.0,
+            "Circle should not jump when Option is released")
+        XCTAssertEqual(circleAfter.endPoint.y, endPointBefore.y, accuracy: 1.0,
+            "Circle should not jump when Option is released")
+    }
+
+    func testRectangleOptionReleaseThenContinueDrag() {
+        window.overlayView.currentTool = .rectangle
+        let anchor = NSPoint(x: 200, y: 200)
+        let dragPoint1 = NSPoint(x: 250, y: 230)
+        let dragPoint2 = NSPoint(x: 280, y: 260)
+
+        performDragWithOption(from: anchor, to: dragPoint1)
+        releaseOptionKey()
+        continueDragWithoutOption(to: dragPoint2)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        guard let rect = window.overlayView.currentRectangle else { return }
+
+        // After releasing Option, shape should follow cursor from corner mode
+        XCTAssertEqual(rect.endPoint.x, dragPoint2.x, accuracy: 1.0,
+            "Rectangle should follow cursor after Option release")
+        XCTAssertEqual(rect.endPoint.y, dragPoint2.y, accuracy: 1.0,
+            "Rectangle should follow cursor after Option release")
+    }
+
+    func testCircleOptionReleaseThenContinueDrag() {
+        window.overlayView.currentTool = .circle
+        let anchor = NSPoint(x: 200, y: 200)
+        let dragPoint1 = NSPoint(x: 250, y: 230)
+        let dragPoint2 = NSPoint(x: 280, y: 260)
+
+        performDragWithOption(from: anchor, to: dragPoint1)
+        releaseOptionKey()
+        continueDragWithoutOption(to: dragPoint2)
+
+        XCTAssertNotNil(window.overlayView.currentCircle)
+        guard let circle = window.overlayView.currentCircle else { return }
+
+        // After releasing Option, shape should follow cursor from corner mode
+        XCTAssertEqual(circle.endPoint.x, dragPoint2.x, accuracy: 1.0,
+            "Circle should follow cursor after Option release")
+        XCTAssertEqual(circle.endPoint.y, dragPoint2.y, accuracy: 1.0,
+            "Circle should follow cursor after Option release")
+    }
+
+    func testRectangleOptionHeldEntireDragStillWorks() {
+        window.overlayView.currentTool = .rectangle
+        let anchor = NSPoint(x: 200, y: 200)
+        let end = NSPoint(x: 250, y: 230)
+
+        performDragWithOption(from: anchor, to: end)
+
+        let mouseUpEvent = TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: end,
+            modifierFlags: .option
+        )
+        window.mouseUp(with: mouseUpEvent!)
+
+        XCTAssertEqual(window.overlayView.rectangles.count, 1)
+        if let rect = window.overlayView.rectangles.first {
+            let centerX = (rect.startPoint.x + rect.endPoint.x) / 2
+            let centerY = (rect.startPoint.y + rect.endPoint.y) / 2
+            XCTAssertEqual(centerX, anchor.x, accuracy: 1.0, "Center X should be at anchor")
+            XCTAssertEqual(centerY, anchor.y, accuracy: 1.0, "Center Y should be at anchor")
+        }
+    }
+
+    func testCircleOptionHeldEntireDragStillWorks() {
+        window.overlayView.currentTool = .circle
+        let anchor = NSPoint(x: 200, y: 200)
+        let end = NSPoint(x: 250, y: 230)
+
+        performDragWithOption(from: anchor, to: end)
+
+        let mouseUpEvent = TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: end,
+            modifierFlags: .option
+        )
+        window.mouseUp(with: mouseUpEvent!)
+
+        XCTAssertEqual(window.overlayView.circles.count, 1)
+        if let circle = window.overlayView.circles.first {
+            let centerX = (circle.startPoint.x + circle.endPoint.x) / 2
+            let centerY = (circle.startPoint.y + circle.endPoint.y) / 2
+            XCTAssertEqual(centerX, anchor.x, accuracy: 1.0, "Center X should be at anchor")
+            XCTAssertEqual(centerY, anchor.y, accuracy: 1.0, "Center Y should be at anchor")
+        }
+    }
+
+    func testRectangleShiftPlusOptionReleaseMidDrag() {
+        window.overlayView.currentTool = .rectangle
+        let anchor = NSPoint(x: 200, y: 200)
+        let dragPoint1 = NSPoint(x: 250, y: 230)
+
+        // Shift + Option creates square from center
+        let modifierFlags: NSEvent.ModifierFlags = [.shift, .option]
+        let mouseDownEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: anchor,
+            modifierFlags: modifierFlags
+        )
+        window.mouseDown(with: mouseDownEvent!)
+
+        let mouseDragEvent = TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: dragPoint1,
+            modifierFlags: modifierFlags
+        )
+        window.mouseDragged(with: mouseDragEvent!)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        guard let rectBefore = window.overlayView.currentRectangle else { return }
+
+        let widthBefore = abs(rectBefore.endPoint.x - rectBefore.startPoint.x)
+        let heightBefore = abs(rectBefore.endPoint.y - rectBefore.startPoint.y)
+        XCTAssertEqual(widthBefore, heightBefore, accuracy: 0.1, "Should be square before Option release")
+
+        // Release Option (keep Shift)
+        let flagsEvent = TestEvents.createKeyEvent(
+            type: .flagsChanged,
+            keyCode: 58,
+            modifierFlags: .shift
+        )
+        window.flagsChanged(with: flagsEvent!)
+
+        let mouseDrag2 = TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: dragPoint1,
+            modifierFlags: .shift
+        )
+        window.mouseDragged(with: mouseDrag2!)
+
+        XCTAssertNotNil(window.overlayView.currentRectangle)
+        guard let rectAfter = window.overlayView.currentRectangle else { return }
+
+        let widthAfter = abs(rectAfter.endPoint.x - rectAfter.startPoint.x)
+        let heightAfter = abs(rectAfter.endPoint.y - rectAfter.startPoint.y)
+        XCTAssertEqual(widthAfter, heightAfter, accuracy: 0.1, "Should still be square after Option release")
+    }
 }
