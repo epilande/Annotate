@@ -273,6 +273,9 @@ class OverlayWindow: NSPanel {
                         overlayView.editingTextAnnotationIndex = index
                         let existingAnnotation = overlayView.textAnnotations[index]
 
+                        // Set currentTextAnnotation so finalizeTextAnnotation can save
+                        overlayView.currentTextAnnotation = existingAnnotation
+
                         let attributes: [NSAttributedString.Key: Any] = [
                             .font: NSFont.systemFont(ofSize: 18)
                         ]
