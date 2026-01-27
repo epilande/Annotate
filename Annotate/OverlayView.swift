@@ -594,7 +594,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             drawCircle(circle, alpha: 1.0)
         }
 
-        // Draw texts
+        // Draw texts (text annotations don't fade - they persist regardless of fade mode)
         for annotation in textAnnotations {
             drawText(annotation)
         }
@@ -1012,6 +1012,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func clearAll() {
+        cleanupActiveTextField()
+
         // Only register undo if there's something to clear
         if !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty
             || !rectangles.isEmpty
@@ -1472,6 +1474,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func createTextField(
         at point: NSPoint, withText existingText: String = "", width: CGFloat = 300
     ) {
+        if let existingField = activeTextField {
+            finalizeTextAnnotation(existingField)
+        }
+
         activeTextField = NSTextField(
             frame: NSRect(x: point.x, y: point.y, width: width, height: 24))
         if let textField = activeTextField {
@@ -1514,13 +1520,31 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
+    private func cleanupActiveTextField() {
+        activeTextField?.removeFromSuperview()
+        activeTextField = nil
+        currentTextAnnotation = nil
+        editingTextAnnotationIndex = nil
+        window?.makeFirstResponder(nil)
+    }
+
+    func cancelTextAnnotation() {
+        cleanupActiveTextField()
+        needsDisplay = true
+    }
+
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
-        guard let currentText = currentTextAnnotation else { return }
         let typedText = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let position = sender.frame.origin
         sender.removeFromSuperview()
         activeTextField = nil
         window?.makeFirstResponder(nil)
+
+        guard let currentText = currentTextAnnotation else {
+            editingTextAnnotationIndex = nil
+            needsDisplay = true
+            return
+        }
 
         if !typedText.isEmpty {
             let finalAnnotation = TextAnnotation(
@@ -1558,9 +1582,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         -> Bool
     {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            if let textField = control as? NSTextField {
-                finalizeTextAnnotation(textField)
-            }
+            cancelTextAnnotation()
             return true
         } else if commandSelector == #selector(insertNewline(_:)) {
             if let textField = control as? NSTextField {
@@ -1570,6 +1592,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         return false
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        if let textField = notification.object as? NSTextField,
+           textField === activeTextField {
+            finalizeTextAnnotation(textField)
+        }
     }
 
     func isAnythingFading() -> Bool {
@@ -2026,8 +2055,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return NSRect(
             x: annotation.position.x,
             y: annotation.position.y,
-            width: size.width + 20,
-            height: size.height + 10
+            width: size.width + 4,
+            height: size.height + 4
         )
     }
     

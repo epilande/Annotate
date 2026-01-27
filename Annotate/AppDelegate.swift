@@ -446,6 +446,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
 
         if overlayWindow.isVisible {
+            if let activeField = overlayWindow.overlayView.activeTextField {
+                overlayWindow.overlayView.finalizeTextAnnotation(activeField)
+            }
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
@@ -469,6 +472,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         alwaysOnMode.toggle()
 
         overlayWindows.values.forEach { overlayWindow in
+            if let activeField = overlayWindow.overlayView.activeTextField {
+                overlayWindow.overlayView.finalizeTextAnnotation(activeField)
+            }
             if alwaysOnMode {
                 configureWindowForAlwaysOnMode(overlayWindow)
             } else {
@@ -491,6 +497,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let overlayWindow = overlayWindows[currentScreen],
             overlayWindow.isVisible
         {
+            if let activeField = overlayWindow.overlayView.activeTextField {
+                overlayWindow.overlayView.finalizeTextAnnotation(activeField)
+            }
             updateStatusBarIcon(with: .gray)
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
