@@ -11,6 +11,8 @@ struct GeneralSettingsView: View {
     private var hideToolFeedback = false
     @AppStorage(UserDefaults.enableBoardKey)
     private var enableBoard = false
+    @AppStorage(UserDefaults.persistTextModeKey)
+    private var persistTextMode = false
     @State private var boardOpacity: Double = BoardManager.shared.opacity
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
@@ -90,6 +92,12 @@ struct GeneralSettingsView: View {
                     ) {
                         AppDelegate.shared?.updateDockIconVisibility()
                     }
+
+                    SettingsToggleRow(
+                        title: "Persist Text Mode",
+                        description: "Stay in text mode after pressing Enter",
+                        isOn: $persistTextMode
+                    )
                 }
 
                 Divider()

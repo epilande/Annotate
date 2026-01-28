@@ -48,6 +48,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var currentColor: NSColor = .systemRed
     var currentTool: ToolType = .pen
+    var previousTool: ToolType = .pen
     var currentLineWidth: CGFloat = 3.0
 
     var fadeMode: Bool = true
@@ -100,7 +101,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func cursorUpdate(with event: NSEvent) {
         updateCursor()
-        if !shouldShowActiveCursorForThisOverlay() {
+        if !shouldShowActiveCursorForThisOverlay() && currentTool != .text {
             super.cursorUpdate(with: event)
         }
     }
@@ -111,6 +112,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func updateCursor() {
+        // Show I-beam cursor in text mode when no text field is active
+        if currentTool == .text && activeTextField == nil {
+            NSCursor.iBeam.set()
+            return
+        }
+
         let manager = CursorHighlightManager.shared
         if shouldShowActiveCursorForThisOverlay() {
             Self.transparentCursor.set()
@@ -122,7 +129,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        if shouldShowActiveCursorForThisOverlay() {
+        if currentTool == .text && activeTextField == nil {
+            addCursorRect(bounds, cursor: .iBeam)
+        } else if shouldShowActiveCursorForThisOverlay() {
             addCursorRect(bounds, cursor: Self.transparentCursor)
         }
     }
@@ -1472,23 +1481,26 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func createTextField(
-        at point: NSPoint, withText existingText: String = "", width: CGFloat = 300
+        at point: NSPoint, withText existingText: String = "", width: CGFloat = 100
     ) {
         if let existingField = activeTextField {
             finalizeTextAnnotation(existingField)
         }
 
+        let minWidth: CGFloat = 100
+        let initialWidth = existingText.isEmpty ? minWidth : width
+
         activeTextField = NSTextField(
-            frame: NSRect(x: point.x, y: point.y, width: width, height: 24))
+            frame: NSRect(x: point.x, y: point.y, width: initialWidth, height: 28))
         if let textField = activeTextField {
             textField.font = NSFont.systemFont(ofSize: 18)
 
             let boardType = currentBoardType
             if boardType == .blackboard {
-                textField.backgroundColor = NSColor.black.withAlphaComponent(0.3)
+                textField.backgroundColor = NSColor.black.withAlphaComponent(0.5)
                 textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
             } else {
-                textField.backgroundColor = NSColor.white.withAlphaComponent(0.3)
+                textField.backgroundColor = NSColor.white.withAlphaComponent(0.6)
                 textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
             }
 
@@ -1505,10 +1517,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
             textField.delegate = self
             textField.action = #selector(finalizeTextAnnotation(_:))
 
-            // Set initial size
-            let size = existingText.size(withAttributes: [.font: textField.font!])
-            textField.frame.size.width = max(width, size.width + 20)  // Add some padding
-            textField.frame.size.height = max(24, size.height)
+            textField.wantsLayer = true
+            textField.layer?.cornerRadius = 4
+            textField.layer?.borderWidth = 1
+            textField.layer?.borderColor = currentColor.withAlphaComponent(0.4).cgColor
+
+            if !existingText.isEmpty {
+                let size = existingText.size(withAttributes: [.font: textField.font!])
+                textField.frame.size.width = max(minWidth, size.width + 24)
+                textField.frame.size.height = max(28, size.height + 8)
+            }
 
             self.addSubview(textField)
             textField.becomeFirstResponder()
@@ -1531,6 +1549,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func cancelTextAnnotation() {
         cleanupActiveTextField()
         needsDisplay = true
+    }
+
+    func restorePreviousTool() {
+        if UserDefaults.standard.bool(forKey: UserDefaults.persistTextModeKey) { return }
+
+        currentTool = previousTool
+        AppDelegate.shared?.overlayWindows.values.forEach { window in
+            window.overlayView.currentTool = previousTool
+            window.invalidateCursorRects(for: window.overlayView)
+            window.overlayView.updateCursor()
+        }
+        AppDelegate.shared?.updateCurrentToolMenuItem(to: previousTool.displayName)
     }
 
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
@@ -1583,15 +1613,40 @@ class OverlayView: NSView, NSTextFieldDelegate {
     {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             cancelTextAnnotation()
+            restorePreviousTool()
             return true
         } else if commandSelector == #selector(insertNewline(_:)) {
-            if let textField = control as? NSTextField {
+            guard let textField = control as? NSTextField else { return false }
+
+            let modifiers = NSEvent.modifierFlags
+
+            if modifiers.contains(.command) {
                 finalizeTextAnnotation(textField)
+                return true
+            } else if modifiers.contains(.shift) {
+                let position = textField.frame.origin
+                let newY = position.y - 32
+                finalizeTextAnnotation(textField)
+                createTextFieldForNewAnnotation(at: NSPoint(x: position.x, y: newY))
+                return true
+            } else {
+                finalizeTextAnnotation(textField)
+                restorePreviousTool()
+                return true
             }
-            return true
         }
 
         return false
+    }
+
+    private func createTextFieldForNewAnnotation(at point: NSPoint) {
+        currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: point,
+            color: adaptColorForBoard(currentColor, boardType: currentBoardType),
+            fontSize: 18
+        )
+        createTextField(at: point)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -1599,6 +1654,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
            textField === activeTextField {
             finalizeTextAnnotation(textField)
         }
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let textField = notification.object as? NSTextField,
+              textField === activeTextField else { return }
+
+        let text = textField.stringValue
+        let font = textField.font ?? NSFont.systemFont(ofSize: 18)
+        let size = text.size(withAttributes: [.font: font])
+
+        let minWidth: CGFloat = 100
+        let maxWidth = (window?.frame.width ?? bounds.width) - textField.frame.origin.x - 20
+        let newWidth = min(max(minWidth, size.width + 24), maxWidth)
+
+        textField.frame.size.width = newWidth
     }
 
     func isAnythingFading() -> Bool {

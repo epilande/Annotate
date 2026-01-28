@@ -22,6 +22,7 @@ extension UserDefaults {
     static let spotlightSizeKey = "SpotlightSize"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
+    static let persistTextModeKey = "PersistTextMode"
 }
 
 let colorPalette: [NSColor] = [

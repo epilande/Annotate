@@ -353,4 +353,37 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
         CursorHighlightManager.shared = CursorHighlightManager()
     }
+
+    // MARK: - Previous Tool Tracking Tests
+
+    func testSwitchToolSavesPreviousToolForTextMode() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        appDelegate.enableArrowMode(NSMenuItem())
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
+
+        appDelegate.enableTextMode(NSMenuItem())
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .text)
+        XCTAssertEqual(overlayWindow.overlayView.previousTool, .arrow, "previousTool should be .arrow after switching from arrow to text")
+    }
+
+    func testSwitchToolDoesNotSavePreviousToolForOtherModes() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        overlayWindow.overlayView.previousTool = .pen
+        appDelegate.enableArrowMode(NSMenuItem())
+
+        let previousToolBefore = overlayWindow.overlayView.previousTool
+        appDelegate.enableLineMode(NSMenuItem())
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .line)
+        XCTAssertEqual(overlayWindow.overlayView.previousTool, previousToolBefore, "previousTool should remain unchanged when not switching to text mode")
+    }
 }

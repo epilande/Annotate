@@ -214,4 +214,31 @@ final class OverlayViewTests: XCTestCase, Sendable {
             overlayView.adaptColorsToBoardType,
             "adaptColorsToBoardType should be false when disabled")
     }
+
+    // MARK: - Cursor Tests
+
+    func testCursorIsIBeamInTextModeWithoutActiveTextField() {
+        overlayView.currentTool = .text
+        overlayView.activeTextField = nil
+
+        XCTAssertEqual(overlayView.currentTool, .text)
+        XCTAssertNil(overlayView.activeTextField)
+
+        let shouldShowIBeam = overlayView.currentTool == .text && overlayView.activeTextField == nil
+        XCTAssertTrue(shouldShowIBeam, "Should show I-beam cursor in text mode without active text field")
+    }
+
+    func testCursorIsNotIBeamWhenTextFieldIsActive() {
+        overlayView.currentTool = .text
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+
+        XCTAssertEqual(overlayView.currentTool, .text)
+        XCTAssertNotNil(overlayView.activeTextField)
+
+        let shouldShowIBeam = overlayView.currentTool == .text && overlayView.activeTextField == nil
+        XCTAssertFalse(shouldShowIBeam, "Should not show I-beam cursor when text field is active")
+
+        overlayView.activeTextField?.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
 }

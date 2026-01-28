@@ -211,6 +211,25 @@ final class GeneralSettingsViewTests: XCTestCase {
         )
     }
 
+    // MARK: - Persist Text Mode Toggle Tests
+
+    func testPersistTextModeToggleDefaultsToFalse() {
+        testDefaults.removeObject(forKey: UserDefaults.persistTextModeKey)
+
+        let defaultValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
+        XCTAssertFalse(defaultValue, "persistTextMode should default to false")
+    }
+
+    func testPersistTextModeTogglePersistsValue() {
+        testDefaults.set(true, forKey: UserDefaults.persistTextModeKey)
+        let onValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
+        XCTAssertTrue(onValue, "persistTextMode should be true after setting to true")
+
+        testDefaults.set(false, forKey: UserDefaults.persistTextModeKey)
+        let offValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
+        XCTAssertFalse(offValue, "persistTextMode should be false after setting to false")
+    }
+
     // MARK: - Edge Cases
 
     func testBoardOpacityAtBoundaries() {

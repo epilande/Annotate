@@ -12,6 +12,21 @@ enum ToolType {
     case counter
     case select
     case eraser
+
+    var displayName: String {
+        switch self {
+        case .pen: return "Pen"
+        case .highlighter: return "Highlighter"
+        case .arrow: return "Arrow"
+        case .line: return "Line"
+        case .rectangle: return "Rectangle"
+        case .circle: return "Circle"
+        case .text: return "Text"
+        case .counter: return "Counter"
+        case .eraser: return "Eraser"
+        case .select: return "Select"
+        }
+    }
 }
 
 /// Represents a selected object for movement
