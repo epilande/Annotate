@@ -240,4 +240,53 @@ final class TextAnnotationUXTests: XCTestCase, Sendable {
         textField.removeFromSuperview()
         overlayView.activeTextField = nil
     }
+
+    // MARK: - Cancel Text Annotation Tests
+
+    func testCancelTextAnnotationClearsActiveTextField() {
+        overlayView.currentTool = .text
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Test text", width: 100)
+
+        XCTAssertNotNil(overlayView.activeTextField, "activeTextField should exist before cancel")
+
+        overlayView.cancelTextAnnotation()
+
+        XCTAssertNil(overlayView.activeTextField, "activeTextField should be nil after cancel")
+    }
+
+    func testCancelTextAnnotationClearsCurrentTextAnnotation() {
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "Test",
+            position: NSPoint(x: 100, y: 100),
+            color: .systemRed,
+            fontSize: 18
+        )
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Test", width: 100)
+
+        overlayView.cancelTextAnnotation()
+
+        XCTAssertNil(overlayView.currentTextAnnotation, "currentTextAnnotation should be nil after cancel")
+    }
+
+    func testCancelTextAnnotationDoesNotAddAnnotation() {
+        overlayView.currentTool = .text
+        let initialCount = overlayView.textAnnotations.count
+
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "This should not be saved", width: 100)
+
+        overlayView.cancelTextAnnotation()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, initialCount, "No annotation should be added when cancelled")
+    }
+
+    func testCancelTextAnnotationClearsEditingIndex() {
+        overlayView.currentTool = .text
+        overlayView.editingTextAnnotationIndex = 5
+
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Test", width: 100)
+        overlayView.cancelTextAnnotation()
+
+        XCTAssertNil(overlayView.editingTextAnnotationIndex, "editingTextAnnotationIndex should be nil after cancel")
+    }
 }

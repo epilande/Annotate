@@ -1539,8 +1539,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func cleanupActiveTextField() {
-        activeTextField?.removeFromSuperview()
-        activeTextField = nil
+        let textField = activeTextField
+        activeTextField = nil  // Set to nil FIRST so controlTextDidEndEditing guard fails
+        textField?.removeFromSuperview()
         currentTextAnnotation = nil
         editingTextAnnotationIndex = nil
         window?.makeFirstResponder(nil)
