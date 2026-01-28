@@ -817,6 +817,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         userDefaults.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
 
         updateFadeModeMenuItems(isCurrentlyFadeMode: isCurrentlyFadeMode)
+
+        let text = isCurrentlyFadeMode ? "Persist Mode" : "Fade Mode"
+        let icon = isCurrentlyFadeMode ? "📌" : "⏳"
+        for (_, window) in overlayWindows where window.isVisible {
+            window.showToggleFeedback(text, icon: icon)
+        }
     }
 
     @objc func showSettings() {
