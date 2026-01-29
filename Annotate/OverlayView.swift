@@ -1,5 +1,19 @@
 import Cocoa
 
+/// Custom text field that intercepts Cmd+Enter to prevent system alert sound
+@MainActor
+class AnnotationTextField: NSTextField {
+    var onCommandReturn: (() -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command) && event.keyCode == 36 {
+            onCommandReturn?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 @MainActor
 class OverlayView: NSView, NSTextFieldDelegate {
     var adaptColorsToBoardType: Bool = true
@@ -1490,51 +1504,54 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let minWidth: CGFloat = 100
         let initialWidth = existingText.isEmpty ? minWidth : width
 
-        activeTextField = NSTextField(
+        let textField = AnnotationTextField(
             frame: NSRect(x: point.x, y: point.y, width: initialWidth, height: 28))
-        if let textField = activeTextField {
-            textField.font = NSFont.systemFont(ofSize: 18)
+        textField.onCommandReturn = { [weak self, weak textField] in
+            guard let self = self, let textField = textField else { return }
+            self.finalizeTextAnnotation(textField)
+        }
+        activeTextField = textField
+        textField.font = NSFont.systemFont(ofSize: 18)
 
-            let boardType = currentBoardType
-            if boardType == .blackboard {
-                textField.backgroundColor = NSColor.black.withAlphaComponent(0.5)
-                textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
-            } else {
-                textField.backgroundColor = NSColor.white.withAlphaComponent(0.6)
-                textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
-            }
+        let boardType = currentBoardType
+        if boardType == .blackboard {
+            textField.backgroundColor = NSColor.black.withAlphaComponent(0.5)
+            textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
+        } else {
+            textField.backgroundColor = NSColor.white.withAlphaComponent(0.6)
+            textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
+        }
 
-            textField.isBordered = false
-            textField.isEditable = true
-            textField.isSelectable = true
-            textField.isBezeled = false
-            textField.drawsBackground = true
-            textField.usesSingleLineMode = false
-            textField.cell?.wraps = false
-            textField.cell?.truncatesLastVisibleLine = false
-            textField.stringValue = existingText
-            textField.target = self
-            textField.delegate = self
-            textField.action = #selector(finalizeTextAnnotation(_:))
+        textField.isBordered = false
+        textField.isEditable = true
+        textField.isSelectable = true
+        textField.isBezeled = false
+        textField.drawsBackground = true
+        textField.usesSingleLineMode = false
+        textField.cell?.wraps = false
+        textField.cell?.truncatesLastVisibleLine = false
+        textField.stringValue = existingText
+        textField.target = self
+        textField.delegate = self
+        textField.action = #selector(finalizeTextAnnotation(_:))
 
-            textField.wantsLayer = true
-            textField.layer?.cornerRadius = 4
-            textField.layer?.borderWidth = 1
-            textField.layer?.borderColor = currentColor.withAlphaComponent(0.4).cgColor
+        textField.wantsLayer = true
+        textField.layer?.cornerRadius = 4
+        textField.layer?.borderWidth = 1
+        textField.layer?.borderColor = currentColor.withAlphaComponent(0.4).cgColor
 
-            if !existingText.isEmpty {
-                let size = existingText.size(withAttributes: [.font: textField.font!])
-                textField.frame.size.width = max(minWidth, size.width + 24)
-                textField.frame.size.height = max(28, size.height + 8)
-            }
+        if !existingText.isEmpty {
+            let size = existingText.size(withAttributes: [.font: textField.font!])
+            textField.frame.size.width = max(minWidth, size.width + 24)
+            textField.frame.size.height = max(28, size.height + 8)
+        }
 
-            self.addSubview(textField)
-            textField.becomeFirstResponder()
+        self.addSubview(textField)
+        textField.becomeFirstResponder()
 
-            // Select all text if editing existing annotation
-            if !existingText.isEmpty {
-                textField.currentEditor()?.selectAll(nil)
-            }
+        // Select all text if editing existing annotation
+        if !existingText.isEmpty {
+            textField.currentEditor()?.selectAll(nil)
         }
     }
 
@@ -1619,12 +1636,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         } else if commandSelector == #selector(insertNewline(_:)) {
             guard let textField = control as? NSTextField else { return false }
 
-            let modifiers = NSEvent.modifierFlags
-
-            if modifiers.contains(.command) {
-                finalizeTextAnnotation(textField)
-                return true
-            } else if modifiers.contains(.shift) {
+            // Cmd+Enter is handled by AnnotationTextField.performKeyEquivalent
+            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
                 let position = textField.frame.origin
                 let newY = position.y - 32
                 finalizeTextAnnotation(textField)
