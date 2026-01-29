@@ -14,6 +14,32 @@ class AnnotationTextField: NSTextField {
     }
 }
 
+/// Custom text field cell that adds padding/insets to the text drawing area
+class PaddedTextFieldCell: NSTextFieldCell {
+    private let padding = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+
+    private func insetRect(for rect: NSRect) -> NSRect {
+        NSRect(
+            x: rect.origin.x + padding.left,
+            y: rect.origin.y + padding.top,
+            width: rect.width - padding.left - padding.right,
+            height: rect.height - padding.top - padding.bottom
+        )
+    }
+
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        super.drawingRect(forBounds: insetRect(for: rect))
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: insetRect(for: rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: insetRect(for: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+}
+
 @MainActor
 class OverlayView: NSView, NSTextFieldDelegate {
     var adaptColorsToBoardType: Bool = true
@@ -618,7 +644,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         // Draw texts (text annotations don't fade - they persist regardless of fade mode)
-        for annotation in textAnnotations {
+        for (index, annotation) in textAnnotations.enumerated() {
+            // Skip drawing text that is currently being edited (prevents ghost text)
+            if index == editingTextAnnotationIndex { continue }
             drawText(annotation)
         }
         if let annotation = currentTextAnnotation {
@@ -1503,9 +1531,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         let minWidth: CGFloat = 100
         let initialWidth = existingText.isEmpty ? minWidth : width
+        let isEditing = !existingText.isEmpty
 
+        // Offset to align text cursor with click point:
+        // X: -8 for left padding
+        // Y: -16 to center text vertically at click for new text, -4 for editing (top padding only)
+        let textFieldHeight: CGFloat = 32
+        let yOffset: CGFloat = isEditing ? -4 : -textFieldHeight / 2
         let textField = AnnotationTextField(
-            frame: NSRect(x: point.x, y: point.y, width: initialWidth, height: 28))
+            frame: NSRect(x: point.x - 8, y: point.y + yOffset, width: initialWidth, height: textFieldHeight))
+        textField.cell = PaddedTextFieldCell()
         textField.onCommandReturn = { [weak self, weak textField] in
             guard let self = self, let textField = textField else { return }
             self.finalizeTextAnnotation(textField)
@@ -1514,13 +1549,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.font = NSFont.systemFont(ofSize: 18)
 
         let boardType = currentBoardType
-        if boardType == .blackboard {
-            textField.backgroundColor = NSColor.black.withAlphaComponent(0.5)
-            textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
-        } else {
-            textField.backgroundColor = NSColor.white.withAlphaComponent(0.6)
-            textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
-        }
+        textField.backgroundColor = boardType == .blackboard
+            ? NSColor.black.withAlphaComponent(0.85)
+            : NSColor.white.withAlphaComponent(0.92)
+        textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
 
         textField.isBordered = false
         textField.isEditable = true
@@ -1536,14 +1568,23 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.action = #selector(finalizeTextAnnotation(_:))
 
         textField.wantsLayer = true
-        textField.layer?.cornerRadius = 4
-        textField.layer?.borderWidth = 1
-        textField.layer?.borderColor = currentColor.withAlphaComponent(0.4).cgColor
+        textField.layer?.cornerRadius = 6
+        textField.layer?.borderWidth = 2
 
-        if !existingText.isEmpty {
+        textField.layer?.borderColor = isEditing
+            ? NSColor.systemOrange.withAlphaComponent(0.8).cgColor
+            : currentColor.withAlphaComponent(0.7).cgColor
+
+        textField.layer?.shadowColor = NSColor.black.cgColor
+        textField.layer?.shadowOffset = CGSize(width: 0, height: 2)
+        textField.layer?.shadowRadius = 6
+        textField.layer?.shadowOpacity = 0.2
+        textField.layer?.masksToBounds = false
+
+        if isEditing {
             let size = existingText.size(withAttributes: [.font: textField.font!])
-            textField.frame.size.width = max(minWidth, size.width + 24)
-            textField.frame.size.height = max(28, size.height + 8)
+            textField.frame.size.width = max(minWidth, size.width + 32)
+            textField.frame.size.height = max(32, size.height + 8)
         }
 
         self.addSubview(textField)
@@ -1583,7 +1624,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
         let typedText = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let position = sender.frame.origin
+        // Account for PaddedTextFieldCell padding when storing position
+        let position = NSPoint(
+            x: sender.frame.origin.x + 8,   // left padding
+            y: sender.frame.origin.y + 4    // top padding
+        )
         sender.removeFromSuperview()
         activeTextField = nil
         window?.makeFirstResponder(nil)
@@ -1680,7 +1725,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         let minWidth: CGFloat = 100
         let maxWidth = (window?.frame.width ?? bounds.width) - textField.frame.origin.x - 20
-        let newWidth = min(max(minWidth, size.width + 24), maxWidth)
+        let newWidth = min(max(minWidth, size.width + 32), maxWidth)
 
         textField.frame.size.width = newWidth
     }

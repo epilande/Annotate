@@ -241,4 +241,68 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField?.removeFromSuperview()
         overlayView.activeTextField = nil
     }
+
+    // MARK: - Text Field Positioning Tests
+
+    func testCreateTextFieldForNewTextCentersVertically() {
+        let clickPoint = NSPoint(x: 200, y: 300)
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        // For new text, Y offset should be -16 (half of 32px height) to center at click
+        // X offset is -8 for left padding
+        XCTAssertEqual(textField.frame.origin.x, clickPoint.x - 8, "X should offset by left padding")
+        XCTAssertEqual(textField.frame.origin.y, clickPoint.y - 16, "Y should center text field at click point")
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testCreateTextFieldForEditingAlignWithStoredPosition() {
+        let storedPosition = NSPoint(x: 200, y: 300)
+        overlayView.createTextField(at: storedPosition, withText: "Existing text", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        // For editing, Y offset should be -4 (top padding only) to align with drawn text
+        // X offset is -8 for left padding
+        XCTAssertEqual(textField.frame.origin.x, storedPosition.x - 8, "X should offset by left padding")
+        XCTAssertEqual(textField.frame.origin.y, storedPosition.y - 4, "Y should offset by top padding for editing")
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testFinalizeTextAnnotationAccountsForPadding() {
+        let clickPoint = NSPoint(x: 200, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .red, fontSize: 18
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        textField.stringValue = "Test text"
+        overlayView.finalizeTextAnnotation(textField)
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1, "Should have one text annotation")
+
+        let annotation = overlayView.textAnnotations[0]
+        // Finalized position should account for padding: frame.origin + (8, 4)
+        let expectedX = clickPoint.x - 8 + 8  // -8 for field offset, +8 for padding = clickPoint.x
+        let expectedY = clickPoint.y - 16 + 4  // -16 for field offset, +4 for padding
+        XCTAssertEqual(annotation.position.x, expectedX, accuracy: 0.01, "Position X should account for padding")
+        XCTAssertEqual(annotation.position.y, expectedY, accuracy: 0.01, "Position Y should account for padding")
+    }
 }
