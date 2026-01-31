@@ -6,6 +6,54 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.3.1</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.3.1</link>
+            <description><![CDATA[
+<h1>Annotate v1.3.1</h1>
+
+<h2 id="dart-highlights">🎯 Highlights</h2>
+<p>This release focuses on polishing the text annotation experience with multiple bug fixes and UX improvements, plus adds visual feedback for mode toggles.</p>
+<h2 id="rocket-new-features">🚀 New Features</h2>
+<h3 id="counter-reset-shortcut-41">Counter Reset Shortcut (#41)</h3>
+<ul>
+<li><strong>Cmd+R</strong>: Reset counter number back to 1 while preserving existing counter annotations on screen</li>
+<li>Only active when counter tool is selected</li>
+<li>Shows visual feedback ("Counter Reset 🔄") when triggered</li>
+</ul>
+<h3 id="fade-mode-visual-feedback">Fade Mode Visual Feedback</h3>
+<ul>
+<li><strong>Visual indicator</strong>: Now shows feedback when toggling between fade and persist modes</li>
+<li>Makes it clearer which mode is currently active</li>
+</ul>
+<h2 id="bug-bug-fixes">🐛 Bug Fixes</h2>
+<h3 id="text-annotation-improvements">Text Annotation Improvements</h3>
+<ul>
+<li><strong>Fixed positioning alignment</strong>: Text annotations now appear at the correct position</li>
+<li><strong>Fixed alert sound</strong>: Pressing Cmd+Enter no longer triggers system alert sound</li>
+<li><strong>Fixed ESC behavior</strong>: ESC key now properly cancels text input instead of committing it</li>
+<li><strong>Fixed edit saving</strong>: Changes to existing text annotations are now properly saved</li>
+<li><strong>Improved lifecycle</strong>: Better text field state management and cleanup</li>
+</ul>
+<h3 id="shape-tool-fix">Shape Tool Fix</h3>
+<ul>
+<li><strong>Fixed Option key release</strong>: Shapes no longer jump when releasing the Option key mid-drag</li>
+</ul>
+<h2 id="wrench-improvements">🔧 Improvements</h2>
+<ul>
+<li><strong>Text Mode UX</strong>: Auto-restore previous tool and visual feedback when entering/exiting text mode</li>
+</ul>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.3.1">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Sat, 31 Jan 2026 12:55:48 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.3.1/Annotate-1.3.1.zip"
+                       sparkle:version="1189"
+                       sparkle:shortVersionString="1.3.1"
+                       sparkle:edSignature="CZo91/NmAiOgCcd7i4Kk3VTm2ss7WhFHsdEUaHaunYGiXs4lj1kx64fI6/XKW6zj6SlZnSuffbgM4P9j1lzuBA=="
+                       length="3024990"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.3.0</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.3.0</link>
             <description><![CDATA[
