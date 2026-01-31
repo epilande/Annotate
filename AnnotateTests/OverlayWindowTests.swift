@@ -610,4 +610,59 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertEqual(window.overlayView.currentLineWidth, 20.0)
     }
+
+    // MARK: - Counter Reset Tests
+
+    func testCmdRResetsCounterInCounterMode() {
+        window.overlayView.currentTool = .counter
+        window.overlayView.nextCounterNumber = 5
+
+        let cmdREvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 15,  // 'r' key
+            modifierFlags: .command,
+            characters: "r"
+        )
+
+        window.keyDown(with: cmdREvent!)
+
+        XCTAssertEqual(window.overlayView.nextCounterNumber, 1)
+    }
+
+    func testCmdRDoesNotResetCounterInOtherModes() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.nextCounterNumber = 5
+
+        let cmdREvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 15,
+            modifierFlags: .command,
+            characters: "r"
+        )
+
+        window.keyDown(with: cmdREvent!)
+
+        XCTAssertEqual(window.overlayView.nextCounterNumber, 5, "Counter should not reset outside counter mode")
+    }
+
+    func testCmdRPreservesExistingCounterAnnotations() {
+        window.overlayView.currentTool = .counter
+        window.overlayView.nextCounterNumber = 3
+        window.overlayView.counterAnnotations = [
+            CounterAnnotation(number: 1, position: .zero, color: .red),
+            CounterAnnotation(number: 2, position: NSPoint(x: 100, y: 100), color: .red)
+        ]
+
+        let cmdREvent = TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 15,
+            modifierFlags: .command,
+            characters: "r"
+        )
+
+        window.keyDown(with: cmdREvent!)
+
+        XCTAssertEqual(window.overlayView.nextCounterNumber, 1)
+        XCTAssertEqual(window.overlayView.counterAnnotations.count, 2, "Existing counters should remain")
+    }
 }
