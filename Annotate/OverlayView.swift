@@ -1062,6 +1062,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
         numberString.draw(in: textRect, withAttributes: attributes)
     }
 
+    /// Resets the counter number back to 1 without clearing existing counter annotations.
+    func resetCounter() {
+        nextCounterNumber = 1
+    }
+
     func clearAll() {
         cleanupActiveTextField()
 

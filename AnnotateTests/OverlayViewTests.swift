@@ -177,6 +177,18 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.currentTool, .counter)
     }
 
+    func testResetCounter() {
+        overlayView.nextCounterNumber = 5
+        overlayView.counterAnnotations = [
+            CounterAnnotation(number: 1, position: .zero, color: .blue)
+        ]
+
+        overlayView.resetCounter()
+
+        XCTAssertEqual(overlayView.nextCounterNumber, 1)
+        XCTAssertEqual(overlayView.counterAnnotations.count, 1, "Existing counters should remain")
+    }
+
     func testDeleteLastCounter() {
         // Add two counters
         let counter1 = CounterAnnotation(

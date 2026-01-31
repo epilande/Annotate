@@ -729,6 +729,15 @@ class OverlayWindow: NSPanel {
                     overlayView.undo()
                 }
             }
+        case 15:  // 'r' key
+            if cmdPressed
+                && !event.modifierFlags.contains(.shift)
+                && !event.modifierFlags.contains(.option)
+                && overlayView.currentTool == .counter
+            {
+                overlayView.resetCounter()
+                showToggleFeedback("Counter Reset", icon: "🔄")
+            }
         default:
             super.keyDown(with: event)
         }
