@@ -146,6 +146,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 | Mouse Forward Button                                 | **Redo**             | Redo the last undone action (mouse button 4)                               |
 | <kbd>Command</kbd> + <kbd>Scroll</kbd>               | **Adjust Width**     | Quickly change line width                                                  |
 | <kbd>Shift</kbd> (while drawing)                     | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
+| <kbd>Command</kbd> + <kbd>R</kbd>                    | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
 #### 📋 Copy/Paste (Select Mode Only)
 
@@ -218,6 +219,7 @@ Annotate provides flexible line width control:
 
 - Click anywhere to add sequential numbered circles (1, 2, 3...)
 - Numbers increment automatically with each click
+- Press <kbd>Command</kbd> + <kbd>R</kbd> to reset the counter back to 1 (existing counters remain)
 
 #### Select Tool
 
