@@ -277,7 +277,7 @@ class OverlayWindow: NSPanel {
                         overlayView.currentTextAnnotation = existingAnnotation
 
                         let attributes: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.systemFont(ofSize: 18)
+                            .font: NSFont.systemFont(ofSize: existingAnnotation.fontSize)
                         ]
                         let size = existingAnnotation.text.size(withAttributes: attributes)
 
@@ -296,7 +296,7 @@ class OverlayWindow: NSPanel {
                 text: "",
                 position: startPoint,
                 color: currentColor,
-                fontSize: 18
+                fontSize: UserDefaults.standard.textToolFontSize
             )
             overlayView.createTextField(at: startPoint)
         }
@@ -877,7 +877,11 @@ class OverlayWindow: NSPanel {
         let cmdPressed = event.modifierFlags.contains(.command)
         
         if cmdPressed {
-            scrollWheelForLineWidth(with: event)
+            if overlayView.currentTool == .text {
+                scrollWheelForFontSize(with: event)
+            } else {
+                scrollWheelForLineWidth(with: event)
+            }
         } else {
             // Default scroll behavior
             super.scrollWheel(with: event)
@@ -946,6 +950,37 @@ class OverlayWindow: NSPanel {
     private func showLineWidthFeedback(_ width: CGFloat) {
         let text = String(format: "Line Width: %.2f px", width)
         showFeedback(text, lineColor: overlayView.currentColor, lineWidth: width)
+    }
+    
+    private func scrollWheelForFontSize(with event: NSEvent) {
+        let minFontSize: CGFloat = textAnnotationFontSizeRange.lowerBound
+        let maxFontSize: CGFloat = textAnnotationFontSizeRange.upperBound
+        let step: CGFloat = 1.0
+
+        let scrollDelta = event.scrollingDeltaY
+        let increment: CGFloat = scrollDelta > 0 ? step : -step
+
+        let currentSize = UserDefaults.standard.textToolFontSize
+        let newSize = max(minFontSize, min(maxFontSize, currentSize + increment))
+
+        guard newSize != currentSize else { return }
+
+        // Persist the new default font size
+        UserDefaults.standard.textToolFontSize = newSize
+
+        // If a text field is currently active (in-progress text entry), update it live
+        if let textField = overlayView.activeTextField {
+            textField.font = NSFont.systemFont(ofSize: newSize)
+            overlayView.currentTextAnnotation?.fontSize = newSize
+            textField.needsDisplay = true
+        }
+
+        showFontSizeFeedback(newSize)
+    }
+
+    private func showFontSizeFeedback(_ size: CGFloat) {
+        let text = String(format: "Font Size: %.0f pt", size)
+        showFeedback(text)
     }
     
     func showToggleFeedback(_ text: String, icon: String) {
