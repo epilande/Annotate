@@ -1551,7 +1551,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             self.finalizeTextAnnotation(textField)
         }
         activeTextField = textField
-        textField.font = NSFont.systemFont(ofSize: 18)
+        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
+        textField.font = NSFont.systemFont(ofSize: fontSize)
 
         let boardType = currentBoardType
         textField.backgroundColor = boardType == .blackboard
@@ -1708,7 +1709,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: 18
+            fontSize: UserDefaults.standard.textToolFontSize
         )
         createTextField(at: point)
     }
@@ -1725,7 +1726,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
               textField === activeTextField else { return }
 
         let text = textField.stringValue
-        let font = textField.font ?? NSFont.systemFont(ofSize: 18)
+        let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
         let size = text.size(withAttributes: [.font: font])
 
         let minWidth: CGFloat = 100

@@ -296,7 +296,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
         overlayView.currentTextAnnotation = TextAnnotation(
-            text: "", position: clickPoint, color: .red, fontSize: 18
+            text: "", position: clickPoint, color: .red, fontSize: defaultTextAnnotationFontSize
         )
         overlayView.createTextField(at: clickPoint, withText: "", width: 100)
 

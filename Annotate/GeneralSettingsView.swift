@@ -13,6 +13,8 @@ struct GeneralSettingsView: View {
     private var enableBoard = false
     @AppStorage(UserDefaults.persistTextModeKey)
     private var persistTextMode = false
+@AppStorage(UserDefaults.defaultTextFontSizeKey)
+    private var defaultTextSize: Double = Double(defaultTextAnnotationFontSize)
     @State private var boardOpacity: Double = BoardManager.shared.opacity
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
@@ -23,6 +25,8 @@ struct GeneralSettingsView: View {
     @State private var activeCursorSize: Double = Double(CursorHighlightManager.shared.activeCursorSize)
 
     var body: some View {
+        let minTextSize = Double(textAnnotationFontSizeRange.lowerBound)
+        let maxTextSize = Double(textAnnotationFontSizeRange.upperBound)
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 SettingsSection(
@@ -141,7 +145,38 @@ struct GeneralSettingsView: View {
                 Divider()
 
                 SettingsSection(
+                    icon: "textformat.size",
+                    title: "Text Tool",
+                    subtitle: "Adjust the default font size for text annotations"
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Default Text Size")
+                                .font(.system(size: 13, weight: .semibold))
+                            Spacer()
+                            Text("\(Int(defaultTextSize)) pt")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 8) {
+                            Text("\(Int(minTextSize)) pt")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 50, alignment: .trailing)
+                            Slider(value: $defaultTextSize, in: minTextSize...maxTextSize, step: 1)
+                            Text("\(Int(maxTextSize)) pt")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 50, alignment: .leading)
+                        }
+                    }
+                }
+
+                Divider()
+
+                SettingsSection(
                     icon: "cursorarrow",
+
                     title: "Active Cursor",
                     subtitle: "Cursor appearance when overlay is active"
                 ) {

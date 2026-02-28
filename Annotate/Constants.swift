@@ -23,6 +23,7 @@ extension UserDefaults {
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let persistTextModeKey = "PersistTextMode"
+    static let defaultTextFontSizeKey = "TextFontSize"
 }
 
 let colorPalette: [NSColor] = [
@@ -30,3 +31,18 @@ let colorPalette: [NSColor] = [
     .systemGreen, .cyan, .systemIndigo,
     .magenta, .white, .black,
 ]
+
+let defaultTextAnnotationFontSize: CGFloat = 18
+let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
+
+extension UserDefaults {
+    var textToolFontSize: CGFloat {
+        get {
+            let stored = double(forKey: Self.defaultTextFontSizeKey)
+            return stored > 0 ? CGFloat(stored) : defaultTextAnnotationFontSize
+        }
+        set {
+            set(Double(newValue), forKey: Self.defaultTextFontSizeKey)
+        }
+    }
+}
