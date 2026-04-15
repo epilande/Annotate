@@ -78,8 +78,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         setupBoardObservers()
 
+        #if DEBUG
+        let startUpdater = false
+        #else
+        let startUpdater = true
+        #endif
+
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: startUpdater,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
