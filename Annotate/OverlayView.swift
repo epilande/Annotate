@@ -1551,7 +1551,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             self.finalizeTextAnnotation(textField)
         }
         activeTextField = textField
-        textField.font = NSFont.systemFont(ofSize: 18)
+        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
+        textField.font = NSFont.systemFont(ofSize: fontSize)
 
         let boardType = currentBoardType
         textField.backgroundColor = boardType == .blackboard
@@ -1708,7 +1709,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: 18
+            fontSize: UserDefaults.standard.textToolFontSize
         )
         createTextField(at: point)
     }
@@ -1723,16 +1724,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func controlTextDidChange(_ notification: Notification) {
         guard let textField = notification.object as? NSTextField,
               textField === activeTextField else { return }
+        resizeActiveTextFieldWidth(textField)
+    }
 
-        let text = textField.stringValue
-        let font = textField.font ?? NSFont.systemFont(ofSize: 18)
-        let size = text.size(withAttributes: [.font: font])
+    func resizeActiveTextFieldWidth(_ textField: NSTextField) {
+        let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
+        let size = textField.stringValue.size(withAttributes: [.font: font])
 
         let minWidth: CGFloat = 100
         let maxWidth = (window?.frame.width ?? bounds.width) - textField.frame.origin.x - 20
-        let newWidth = min(max(minWidth, size.width + 32), maxWidth)
-
-        textField.frame.size.width = newWidth
+        textField.frame.size.width = min(max(minWidth, size.width + 32), maxWidth)
     }
 
     func isAnythingFading() -> Bool {

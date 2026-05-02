@@ -292,11 +292,41 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
+    func testResizeActiveTextFieldWidthGrowsWithFontSize() {
+        let clickPoint = NSPoint(x: 100, y: 200)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "Hello world", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.lowerBound)
+        overlayView.resizeActiveTextFieldWidth(textField)
+        let smallWidth = textField.frame.size.width
+
+        textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        overlayView.resizeActiveTextFieldWidth(textField)
+        let largeWidth = textField.frame.size.width
+
+        XCTAssertGreaterThan(
+            largeWidth, smallWidth,
+            "Text field width should grow when font size increases"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
     func testFinalizeTextAnnotationAccountsForPadding() {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
         overlayView.currentTextAnnotation = TextAnnotation(
-            text: "", position: clickPoint, color: .red, fontSize: 18
+            text: "", position: clickPoint, color: .red, fontSize: defaultTextAnnotationFontSize
         )
         overlayView.createTextField(at: clickPoint, withText: "", width: 100)
 

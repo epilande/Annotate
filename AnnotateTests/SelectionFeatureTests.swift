@@ -141,7 +141,7 @@ final class SelectionFeatureTests: XCTestCase {
             text: "Hello",
             position: NSPoint(x: 100, y: 100),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         )
         overlayView.textAnnotations.append(textAnnotation)
         
@@ -540,7 +540,7 @@ final class SelectionFeatureTests: XCTestCase {
             text: "Test",
             position: NSPoint(x: 700, y: 700),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         ))
         
         // Switch to select mode
@@ -671,7 +671,7 @@ final class SelectionFeatureTests: XCTestCase {
             text: "Test",
             position: NSPoint(x: 700, y: 700),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         ))
         
         overlayView.counterAnnotations.append(CounterAnnotation(
@@ -882,7 +882,7 @@ final class SelectionFeatureTests: XCTestCase {
             text: "Hello",
             position: NSPoint(x: 300, y: 300),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         ))
         
         overlayView.currentTool = .select

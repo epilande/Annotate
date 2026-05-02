@@ -343,7 +343,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             text: "Test",
             position: NSPoint(x: 200, y: 200),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         ))
 
         window.overlayView.currentTool = .select
@@ -387,7 +387,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             text: "Test",
             position: NSPoint(x: 100, y: 100),
             color: .black,
-            fontSize: 18
+            fontSize: defaultTextAnnotationFontSize
         ))
 
         window.overlayView.activeTextField = NSTextField(frame: NSRect(x: 100, y: 100, width: 200, height: 30))
