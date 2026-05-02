@@ -13,7 +13,7 @@ struct GeneralSettingsView: View {
     private var enableBoard = false
     @AppStorage(UserDefaults.persistTextModeKey)
     private var persistTextMode = false
-@AppStorage(UserDefaults.defaultTextFontSizeKey)
+    @AppStorage(UserDefaults.defaultTextFontSizeKey)
     private var defaultTextSize: Double = Double(defaultTextAnnotationFontSize)
     @State private var boardOpacity: Double = BoardManager.shared.opacity
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
@@ -176,7 +176,6 @@ struct GeneralSettingsView: View {
 
                 SettingsSection(
                     icon: "cursorarrow",
-
                     title: "Active Cursor",
                     subtitle: "Cursor appearance when overlay is active"
                 ) {
