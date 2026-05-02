@@ -306,11 +306,11 @@ final class OverlayViewTests: XCTestCase, Sendable {
         }
 
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.lowerBound)
-        overlayView.resizeActiveTextFieldWidth()
+        overlayView.resizeActiveTextFieldWidth(textField)
         let smallWidth = textField.frame.size.width
 
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
-        overlayView.resizeActiveTextFieldWidth()
+        overlayView.resizeActiveTextFieldWidth(textField)
         let largeWidth = textField.frame.size.width
 
         XCTAssertGreaterThan(

@@ -1727,8 +1727,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         resizeActiveTextFieldWidth(textField)
     }
 
-    func resizeActiveTextFieldWidth(_ textField: NSTextField? = nil) {
-        guard let textField = textField ?? activeTextField else { return }
+    func resizeActiveTextFieldWidth(_ textField: NSTextField) {
         let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
         let size = textField.stringValue.size(withAttributes: [.font: font])
 

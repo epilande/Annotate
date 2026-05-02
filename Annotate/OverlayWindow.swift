@@ -953,22 +953,18 @@ class OverlayWindow: NSPanel {
     }
     
     private func scrollWheelForFontSize(with event: NSEvent) {
-        let minFontSize: CGFloat = textAnnotationFontSizeRange.lowerBound
-        let maxFontSize: CGFloat = textAnnotationFontSizeRange.upperBound
-        let step: CGFloat = 1.0
-
         let scrollDelta = event.scrollingDeltaY
-        let increment: CGFloat = scrollDelta > 0 ? step : -step
+        guard scrollDelta != 0 else { return }
 
+        let step: CGFloat = 1.0
+        let increment: CGFloat = scrollDelta > 0 ? step : -step
         let currentSize = UserDefaults.standard.textToolFontSize
-        let newSize = max(minFontSize, min(maxFontSize, currentSize + increment))
+        let newSize = (currentSize + increment).clamped(to: textAnnotationFontSizeRange)
 
         guard newSize != currentSize else { return }
 
-        // Persist the new default font size
         UserDefaults.standard.textToolFontSize = newSize
 
-        // If a text field is currently active (in-progress text entry), update it live
         if let textField = overlayView.activeTextField {
             textField.font = NSFont.systemFont(ofSize: newSize)
             overlayView.currentTextAnnotation?.fontSize = newSize
