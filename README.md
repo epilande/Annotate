@@ -70,6 +70,14 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 >
 > The app is code-signed and notarized for macOS Gatekeeper compatibility.
 
+### Homebrew
+
+Install via [Homebrew Cask](https://formulae.brew.sh/cask/annotate):
+
+```sh
+brew install --cask annotate
+```
+
 ### Build from Source
 
 1. **Clone the Repository:**
