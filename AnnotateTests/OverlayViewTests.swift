@@ -441,6 +441,46 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
+    /// Offscreen-renders the view and counts its non-transparent pixels.
+    private func renderedPixelCount(of view: NSView) -> Int {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return -1 }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        var count = 0
+        var y = 0
+        while y < rep.pixelsHigh {
+            var x = 0
+            while x < rep.pixelsWide {
+                if let color = rep.colorAt(x: x, y: y), color.alphaComponent > 0.1 { count += 1 }
+                x += 3
+            }
+            y += 3
+        }
+        return count
+    }
+
+    func testEditedAnnotationNotDrawnBehindEditField() {
+        let annotation = TextAnnotation(
+            text: "GHOST", position: NSPoint(x: 120, y: 300), color: .red, fontSize: 28
+        )
+        overlayView.textAnnotations = [annotation]
+
+        // Not editing: the committed annotation renders.
+        overlayView.editingTextAnnotationIndex = nil
+        overlayView.currentTextAnnotation = nil
+        XCTAssertGreaterThan(
+            renderedPixelCount(of: overlayView), 0,
+            "Sanity check: a committed text annotation should render"
+        )
+
+        // Editing it (mirrors double-click): must not be drawn as a ghost behind the field.
+        overlayView.editingTextAnnotationIndex = 0
+        overlayView.currentTextAnnotation = annotation
+        XCTAssertEqual(
+            renderedPixelCount(of: overlayView), 0,
+            "The annotation being edited must not be drawn behind the edit field"
+        )
+    }
+
     func testFinalizeTextAnnotationAccountsForPadding() {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
