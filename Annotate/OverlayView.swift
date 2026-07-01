@@ -654,7 +654,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
             if index == editingTextAnnotationIndex { continue }
             drawText(annotation)
         }
-        if let annotation = currentTextAnnotation {
+        // Only for new text (an empty placeholder). When editing an existing annotation,
+        // currentTextAnnotation IS that annotation and is shown by the edit field, so drawing
+        // it here would render a duplicate "ghost" behind the field.
+        if let annotation = currentTextAnnotation, editingTextAnnotationIndex == nil {
             drawText(annotation)
         }
 
