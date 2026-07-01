@@ -5,6 +5,11 @@ import Cocoa
 class AnnotationTextField: NSTextField {
     var onCommandReturn: (() -> Void)?
 
+    /// The unclamped left-edge x the field targets before any right-edge shifting. Set when
+    /// the field is created so that shrinking text after a left-shift can move it back toward
+    /// its natural position instead of staying stuck to the left.
+    var anchorX: CGFloat = 0
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command) && event.keyCode == 36 {
             onCommandReturn?()
@@ -1534,8 +1539,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             finalizeTextAnnotation(existingField)
         }
 
-        let minWidth: CGFloat = 100
-        let initialWidth = existingText.isEmpty ? minWidth : width
+        let initialWidth = existingText.isEmpty ? Self.textFieldMinWidth : width
         let isEditing = !existingText.isEmpty
 
         // Offset to align text cursor with click point:
@@ -1543,7 +1547,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
         let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
         let font = NSFont.systemFont(ofSize: fontSize)
-        // Height grows with the font so large text (and the cursor) is not clipped top/bottom
+        // Size the empty new field to one line of the current font so large text and the cursor
+        // aren't clipped top/bottom. "Ay" is a full ascender+descender sample; reusing the same
+        // sizing helper as typing/editing keeps the height consistent across every path.
         let textFieldHeight = textFieldBoxSize(forText: "Ay", font: font).height
         let yOffset: CGFloat = isEditing ? -4 : -textFieldHeight / 2
         let textField = AnnotationTextField(
@@ -1554,6 +1560,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             self.finalizeTextAnnotation(textField)
         }
         activeTextField = textField
+        // Remember where the field started so resize can slide it back right as text shrinks.
+        textField.anchorX = textField.frame.origin.x
         textField.font = font
 
         let boardType = currentBoardType
@@ -1727,13 +1735,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
         resizeActiveTextField(textField)
     }
 
+    /// Minimum width of the active text-editing field.
+    private static let textFieldMinWidth: CGFloat = 100
+
     /// The unclamped box size needed to fit `text` at `font`, including the field's
     /// padding (horizontal cursor slack and a 32pt height floor). Callers apply any
     /// screen-edge clamping themselves. Single source of truth for text-field sizing.
     private func textFieldBoxSize(forText text: String, font: NSFont) -> NSSize {
-        let minWidth: CGFloat = 100
         let size = text.size(withAttributes: [.font: font])
-        return NSSize(width: max(minWidth, size.width + 32), height: max(32, size.height + 8))
+        return NSSize(width: max(Self.textFieldMinWidth, size.width + 32), height: max(32, size.height + 8))
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
@@ -1745,9 +1755,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Fit the text, but never wider than the screen minus margins.
         let newWidth = min(box.width, availableWidth - margin * 2)
-        // If the box would overflow the right edge, slide it left to keep the text
-        // fully visible instead of clamping the width (which would clip the text).
-        let newX = min(textField.frame.origin.x, availableWidth - margin - newWidth)
+        // Anchor to where the field was created, sliding left only enough to keep the box on
+        // screen. Using the anchor (not the current origin) lets it move back right as the text
+        // shrinks, instead of staying stuck left after a previous overflow.
+        let anchorX = (textField as? AnnotationTextField)?.anchorX ?? textField.frame.origin.x
+        let newX = min(anchorX, availableWidth - margin - newWidth)
 
         textField.frame = NSRect(x: newX, y: textField.frame.origin.y, width: newWidth, height: box.height)
     }

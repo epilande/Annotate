@@ -403,6 +403,44 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
+    func testResizeActiveTextFieldReturnsToAnchorWhenTextShrinks() {
+        // Placed away from the right edge so a short string can return fully to the anchor.
+        let clickPoint = NSPoint(x: 600, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        let anchorX = textField.frame.origin.x
+        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.font = font
+
+        // A long string overflows the right edge and slides the box left.
+        textField.stringValue = "A very long sentence that overflows the screen"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertLessThan(
+            textField.frame.origin.x, anchorX,
+            "Text field should slide left when the text overflows the right edge"
+        )
+
+        // Shrinking the text should let the box return to its creation anchor, not stay stuck left.
+        textField.stringValue = "Hi"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertEqual(
+            textField.frame.origin.x, anchorX, accuracy: 0.5,
+            "Text field should return to its creation anchor when the text fits there again"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
     func testFinalizeTextAnnotationAccountsForPadding() {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
