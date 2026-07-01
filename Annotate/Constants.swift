@@ -24,6 +24,7 @@ extension UserDefaults {
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let persistTextModeKey = "PersistTextMode"
     static let defaultTextFontSizeKey = "TextFontSize"
+    static let defaultCounterFontSizeKey = "CounterFontSize"
 }
 
 let colorPalette: [NSColor] = [
@@ -35,6 +36,11 @@ let colorPalette: [NSColor] = [
 let defaultTextAnnotationFontSize: CGFloat = 18
 let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
 
+/// 14 pt reproduces counters' original 15 pt radius / 2.5 pt stroke; the badge
+/// scales from here (see `CounterAnnotation.radius`).
+let defaultCounterFontSize: CGFloat = 14
+let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
+
 extension UserDefaults {
     var textToolFontSize: CGFloat {
         get {
@@ -43,6 +49,16 @@ extension UserDefaults {
         }
         set {
             set(Double(newValue), forKey: Self.defaultTextFontSizeKey)
+        }
+    }
+
+    var counterToolFontSize: CGFloat {
+        get {
+            let stored = double(forKey: Self.defaultCounterFontSizeKey)
+            return stored > 0 ? CGFloat(stored) : defaultCounterFontSize
+        }
+        set {
+            set(Double(newValue), forKey: Self.defaultCounterFontSizeKey)
         }
     }
 }

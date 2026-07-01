@@ -162,6 +162,33 @@ final class EraserToolTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.counterAnnotations.count, 0)
     }
 
+    func testEraseLargeCounterBeyondDefaultRadius() {
+        overlayView.counterAnnotations.append(CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 150, y: 150),
+            color: .systemOrange,
+            fontSize: 60
+        ))
+
+        // 40 pt away: outside a default badge + eraser reach, but inside the large one.
+        overlayView.eraseAtPoint(NSPoint(x: 190, y: 150))
+
+        XCTAssertEqual(overlayView.counterAnnotations.count, 0)
+    }
+
+    func testEraseDefaultCounterIgnoresPointBeyondBadge() {
+        overlayView.counterAnnotations.append(CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 150, y: 150),
+            color: .systemOrange
+        ))
+
+        // The same 40 pt point must not erase a default-size badge.
+        overlayView.eraseAtPoint(NSPoint(x: 190, y: 150))
+
+        XCTAssertEqual(overlayView.counterAnnotations.count, 1)
+    }
+
     // MARK: - Eraser Radius Tests
 
     func testEraserDoesNotEraseOutsideRadius() {

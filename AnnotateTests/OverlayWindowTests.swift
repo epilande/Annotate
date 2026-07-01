@@ -228,6 +228,56 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertGreaterThanOrEqual(initialWidth, 0.5, "Initial width should be within valid range")
         XCTAssertLessThanOrEqual(initialWidth, 20.0, "Initial width should be within valid range")
     }
+
+    func testScrollWheelAdjustsCounterSizeWhenCounterToolActive() {
+        window.overlayView.currentTool = .counter
+        let original = UserDefaults.standard.counterToolFontSize
+        defer { UserDefaults.standard.counterToolFontSize = original }
+
+        UserDefaults.standard.counterToolFontSize = 20
+
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertEqual(
+            UserDefaults.standard.counterToolFontSize, 21,
+            "Cmd+Scroll up should grow the counter size")
+
+        if let scrollDown = TestEvents.createScrollEvent(deltaY: -1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollDown)
+        }
+        XCTAssertEqual(
+            UserDefaults.standard.counterToolFontSize, 20,
+            "Cmd+Scroll down should shrink the counter size")
+    }
+
+    func testScrollWheelClampsCounterSizeToUpperBound() {
+        window.overlayView.currentTool = .counter
+        let original = UserDefaults.standard.counterToolFontSize
+        defer { UserDefaults.standard.counterToolFontSize = original }
+
+        UserDefaults.standard.counterToolFontSize = counterFontSizeRange.upperBound
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertEqual(
+            UserDefaults.standard.counterToolFontSize, counterFontSizeRange.upperBound,
+            "Counter size must not exceed its range")
+    }
+
+    func testScrollWheelForNonCounterToolLeavesCounterSizeUntouched() {
+        window.overlayView.currentTool = .pen
+        let original = UserDefaults.standard.counterToolFontSize
+        defer { UserDefaults.standard.counterToolFontSize = original }
+
+        UserDefaults.standard.counterToolFontSize = 25
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertEqual(
+            UserDefaults.standard.counterToolFontSize, 25,
+            "A non-counter tool must route Cmd+Scroll elsewhere and leave counter size alone")
+    }
     
     func testToolFeedbackMethodExists() {
         // Test that showToolFeedback method can be called without errors

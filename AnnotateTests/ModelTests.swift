@@ -135,6 +135,36 @@ final class ModelTests: XCTestCase {
         XCTAssertNotEqual(counter, differentCounter)
     }
 
+    func testCounterAnnotationDefaultSizePreservesOriginalGeometry() {
+        let counter = CounterAnnotation(number: 1, position: .zero, color: .red)
+        XCTAssertEqual(counter.fontSize, defaultCounterFontSize)
+        XCTAssertEqual(counter.radius, 15, accuracy: 0.0001)
+        XCTAssertEqual(counter.strokeWidth, 2.5, accuracy: 0.0001)
+    }
+
+    func testCounterAnnotationRadiusAndStrokeScaleWithFontSize() {
+        let base = CounterAnnotation(number: 1, position: .zero, color: .red)
+        let doubled = CounterAnnotation(
+            number: 1, position: .zero, color: .red, fontSize: defaultCounterFontSize * 2)
+        XCTAssertEqual(doubled.radius, base.radius * 2, accuracy: 0.0001)
+        XCTAssertEqual(doubled.strokeWidth, base.strokeWidth * 2, accuracy: 0.0001)
+    }
+
+    func testCounterAnnotationEqualityIncludesFontSize() {
+        let base = CounterAnnotation(number: 1, position: .zero, color: .red, fontSize: 20)
+        let sameSize = CounterAnnotation(number: 1, position: .zero, color: .red, fontSize: 20)
+        let biggerSize = CounterAnnotation(number: 1, position: .zero, color: .red, fontSize: 40)
+        XCTAssertEqual(base, sameSize)
+        XCTAssertNotEqual(base, biggerSize)
+    }
+
+    func testCounterToolFontSizeDefaultsAndPersists() {
+        let defaults = TestUserDefaults.create()
+        XCTAssertEqual(defaults.counterToolFontSize, defaultCounterFontSize)
+        defaults.counterToolFontSize = 42
+        XCTAssertEqual(defaults.counterToolFontSize, 42)
+    }
+
     func testToolType() {
         let tools: [ToolType] = [.pen, .arrow, .highlighter, .rectangle, .circle, .text]
         XCTAssertEqual(tools.count, 6)  // Ensure we have all tool types

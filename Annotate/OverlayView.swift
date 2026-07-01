@@ -810,15 +810,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .counter(let index):
             guard index < counterAnnotations.count else { return .zero }
-            let counter = counterAnnotations[index]
-            let radius: CGFloat = 15.0
-            return NSRect(
-                x: counter.position.x - radius,
-                y: counter.position.y - radius,
-                width: radius * 2,
-                height: radius * 2
-            )
-            
+            return counterAnnotations[index].badgeRect
+
         case .none:
             return .zero
         }
@@ -1021,32 +1014,22 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
         let adaptedColor = adaptColorForBoard(counter.color, boardType: currentBoardType)
 
-        let radius: CGFloat = 15.0
-        let diameter = radius * 2
-
-        let circleBounds = NSRect(
-            x: counter.position.x - radius,
-            y: counter.position.y - radius,
-            width: diameter,
-            height: diameter
-        )
-        let circlePath = NSBezierPath(ovalIn: circleBounds)
+        let circlePath = NSBezierPath(ovalIn: counter.badgeRect)
 
         let backgroundColor = adaptedColor.contrastingColor()
         backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
         circlePath.fill()
 
         adaptedColor.withAlphaComponent(alpha).setStroke()
-        circlePath.lineWidth = 2.5
+        circlePath.lineWidth = counter.strokeWidth
         circlePath.stroke()
 
         // Draw the number
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        let fontSize: CGFloat = 14.0
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: adaptedColor.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .heavy),
+            .font: NSFont.systemFont(ofSize: counter.fontSize, weight: .heavy),
             .paragraphStyle: paragraphStyle,
         ]
 
@@ -1479,11 +1462,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 maxY = max(maxY, text.position.y + estimatedHeight)
 
             case .counter(let counter):
-                let radius: CGFloat = 15.0
-                minX = min(minX, counter.position.x - radius)
-                minY = min(minY, counter.position.y - radius)
-                maxX = max(maxX, counter.position.x + radius)
-                maxY = max(maxY, counter.position.y + radius)
+                let box = counter.badgeRect
+                minX = min(minX, box.minX)
+                minY = min(minY, box.minY)
+                maxX = max(maxX, box.maxX)
+                maxY = max(maxY, box.maxY)
             }
         }
 
@@ -1988,13 +1971,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .counter(let index):
             guard index < counterAnnotations.count else { return false }
-            return rect.contains(counterAnnotations[index].position)
-            
+            return rect.intersects(counterAnnotations[index].badgeRect)
+
         case .none:
             return false
         }
     }
-    
+
     /// Check if a line segment intersects with a rectangle
     private func lineSegmentIntersectsRect(start: NSPoint, end: NSPoint, rect: NSRect) -> Bool {
         // Check if either endpoint is inside the rectangle
@@ -2221,7 +2204,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     
     private func hitTestCounter(_ counter: CounterAnnotation, point: NSPoint) -> Bool {
-        let radius: CGFloat = 15.0
+        let radius = counter.radius
         let dx = point.x - counter.position.x
         let dy = point.y - counter.position.y
         let distance = sqrt(dx * dx + dy * dy)
@@ -2415,7 +2398,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func counterIntersectsPoint(_ counter: CounterAnnotation, point: NSPoint, radius: CGFloat) -> Bool {
-        let counterRadius: CGFloat = 15.0
+        let counterRadius = counter.radius
         let dx = point.x - counter.position.x
         let dy = point.y - counter.position.y
         let distance = sqrt(dx * dx + dy * dy)
