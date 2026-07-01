@@ -292,7 +292,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
-    func testResizeActiveTextFieldWidthGrowsWithFontSize() {
+    func testResizeActiveTextFieldGrowsWithFontSize() {
         let clickPoint = NSPoint(x: 100, y: 200)
         overlayView.currentTool = .text
         overlayView.currentTextAnnotation = TextAnnotation(
@@ -306,16 +306,20 @@ final class OverlayViewTests: XCTestCase, Sendable {
         }
 
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.lowerBound)
-        overlayView.resizeActiveTextFieldWidth(textField)
-        let smallWidth = textField.frame.size.width
+        overlayView.resizeActiveTextField(textField)
+        let smallSize = textField.frame.size
 
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
-        overlayView.resizeActiveTextFieldWidth(textField)
-        let largeWidth = textField.frame.size.width
+        overlayView.resizeActiveTextField(textField)
+        let largeSize = textField.frame.size
 
         XCTAssertGreaterThan(
-            largeWidth, smallWidth,
+            largeSize.width, smallSize.width,
             "Text field width should grow when font size increases"
+        )
+        XCTAssertGreaterThan(
+            largeSize.height, smallSize.height,
+            "Text field height should grow when font size increases so text is not clipped"
         )
 
         textField.removeFromSuperview()

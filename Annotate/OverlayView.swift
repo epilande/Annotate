@@ -1540,8 +1540,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Offset to align text cursor with click point:
         // X: -8 for left padding
-        // Y: -16 to center text vertically at click for new text, -4 for editing (top padding only)
-        let textFieldHeight: CGFloat = 32
+        // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
+        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
+        let font = NSFont.systemFont(ofSize: fontSize)
+        // Height grows with the font so large text (and the cursor) is not clipped top/bottom
+        let lineHeight = ("Ay" as NSString).size(withAttributes: [.font: font]).height
+        let textFieldHeight = max(32, lineHeight + 8)
         let yOffset: CGFloat = isEditing ? -4 : -textFieldHeight / 2
         let textField = AnnotationTextField(
             frame: NSRect(x: point.x - 8, y: point.y + yOffset, width: initialWidth, height: textFieldHeight))
@@ -1551,8 +1555,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             self.finalizeTextAnnotation(textField)
         }
         activeTextField = textField
-        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
-        textField.font = NSFont.systemFont(ofSize: fontSize)
+        textField.font = font
 
         let boardType = currentBoardType
         textField.backgroundColor = boardType == .blackboard
@@ -1724,16 +1727,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func controlTextDidChange(_ notification: Notification) {
         guard let textField = notification.object as? NSTextField,
               textField === activeTextField else { return }
-        resizeActiveTextFieldWidth(textField)
+        resizeActiveTextField(textField)
     }
 
-    func resizeActiveTextFieldWidth(_ textField: NSTextField) {
+    func resizeActiveTextField(_ textField: NSTextField) {
         let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
         let size = textField.stringValue.size(withAttributes: [.font: font])
 
         let minWidth: CGFloat = 100
         let maxWidth = (window?.frame.width ?? bounds.width) - textField.frame.origin.x - 20
-        textField.frame.size.width = min(max(minWidth, size.width + 32), maxWidth)
+        let newWidth = min(max(minWidth, size.width + 32), maxWidth)
+        // Grow height with the font so large text is not clipped top/bottom while editing
+        let newHeight = max(32, size.height + 8)
+        textField.frame.size = NSSize(width: newWidth, height: newHeight)
     }
 
     func isAnythingFading() -> Bool {
