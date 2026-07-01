@@ -1735,11 +1735,23 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let size = textField.stringValue.size(withAttributes: [.font: font])
 
         let minWidth: CGFloat = 100
-        let maxWidth = (window?.frame.width ?? bounds.width) - textField.frame.origin.x - 20
-        let newWidth = min(max(minWidth, size.width + 32), maxWidth)
+        let margin: CGFloat = 20
+        let availableWidth = window?.frame.width ?? bounds.width
+
+        // Width that fits the text plus padding, never wider than the screen minus margins
+        let newWidth = min(max(minWidth, size.width + 32), availableWidth - margin * 2)
         // Grow height with the font so large text is not clipped top/bottom while editing
         let newHeight = max(32, size.height + 8)
-        textField.frame.size = NSSize(width: newWidth, height: newHeight)
+
+        // If the box would overflow the right edge, slide it left to keep the text
+        // fully visible instead of clamping the width (which would clip the text).
+        var newX = textField.frame.origin.x
+        let rightEdge = availableWidth - margin
+        if newX + newWidth > rightEdge {
+            newX = max(margin, rightEdge - newWidth)
+        }
+
+        textField.frame = NSRect(x: newX, y: textField.frame.origin.y, width: newWidth, height: newHeight)
     }
 
     func isAnythingFading() -> Bool {

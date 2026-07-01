@@ -326,6 +326,47 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
+    func testResizeActiveTextFieldStaysOnScreenNearRightEdge() {
+        // The view is 800 wide with no window, so availableWidth falls back to bounds.width
+        let clickPoint = NSPoint(x: 790, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        let originalX = textField.frame.origin.x
+        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.font = font
+        textField.stringValue = "Hello world test"
+        overlayView.resizeActiveTextField(textField)
+
+        let margin: CGFloat = 20
+        let rightEdge = overlayView.bounds.width - margin
+
+        XCTAssertLessThanOrEqual(
+            textField.frame.maxX, rightEdge,
+            "Text field should not overflow the right edge of the screen"
+        )
+        XCTAssertLessThan(
+            textField.frame.origin.x, originalX,
+            "Text field should slide left when it would overflow the right edge"
+        )
+        let textWidth = textField.stringValue.size(withAttributes: [.font: font]).width
+        XCTAssertGreaterThanOrEqual(
+            textField.frame.size.width, textWidth,
+            "Text field should stay wide enough to show the full text instead of clipping it"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
     func testFinalizeTextAnnotationAccountsForPadding() {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
