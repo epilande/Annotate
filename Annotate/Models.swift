@@ -128,6 +128,12 @@ struct CounterAnnotation {
     /// The badge circle stroke width, scaled from the number's font size so the
     /// original 2.5 pt stroke is preserved at the default 14 pt font.
     var strokeWidth: CGFloat { fontSize * (2.5 / 14.0) }
+
+    /// The badge circle's bounding rect, centered on the counter's position.
+    var badgeRect: NSRect {
+        NSRect(
+            x: position.x - radius, y: position.y - radius, width: radius * 2, height: radius * 2)
+    }
 }
 
 enum ClipboardItem {

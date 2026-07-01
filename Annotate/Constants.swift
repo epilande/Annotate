@@ -36,9 +36,8 @@ let colorPalette: [NSColor] = [
 let defaultTextAnnotationFontSize: CGFloat = 18
 let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
 
-/// The number's font size in a freshly placed counter badge. The badge circle
-/// scales from this value (see `CounterAnnotation.radius`), preserving the
-/// original 15 pt radius / 2.5 pt stroke at this default.
+/// 14 pt reproduces counters' original 15 pt radius / 2.5 pt stroke; the badge
+/// scales from here (see `CounterAnnotation.radius`).
 let defaultCounterFontSize: CGFloat = 14
 let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
 

@@ -153,27 +153,11 @@ struct GeneralSettingsView: View {
                     title: "Text Tool",
                     subtitle: "Adjust the default font size for text annotations"
                 ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Default Text Size")
-                                .font(.system(size: 13, weight: .semibold))
-                            Spacer()
-                            Text("\(Int(defaultTextSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack(spacing: 8) {
-                            Text("\(Int(minTextSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 50, alignment: .trailing)
-                            Slider(value: $defaultTextSize, in: minTextSize...maxTextSize, step: 1)
-                            Text("\(Int(maxTextSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 50, alignment: .leading)
-                        }
-                    }
+                    DefaultSizeSliderRow(
+                        title: "Default Text Size",
+                        size: $defaultTextSize,
+                        range: minTextSize...maxTextSize
+                    )
                 }
 
                 Divider()
@@ -183,27 +167,11 @@ struct GeneralSettingsView: View {
                     title: "Counter Tool",
                     subtitle: "Adjust the default size for counter annotations"
                 ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Default Counter Size")
-                                .font(.system(size: 13, weight: .semibold))
-                            Spacer()
-                            Text("\(Int(defaultCounterSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack(spacing: 8) {
-                            Text("\(Int(minCounterSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 50, alignment: .trailing)
-                            Slider(value: $defaultCounterSize, in: minCounterSize...maxCounterSize, step: 1)
-                            Text("\(Int(maxCounterSize)) pt")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 50, alignment: .leading)
-                        }
-                    }
+                    DefaultSizeSliderRow(
+                        title: "Default Counter Size",
+                        size: $defaultCounterSize,
+                        range: minCounterSize...maxCounterSize
+                    )
                 }
 
                 Divider()
@@ -375,6 +343,36 @@ struct GeneralSettingsView: View {
         spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
         activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
         activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
+    }
+}
+
+private struct DefaultSizeSliderRow: View {
+    let title: String
+    @Binding var size: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("\(Int(size)) pt")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text("\(Int(range.lowerBound)) pt")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                Slider(value: $size, in: range, step: 1)
+                Text("\(Int(range.upperBound)) pt")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .leading)
+            }
+        }
     }
 }
 

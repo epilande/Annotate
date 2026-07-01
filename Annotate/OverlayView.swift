@@ -810,15 +810,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .counter(let index):
             guard index < counterAnnotations.count else { return .zero }
-            let counter = counterAnnotations[index]
-            let radius = counter.radius
-            return NSRect(
-                x: counter.position.x - radius,
-                y: counter.position.y - radius,
-                width: radius * 2,
-                height: radius * 2
-            )
-            
+            return counterAnnotations[index].badgeRect
+
         case .none:
             return .zero
         }
@@ -1021,16 +1014,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
         let adaptedColor = adaptColorForBoard(counter.color, boardType: currentBoardType)
 
-        let radius = counter.radius
-        let diameter = radius * 2
-
-        let circleBounds = NSRect(
-            x: counter.position.x - radius,
-            y: counter.position.y - radius,
-            width: diameter,
-            height: diameter
-        )
-        let circlePath = NSBezierPath(ovalIn: circleBounds)
+        let circlePath = NSBezierPath(ovalIn: counter.badgeRect)
 
         let backgroundColor = adaptedColor.contrastingColor()
         backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
@@ -1043,10 +1027,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Draw the number
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        let fontSize = counter.fontSize
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: adaptedColor.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .heavy),
+            .font: NSFont.systemFont(ofSize: counter.fontSize, weight: .heavy),
             .paragraphStyle: paragraphStyle,
         ]
 
@@ -1479,11 +1462,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 maxY = max(maxY, text.position.y + estimatedHeight)
 
             case .counter(let counter):
-                let radius = counter.radius
-                minX = min(minX, counter.position.x - radius)
-                minY = min(minY, counter.position.y - radius)
-                maxX = max(maxX, counter.position.x + radius)
-                maxY = max(maxY, counter.position.y + radius)
+                let box = counter.badgeRect
+                minX = min(minX, box.minX)
+                minY = min(minY, box.minY)
+                maxX = max(maxX, box.maxX)
+                maxY = max(maxY, box.maxY)
             }
         }
 
@@ -1988,15 +1971,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .counter(let index):
             guard index < counterAnnotations.count else { return false }
-            let counter = counterAnnotations[index]
-            let radius = counter.radius
-            let counterRect = NSRect(
-                x: counter.position.x - radius,
-                y: counter.position.y - radius,
-                width: radius * 2,
-                height: radius * 2
-            )
-            return rect.intersects(counterRect)
+            return rect.intersects(counterAnnotations[index].badgeRect)
 
         case .none:
             return false

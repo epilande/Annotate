@@ -163,7 +163,6 @@ final class EraserToolTests: XCTestCase, Sendable {
     }
 
     func testEraseLargeCounterBeyondDefaultRadius() {
-        // A 60 pt counter's badge (radius ~64) reaches far past the original 15 pt.
         overlayView.counterAnnotations.append(CounterAnnotation(
             number: 1,
             position: NSPoint(x: 150, y: 150),

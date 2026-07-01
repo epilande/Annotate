@@ -136,8 +136,6 @@ final class ModelTests: XCTestCase {
     }
 
     func testCounterAnnotationDefaultSizePreservesOriginalGeometry() {
-        // A counter created without an explicit size must render exactly as it did
-        // before the adjustable-size feature: 15 pt radius, 2.5 pt stroke.
         let counter = CounterAnnotation(number: 1, position: .zero, color: .red)
         XCTAssertEqual(counter.fontSize, defaultCounterFontSize)
         XCTAssertEqual(counter.radius, 15, accuracy: 0.0001)
@@ -162,9 +160,7 @@ final class ModelTests: XCTestCase {
 
     func testCounterToolFontSizeDefaultsAndPersists() {
         let defaults = TestUserDefaults.create()
-        // Unset falls back to the default size.
         XCTAssertEqual(defaults.counterToolFontSize, defaultCounterFontSize)
-        // A stored value is read back.
         defaults.counterToolFontSize = 42
         XCTAssertEqual(defaults.counterToolFontSize, 42)
     }

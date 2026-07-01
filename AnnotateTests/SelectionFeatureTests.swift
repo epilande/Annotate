@@ -252,7 +252,6 @@ final class SelectionFeatureTests: XCTestCase {
     }
 
     func testRectangleSelectionSelectsLargeCounterOverlappingBadgeNotCenter() {
-        // A large counter's badge scales with its font size (radius = fontSize * 15/14).
         // At 60 pt the badge spans roughly [435.7, 564.3] around center (500, 500).
         overlayView.counterAnnotations.append(CounterAnnotation(
             number: 1,
@@ -279,7 +278,6 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
 
-        // Marquee well clear of the ~64 pt radius badge should not select the counter.
         let rect = NSRect(x: 100, y: 100, width: 50, height: 50)
         let foundObjects = overlayView.findObjectsInRect(rect)
 
