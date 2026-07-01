@@ -258,6 +258,11 @@ final class OverlayViewTests: XCTestCase, Sendable {
 
     func testCreateTextFieldForNewTextCentersVertically() {
         let clickPoint = NSPoint(x: 200, y: 300)
+        // Pin the font so the box height (and the centering offset derived from it) is
+        // deterministic regardless of any persisted textToolFontSize.
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
         overlayView.createTextField(at: clickPoint, withText: "", width: 100)
 
         guard let textField = overlayView.activeTextField else {
@@ -265,10 +270,35 @@ final class OverlayViewTests: XCTestCase, Sendable {
             return
         }
 
-        // For new text, Y offset should be -16 (half of 32px height) to center at click
-        // X offset is -8 for left padding
+        // At the default font the box is at its 32px floor, so Y offset is -16 (half the
+        // height) to center at the click. X offset is -8 for left padding.
         XCTAssertEqual(textField.frame.origin.x, clickPoint.x - 8, "X should offset by left padding")
         XCTAssertEqual(textField.frame.origin.y, clickPoint.y - 16, "Y should center text field at click point")
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testCreateTextFieldForNewTextHeightGrowsWithFontSize() {
+        let clickPoint = NSPoint(x: 200, y: 300)
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: textAnnotationFontSizeRange.upperBound
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        XCTAssertGreaterThan(
+            textField.frame.height, 32,
+            "A new field created with a large font should be taller than the 32px floor so text is not clipped"
+        )
+        XCTAssertEqual(
+            textField.frame.midY, clickPoint.y, accuracy: 0.5,
+            "The taller box should stay vertically centered on the click point"
+        )
 
         textField.removeFromSuperview()
         overlayView.activeTextField = nil
@@ -292,7 +322,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
-    func testResizeActiveTextFieldWidthGrowsWithFontSize() {
+    func testResizeActiveTextFieldGrowsWithFontSize() {
         let clickPoint = NSPoint(x: 100, y: 200)
         overlayView.currentTool = .text
         overlayView.currentTextAnnotation = TextAnnotation(
@@ -305,17 +335,106 @@ final class OverlayViewTests: XCTestCase, Sendable {
             return
         }
 
+        let anchoredY = textField.frame.origin.y
+
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.lowerBound)
-        overlayView.resizeActiveTextFieldWidth(textField)
-        let smallWidth = textField.frame.size.width
+        overlayView.resizeActiveTextField(textField)
+        let smallSize = textField.frame.size
 
         textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
-        overlayView.resizeActiveTextFieldWidth(textField)
-        let largeWidth = textField.frame.size.width
+        overlayView.resizeActiveTextField(textField)
+        let largeSize = textField.frame.size
 
         XCTAssertGreaterThan(
-            largeWidth, smallWidth,
+            largeSize.width, smallSize.width,
             "Text field width should grow when font size increases"
+        )
+        XCTAssertGreaterThan(
+            largeSize.height, smallSize.height,
+            "Text field height should grow when font size increases so text is not clipped"
+        )
+        XCTAssertEqual(
+            textField.frame.origin.y, anchoredY,
+            "Growing the height should keep the bottom edge anchored so committed text does not jump"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testResizeActiveTextFieldStaysOnScreenNearRightEdge() {
+        // The view is 800 wide with no window, so availableWidth falls back to bounds.width
+        let clickPoint = NSPoint(x: 790, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        let originalX = textField.frame.origin.x
+        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.font = font
+        textField.stringValue = "Hello world test"
+        overlayView.resizeActiveTextField(textField)
+
+        let margin: CGFloat = 20
+        let rightEdge = overlayView.bounds.width - margin
+
+        XCTAssertLessThanOrEqual(
+            textField.frame.maxX, rightEdge,
+            "Text field should not overflow the right edge of the screen"
+        )
+        XCTAssertLessThan(
+            textField.frame.origin.x, originalX,
+            "Text field should slide left when it would overflow the right edge"
+        )
+        let textWidth = textField.stringValue.size(withAttributes: [.font: font]).width
+        XCTAssertGreaterThanOrEqual(
+            textField.frame.size.width, textWidth,
+            "Text field should stay wide enough to show the full text instead of clipping it"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testResizeActiveTextFieldReturnsToAnchorWhenTextShrinks() {
+        // Placed away from the right edge so a short string can return fully to the anchor.
+        let clickPoint = NSPoint(x: 600, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        let anchorX = textField.frame.origin.x
+        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.font = font
+
+        // A long string overflows the right edge and slides the box left.
+        textField.stringValue = "A very long sentence that overflows the screen"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertLessThan(
+            textField.frame.origin.x, anchorX,
+            "Text field should slide left when the text overflows the right edge"
+        )
+
+        // Shrinking the text should let the box return to its creation anchor, not stay stuck left.
+        textField.stringValue = "Hi"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertEqual(
+            textField.frame.origin.x, anchorX, accuracy: 0.5,
+            "Text field should return to its creation anchor when the text fits there again"
         )
 
         textField.removeFromSuperview()

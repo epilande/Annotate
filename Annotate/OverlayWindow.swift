@@ -968,7 +968,7 @@ class OverlayWindow: NSPanel {
         if let textField = overlayView.activeTextField {
             textField.font = NSFont.systemFont(ofSize: newSize)
             overlayView.currentTextAnnotation?.fontSize = newSize
-            overlayView.resizeActiveTextFieldWidth(textField)
+            overlayView.resizeActiveTextField(textField)
             textField.needsDisplay = true
         }
 
