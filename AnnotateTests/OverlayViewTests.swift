@@ -441,7 +441,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.activeTextField = nil
     }
 
-    /// Renders the view offscreen and counts non-transparent pixels (a proxy for "something drew").
+    /// Offscreen-renders the view and counts its non-transparent pixels.
     private func renderedPixelCount(of view: NSView) -> Int {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return -1 }
         view.cacheDisplay(in: view.bounds, to: rep)
@@ -464,7 +464,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         )
         overlayView.textAnnotations = [annotation]
 
-        // Control: not editing — the committed annotation renders.
+        // Not editing: the committed annotation renders.
         overlayView.editingTextAnnotationIndex = nil
         overlayView.currentTextAnnotation = nil
         XCTAssertGreaterThan(
@@ -472,8 +472,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
             "Sanity check: a committed text annotation should render"
         )
 
-        // Editing this annotation (mirrors the double-click path, where currentTextAnnotation is
-        // set to the edited annotation): it must NOT be drawn as a ghost behind the edit field.
+        // Editing it (mirrors double-click): must not be drawn as a ghost behind the field.
         overlayView.editingTextAnnotationIndex = 0
         overlayView.currentTextAnnotation = annotation
         XCTAssertEqual(

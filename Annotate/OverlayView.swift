@@ -68,6 +68,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var currentCircle: Circle?
 
     var textAnnotations: [TextAnnotation] = []
+    /// Annotation being created/edited; holds color and font size for finalize. Not rendered.
     var currentTextAnnotation: TextAnnotation?
     var activeTextField: NSTextField?
     var originalTextPosition: NSPoint?
@@ -648,16 +649,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             drawCircle(circle, alpha: 1.0)
         }
 
-        // Draw texts (text annotations don't fade - they persist regardless of fade mode)
+        // Text annotations persist regardless of fade mode.
         for (index, annotation) in textAnnotations.enumerated() {
-            // Skip drawing text that is currently being edited (prevents ghost text)
-            if index == editingTextAnnotationIndex { continue }
-            drawText(annotation)
-        }
-        // Only for new text (an empty placeholder). When editing an existing annotation,
-        // currentTextAnnotation IS that annotation and is shown by the edit field, so drawing
-        // it here would render a duplicate "ghost" behind the field.
-        if let annotation = currentTextAnnotation, editingTextAnnotationIndex == nil {
+            if index == editingTextAnnotationIndex { continue }  // skip the one being edited
             drawText(annotation)
         }
 
