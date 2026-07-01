@@ -242,6 +242,7 @@ class OverlayWindow: NSPanel {
                 number: overlayView.nextCounterNumber,
                 position: startPoint,
                 color: currentColor,
+                fontSize: UserDefaults.standard.counterToolFontSize,
                 creationTime: CACurrentMediaTime()
             )
 
@@ -879,6 +880,8 @@ class OverlayWindow: NSPanel {
         if cmdPressed {
             if overlayView.currentTool == .text {
                 scrollWheelForFontSize(with: event)
+            } else if overlayView.currentTool == .counter {
+                scrollWheelForCounterSize(with: event)
             } else {
                 scrollWheelForLineWidth(with: event)
             }
@@ -977,6 +980,27 @@ class OverlayWindow: NSPanel {
 
     private func showFontSizeFeedback(_ size: CGFloat) {
         let text = String(format: "Font Size: %.0f pt", size)
+        showFeedback(text)
+    }
+
+    private func scrollWheelForCounterSize(with event: NSEvent) {
+        let scrollDelta = event.scrollingDeltaY
+        guard scrollDelta != 0 else { return }
+
+        let step: CGFloat = 1.0
+        let increment: CGFloat = scrollDelta > 0 ? step : -step
+        let currentSize = UserDefaults.standard.counterToolFontSize
+        let newSize = (currentSize + increment).clamped(to: counterFontSizeRange)
+
+        guard newSize != currentSize else { return }
+
+        UserDefaults.standard.counterToolFontSize = newSize
+
+        showCounterSizeFeedback(newSize)
+    }
+
+    private func showCounterSizeFeedback(_ size: CGFloat) {
+        let text = String(format: "Counter Size: %.0f pt", size)
         showFeedback(text)
     }
     

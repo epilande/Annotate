@@ -247,10 +247,45 @@ final class SelectionFeatureTests: XCTestCase {
         // Rectangle that doesn't cover anything
         let rect = NSRect(x: 300, y: 300, width: 50, height: 50)
         let foundObjects = overlayView.findObjectsInRect(rect)
-        
+
         XCTAssertTrue(foundObjects.isEmpty)
     }
-    
+
+    func testRectangleSelectionSelectsLargeCounterOverlappingBadgeNotCenter() {
+        // A large counter's badge scales with its font size (radius = fontSize * 15/14).
+        // At 60 pt the badge spans roughly [435.7, 564.3] around center (500, 500).
+        overlayView.counterAnnotations.append(CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 500, y: 500),
+            color: .red,
+            fontSize: 60,
+            creationTime: nil
+        ))
+
+        // Marquee overlaps the badge but stops short of the center point (maxX = 495 < 500).
+        // Center-point-only selection would miss it; area-based selection includes it.
+        let rect = NSRect(x: 440, y: 440, width: 55, height: 120)
+        let foundObjects = overlayView.findObjectsInRect(rect)
+
+        XCTAssertTrue(foundObjects.contains(.counter(index: 0)))
+    }
+
+    func testRectangleSelectionMissesCounterOutsideBadge() {
+        overlayView.counterAnnotations.append(CounterAnnotation(
+            number: 1,
+            position: NSPoint(x: 500, y: 500),
+            color: .red,
+            fontSize: 60,
+            creationTime: nil
+        ))
+
+        // Marquee well clear of the ~64 pt radius badge should not select the counter.
+        let rect = NSRect(x: 100, y: 100, width: 50, height: 50)
+        let foundObjects = overlayView.findObjectsInRect(rect)
+
+        XCTAssertFalse(foundObjects.contains(.counter(index: 0)))
+    }
+
     // MARK: - Bounding Box Tests
     
     func testGetObjectBoundsLine() {

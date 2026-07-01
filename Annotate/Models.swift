@@ -118,7 +118,16 @@ struct CounterAnnotation {
     var number: Int
     var position: NSPoint
     var color: NSColor
+    var fontSize: CGFloat = defaultCounterFontSize
     var creationTime: CFTimeInterval?
+
+    /// The badge circle radius, scaled from the number's font size so the
+    /// original 15 pt radius is preserved at the default 14 pt font.
+    var radius: CGFloat { fontSize * (15.0 / 14.0) }
+
+    /// The badge circle stroke width, scaled from the number's font size so the
+    /// original 2.5 pt stroke is preserved at the default 14 pt font.
+    var strokeWidth: CGFloat { fontSize * (2.5 / 14.0) }
 }
 
 enum ClipboardItem {
@@ -222,6 +231,7 @@ extension TextAnnotation: Equatable {
 extension CounterAnnotation: Equatable {
     public static func == (lhs: CounterAnnotation, rhs: CounterAnnotation) -> Bool {
         return lhs.number == rhs.number && lhs.position == rhs.position
-            && lhs.color.isEqual(rhs.color) && lhs.creationTime == rhs.creationTime
+            && lhs.color.isEqual(rhs.color) && lhs.fontSize == rhs.fontSize
+            && lhs.creationTime == rhs.creationTime
     }
 }

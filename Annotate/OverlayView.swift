@@ -811,7 +811,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .counter(let index):
             guard index < counterAnnotations.count else { return .zero }
             let counter = counterAnnotations[index]
-            let radius: CGFloat = 15.0
+            let radius = counter.radius
             return NSRect(
                 x: counter.position.x - radius,
                 y: counter.position.y - radius,
@@ -1021,7 +1021,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
         let adaptedColor = adaptColorForBoard(counter.color, boardType: currentBoardType)
 
-        let radius: CGFloat = 15.0
+        let radius = counter.radius
         let diameter = radius * 2
 
         let circleBounds = NSRect(
@@ -1037,13 +1037,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
         circlePath.fill()
 
         adaptedColor.withAlphaComponent(alpha).setStroke()
-        circlePath.lineWidth = 2.5
+        circlePath.lineWidth = counter.strokeWidth
         circlePath.stroke()
 
         // Draw the number
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        let fontSize: CGFloat = 14.0
+        let fontSize = counter.fontSize
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: adaptedColor.withAlphaComponent(alpha),
             .font: NSFont.systemFont(ofSize: fontSize, weight: .heavy),
@@ -1479,7 +1479,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 maxY = max(maxY, text.position.y + estimatedHeight)
 
             case .counter(let counter):
-                let radius: CGFloat = 15.0
+                let radius = counter.radius
                 minX = min(minX, counter.position.x - radius)
                 minY = min(minY, counter.position.y - radius)
                 maxX = max(maxX, counter.position.x + radius)
@@ -1988,13 +1988,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .counter(let index):
             guard index < counterAnnotations.count else { return false }
-            return rect.contains(counterAnnotations[index].position)
-            
+            let counter = counterAnnotations[index]
+            let radius = counter.radius
+            let counterRect = NSRect(
+                x: counter.position.x - radius,
+                y: counter.position.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            return rect.intersects(counterRect)
+
         case .none:
             return false
         }
     }
-    
+
     /// Check if a line segment intersects with a rectangle
     private func lineSegmentIntersectsRect(start: NSPoint, end: NSPoint, rect: NSRect) -> Bool {
         // Check if either endpoint is inside the rectangle
@@ -2221,7 +2229,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     
     private func hitTestCounter(_ counter: CounterAnnotation, point: NSPoint) -> Bool {
-        let radius: CGFloat = 15.0
+        let radius = counter.radius
         let dx = point.x - counter.position.x
         let dy = point.y - counter.position.y
         let distance = sqrt(dx * dx + dy * dy)
@@ -2415,7 +2423,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func counterIntersectsPoint(_ counter: CounterAnnotation, point: NSPoint, radius: CGFloat) -> Bool {
-        let counterRadius: CGFloat = 15.0
+        let counterRadius = counter.radius
         let dx = point.x - counter.position.x
         let dy = point.y - counter.position.y
         let distance = sqrt(dx * dx + dy * dy)
