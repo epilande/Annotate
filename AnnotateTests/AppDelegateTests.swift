@@ -454,4 +454,33 @@ final class AppDelegateTests: XCTestCase, Sendable {
             XCTAssertEqual(window.overlayView.currentTool, .pen, "Should fall back to .pen when no last-used tool was saved")
         }
     }
+
+    func testInternalToolRestoreDoesNotOverwriteLastUsedTool() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        // restorePreviousTool reads persistTextMode from UserDefaults.standard, so pin it
+        // to false for this test and restore whatever was there afterwards.
+        let savedPersistTextMode = UserDefaults.standard.object(forKey: UserDefaults.persistTextModeKey)
+        UserDefaults.standard.set(false, forKey: UserDefaults.persistTextModeKey)
+        defer {
+            if let saved = savedPersistTextMode {
+                UserDefaults.standard.set(saved, forKey: UserDefaults.persistTextModeKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: UserDefaults.persistTextModeKey)
+            }
+        }
+
+        appDelegate.enablePenMode(NSMenuItem())
+        appDelegate.enableTextMode(NSMenuItem())
+        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Explicitly switching to text should persist it as last used")
+        XCTAssertEqual(overlayWindow.overlayView.previousTool, .pen)
+
+        overlayWindow.overlayView.restorePreviousTool()
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .pen, "Finishing a text annotation should restore the previous tool")
+        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Internal tool restores should not overwrite the persisted last-used tool")
+    }
 }
