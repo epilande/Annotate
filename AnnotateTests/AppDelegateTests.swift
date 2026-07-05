@@ -438,6 +438,23 @@ final class AppDelegateTests: XCTestCase, Sendable {
             "Applying a default tool that is already active should be a no-op (no switchTool, no tool feedback)")
     }
 
+    func testApplyConfiguredDefaultToolDoesNotOverwriteLastUsedTool() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        appDelegate.enableHighlighterMode(NSMenuItem())
+        testDefaults.defaultToolOption = .tool(.rectangle)
+
+        appDelegate.applyConfiguredDefaultTool()
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .rectangle)
+        XCTAssertEqual(
+            testDefaults.lastUsedTool, .highlighter,
+            "Applying the configured default is not an explicit selection and must not overwrite the persisted last-used tool")
+    }
+
     func testApplyConfiguredDefaultToolDoesNothingForLastUsed() {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window available")

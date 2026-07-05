@@ -539,12 +539,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
     }
 
-    func switchTool(to tool: ToolType) {
+    func switchTool(to tool: ToolType, persist: Bool = true) {
         if alwaysOnMode {
             toggleAlwaysOnMode()
         }
 
-        userDefaults.lastUsedTool = tool
+        if persist {
+            userDefaults.lastUsedTool = tool
+        }
 
         overlayWindows.values.forEach { window in
             if window.overlayView.currentTool == .select && tool != .select {
@@ -567,11 +569,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     /// Applies the configured default tool when the overlay activates. Does nothing when the
     /// setting is "Last used", leaving whatever tool is already current in place, or when
     /// every window is already on the configured tool (avoids showing tool feedback on
-    /// every activation).
+    /// every activation). Applying the default is not an explicit tool selection, so it does
+    /// not overwrite the persisted last-used tool.
     func applyConfiguredDefaultTool() {
         guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
         guard overlayWindows.values.contains(where: { $0.overlayView.currentTool != tool }) else { return }
-        switchTool(to: tool)
+        switchTool(to: tool, persist: false)
     }
 
     @objc func enableArrowMode(_ sender: NSMenuItem) {
