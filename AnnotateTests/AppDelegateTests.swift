@@ -420,6 +420,24 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
+    func testApplyConfiguredDefaultToolSkipsWhenToolAlreadyActive() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        appDelegate.enableRectangleMode(NSMenuItem())
+        testDefaults.defaultToolOption = .tool(.rectangle)
+        testDefaults.lastUsedTool = .highlighter
+
+        appDelegate.applyConfiguredDefaultTool()
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .rectangle)
+        XCTAssertEqual(
+            testDefaults.lastUsedTool, .highlighter,
+            "Applying a default tool that is already active should be a no-op (no switchTool, no tool feedback)")
+    }
+
     func testApplyConfiguredDefaultToolDoesNothingForLastUsed() {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window available")

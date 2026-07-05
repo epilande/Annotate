@@ -564,9 +564,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     /// Applies the configured default tool when the overlay activates. Does nothing when the
-    /// setting is "Last used", leaving whatever tool is already current in place.
+    /// setting is "Last used", leaving whatever tool is already current in place, or when
+    /// every window is already on the configured tool (avoids showing tool feedback on
+    /// every activation).
     func applyConfiguredDefaultTool() {
         guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
+        guard overlayWindows.values.contains(where: { $0.overlayView.currentTool != tool }) else { return }
         switchTool(to: tool)
     }
 
