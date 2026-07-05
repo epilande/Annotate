@@ -25,6 +25,8 @@ extension UserDefaults {
     static let persistTextModeKey = "PersistTextMode"
     static let defaultTextFontSizeKey = "TextFontSize"
     static let defaultCounterFontSizeKey = "CounterFontSize"
+    static let defaultToolKey = "DefaultTool"
+    static let lastUsedToolKey = "LastUsedTool"
 }
 
 let colorPalette: [NSColor] = [
@@ -59,6 +61,29 @@ extension UserDefaults {
         }
         set {
             set(Double(newValue), forKey: Self.defaultCounterFontSizeKey)
+        }
+    }
+
+    /// The tool to apply on overlay activation. Defaults to `.lastUsed`, which leaves the
+    /// current in-memory tool untouched.
+    var defaultToolOption: DefaultToolOption {
+        get {
+            let stored = string(forKey: Self.defaultToolKey) ?? ""
+            return DefaultToolOption(rawValue: stored) ?? .lastUsed
+        }
+        set {
+            set(newValue.rawValue, forKey: Self.defaultToolKey)
+        }
+    }
+
+    /// The most recently explicitly selected tool, persisted so it survives app relaunches.
+    var lastUsedTool: ToolType {
+        get {
+            let stored = string(forKey: Self.lastUsedToolKey) ?? ""
+            return ToolType(rawValue: stored) ?? .pen
+        }
+        set {
+            set(newValue.rawValue, forKey: Self.lastUsedToolKey)
         }
     }
 }

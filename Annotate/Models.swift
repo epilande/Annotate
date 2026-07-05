@@ -1,17 +1,17 @@
 import Cocoa
 
 /// Represents the available tools for annotation.
-enum ToolType {
-    case pen
-    case arrow
-    case line
-    case highlighter
-    case rectangle
-    case circle
-    case text
-    case counter
-    case select
-    case eraser
+enum ToolType: String, CaseIterable {
+    case pen = "pen"
+    case arrow = "arrow"
+    case line = "line"
+    case highlighter = "highlighter"
+    case rectangle = "rectangle"
+    case circle = "circle"
+    case text = "text"
+    case counter = "counter"
+    case select = "select"
+    case eraser = "eraser"
 
     var displayName: String {
         switch self {
@@ -25,6 +25,30 @@ enum ToolType {
         case .counter: return "Counter"
         case .eraser: return "Eraser"
         case .select: return "Select"
+        }
+    }
+}
+
+/// Which tool becomes active each time the overlay is activated. `.lastUsed` keeps the
+/// in-memory tool as-is (the pre-existing behavior); a specific tool always resets to it.
+enum DefaultToolOption: RawRepresentable, Equatable, Hashable {
+    case lastUsed
+    case tool(ToolType)
+
+    var rawValue: String {
+        switch self {
+        case .lastUsed: return "lastUsed"
+        case .tool(let tool): return tool.rawValue
+        }
+    }
+
+    init?(rawValue: String) {
+        if rawValue == "lastUsed" {
+            self = .lastUsed
+        } else if let tool = ToolType(rawValue: rawValue) {
+            self = .tool(tool)
+        } else {
+            return nil
         }
     }
 }

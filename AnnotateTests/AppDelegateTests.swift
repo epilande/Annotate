@@ -386,4 +386,72 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .line)
         XCTAssertEqual(overlayWindow.overlayView.previousTool, previousToolBefore, "previousTool should remain unchanged when not switching to text mode")
     }
+
+    // MARK: - Default Tool Tests
+
+    func testSwitchToolPersistsLastUsedTool() {
+        appDelegate.enableRectangleMode(NSMenuItem())
+        XCTAssertEqual(testDefaults.lastUsedTool, .rectangle, "Explicitly switching tools should persist the choice as last used")
+
+        appDelegate.enableHighlighterMode(NSMenuItem())
+        XCTAssertEqual(testDefaults.lastUsedTool, .highlighter)
+    }
+
+    func testApplyConfiguredDefaultToolAppliesSpecificTool() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        testDefaults.defaultToolOption = .tool(.rectangle)
+        appDelegate.enableArrowMode(NSMenuItem())  // start on a different tool than the configured default
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
+
+        appDelegate.applyConfiguredDefaultTool()
+
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .rectangle, "Activation should reset the tool to the configured default")
+        }
+
+        if let menu = appDelegate.statusItem.menu,
+            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
+        {
+            XCTAssertEqual(currentToolItem.title, "Current Tool: Rectangle")
+        }
+    }
+
+    func testApplyConfiguredDefaultToolDoesNothingForLastUsed() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window available")
+            return
+        }
+
+        XCTAssertEqual(testDefaults.defaultToolOption, .lastUsed, "Default should be Last Used until the setting is touched")
+
+        appDelegate.enableArrowMode(NSMenuItem())
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
+
+        appDelegate.applyConfiguredDefaultTool()
+
+        XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow, "Last Used should preserve whatever tool was already active")
+    }
+
+    func testLaunchRestoresPersistedLastUsedTool() {
+        testDefaults.lastUsedTool = .highlighter
+
+        let appDelegate = AppDelegate(userDefaults: testDefaults)
+        appDelegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification))
+
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .highlighter, "Overlay windows should restore the persisted last-used tool on launch")
+        }
+    }
+
+    func testLaunchDefaultsToPenWhenNoLastUsedToolSaved() {
+        // testDefaults is a fresh suite with no LastUsedTool key set (see setUp).
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .pen, "Should fall back to .pen when no last-used tool was saved")
+        }
+    }
 }
