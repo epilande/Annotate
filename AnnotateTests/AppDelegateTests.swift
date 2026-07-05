@@ -464,6 +464,12 @@ final class AppDelegateTests: XCTestCase, Sendable {
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .highlighter, "Overlay windows should restore the persisted last-used tool on launch")
         }
+
+        if let menu = appDelegate.statusItem.menu,
+            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
+        {
+            XCTAssertEqual(currentToolItem.title, "Current Tool: Highlighter", "Menu should reflect the restored tool, not the hardcoded default")
+        }
     }
 
     func testLaunchDefaultsToPenWhenNoLastUsedToolSaved() {

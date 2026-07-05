@@ -72,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         let persistedTool = userDefaults.lastUsedTool
         overlayWindows.values.forEach { $0.overlayView.currentTool = persistedTool }
+        updateCurrentToolMenuItem(to: persistedTool.displayName)
 
         let enableBoard = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
         overlayWindows.values.forEach {
