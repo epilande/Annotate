@@ -30,9 +30,9 @@ struct GeneralSettingsView: View {
 
     /// Tools offered in the Default Tool picker, excluding Select and Eraser since neither
     /// is a sensible tool to land on when the overlay opens.
-    private static let selectableDefaultTools: [ToolType] = [
-        .pen, .arrow, .line, .highlighter, .rectangle, .circle, .text, .counter,
-    ]
+    private static let selectableDefaultTools = ToolType.allCases.filter {
+        $0 != .select && $0 != .eraser
+    }
 
     var body: some View {
         let minTextSize = Double(textAnnotationFontSizeRange.lowerBound)

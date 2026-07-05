@@ -559,6 +559,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             window.invalidateCursorRects(for: window.overlayView)
             window.overlayView.updateCursor()
         }
+        updateCurrentToolMenuItem(to: tool.displayName)
         showOverlay()
     }
 
@@ -567,57 +568,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     func applyConfiguredDefaultTool() {
         guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
         switchTool(to: tool)
-        updateCurrentToolMenuItem(to: tool.displayName)
     }
 
     @objc func enableArrowMode(_ sender: NSMenuItem) {
         switchTool(to: .arrow)
-        updateCurrentToolMenuItem(to: "Arrow")
     }
 
     @objc func enableLineMode(_ sender: NSMenuItem) {
         switchTool(to: .line)
-        updateCurrentToolMenuItem(to: "Line")
     }
 
     @objc func enablePenMode(_ sender: NSMenuItem) {
         switchTool(to: .pen)
-        updateCurrentToolMenuItem(to: "Pen")
     }
 
     @objc func enableHighlighterMode(_ sender: NSMenuItem) {
         switchTool(to: .highlighter)
-        updateCurrentToolMenuItem(to: "Highlighter")
     }
 
     @objc func enableRectangleMode(_ sender: NSMenuItem) {
         switchTool(to: .rectangle)
-        updateCurrentToolMenuItem(to: "Rectangle")
     }
 
     @objc func enableCircleMode(_ sender: NSMenuItem) {
         switchTool(to: .circle)
-        updateCurrentToolMenuItem(to: "Circle")
     }
 
     @objc func enableCounterMode(_ sender: NSMenuItem) {
         switchTool(to: .counter)
-        updateCurrentToolMenuItem(to: "Counter")
     }
 
     @objc func enableTextMode(_ sender: NSMenuItem) {
         switchTool(to: .text)
-        updateCurrentToolMenuItem(to: "Text")
     }
-    
+
     @objc func enableSelectMode(_ sender: NSMenuItem) {
         switchTool(to: .select)
-        updateCurrentToolMenuItem(to: "Select")
     }
 
     @objc func enableEraserMode(_ sender: NSMenuItem) {
         switchTool(to: .eraser)
-        updateCurrentToolMenuItem(to: "Eraser")
     }
 
     @objc func toggleBoardVisibility(_ sender: Any?) {
