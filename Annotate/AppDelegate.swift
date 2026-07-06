@@ -69,6 +69,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         let persistedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
         overlayWindows.values.forEach { $0.overlayView.currentLineWidth = CGFloat(persistedLineWidth) }
 
+        let persistedTool = userDefaults.lastUsedTool
+        overlayWindows.values.forEach { $0.overlayView.currentTool = persistedTool }
+        updateCurrentToolMenuItem(to: persistedTool.displayName)
+
         let enableBoard = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
         overlayWindows.values.forEach {
             $0.boardView.isHidden = !enableBoard
@@ -371,6 +375,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
                 let savedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
                 overlayWindow.overlayView.currentLineWidth = CGFloat(savedLineWidth)
+                overlayWindow.overlayView.currentTool = userDefaults.lastUsedTool
 
                 overlayWindows[screen] = overlayWindow
             }
@@ -478,6 +483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             overlayWindow.makeKeyAndOrderFront(nil)
             CursorHighlightManager.shared.annotationColor = currentColor
             CursorHighlightManager.shared.overlayVisibilityChanged()
+            applyConfiguredDefaultTool()
         }
     }
 
@@ -545,6 +551,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             toggleAlwaysOnMode()
         }
 
+        userDefaults.lastUsedTool = tool
+
         overlayWindows.values.forEach { window in
             if window.overlayView.currentTool == .select && tool != .select {
                 window.overlayView.selectedObjects.removeAll()
@@ -559,57 +567,58 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             window.invalidateCursorRects(for: window.overlayView)
             window.overlayView.updateCursor()
         }
+        updateCurrentToolMenuItem(to: tool.displayName)
         showOverlay()
+    }
+
+    /// Applies the configured default tool when the overlay activates. Does nothing when the
+    /// setting is "Last used", leaving whatever tool is already current in place, or when
+    /// every window is already on the configured tool (avoids showing tool feedback on
+    /// every activation).
+    func applyConfiguredDefaultTool() {
+        guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
+        guard overlayWindows.values.contains(where: { $0.overlayView.currentTool != tool }) else { return }
+        switchTool(to: tool)
     }
 
     @objc func enableArrowMode(_ sender: NSMenuItem) {
         switchTool(to: .arrow)
-        updateCurrentToolMenuItem(to: "Arrow")
     }
 
     @objc func enableLineMode(_ sender: NSMenuItem) {
         switchTool(to: .line)
-        updateCurrentToolMenuItem(to: "Line")
     }
 
     @objc func enablePenMode(_ sender: NSMenuItem) {
         switchTool(to: .pen)
-        updateCurrentToolMenuItem(to: "Pen")
     }
 
     @objc func enableHighlighterMode(_ sender: NSMenuItem) {
         switchTool(to: .highlighter)
-        updateCurrentToolMenuItem(to: "Highlighter")
     }
 
     @objc func enableRectangleMode(_ sender: NSMenuItem) {
         switchTool(to: .rectangle)
-        updateCurrentToolMenuItem(to: "Rectangle")
     }
 
     @objc func enableCircleMode(_ sender: NSMenuItem) {
         switchTool(to: .circle)
-        updateCurrentToolMenuItem(to: "Circle")
     }
 
     @objc func enableCounterMode(_ sender: NSMenuItem) {
         switchTool(to: .counter)
-        updateCurrentToolMenuItem(to: "Counter")
     }
 
     @objc func enableTextMode(_ sender: NSMenuItem) {
         switchTool(to: .text)
-        updateCurrentToolMenuItem(to: "Text")
     }
-    
+
     @objc func enableSelectMode(_ sender: NSMenuItem) {
         switchTool(to: .select)
-        updateCurrentToolMenuItem(to: "Select")
     }
 
     @objc func enableEraserMode(_ sender: NSMenuItem) {
         switchTool(to: .eraser)
-        updateCurrentToolMenuItem(to: "Eraser")
     }
 
     @objc func toggleBoardVisibility(_ sender: Any?) {
