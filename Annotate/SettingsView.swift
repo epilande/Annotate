@@ -70,13 +70,14 @@ struct PaneHeader: View {
 /// with a grouped `Form` detail, mirroring the System Settings layout.
 struct SettingsView: View {
     @State private var selection: SettingsPane? = .general
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     private var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
                 ForEach(SettingsPane.allCases) { pane in
                     Label {
@@ -117,6 +118,12 @@ struct SettingsView: View {
                 }
             }
             .frame(minWidth: 480)
+            // The window's transparent unified toolbar reserves a tall top
+            // safe area that the detail column leaves empty. Collapse it so
+            // each pane's header starts near the top of the window, except
+            // when the sidebar is hidden and the detail column would slide
+            // under the traffic lights and sidebar toggle.
+            .ignoresSafeArea(.container, edges: columnVisibility == .detailOnly ? [] : .top)
         }
         .frame(minWidth: 780, minHeight: 580)
     }
