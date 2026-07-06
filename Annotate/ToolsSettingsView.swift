@@ -17,10 +17,13 @@ struct ToolsSettingsView: View {
             }
 
             Section {
-                DefaultSizeSliderRow(
+                SettingsSliderRow(
                     title: "Default Text Size",
-                    size: $defaultTextSize,
-                    range: minTextSize...maxTextSize
+                    value: $defaultTextSize,
+                    range: minTextSize...maxTextSize,
+                    step: 1,
+                    valueText: { "\(Int($0)) pt" },
+                    boundsText: { "\(Int($0)) pt" }
                 )
             } header: {
                 SettingsHeader(
@@ -32,10 +35,13 @@ struct ToolsSettingsView: View {
             }
 
             Section {
-                DefaultSizeSliderRow(
+                SettingsSliderRow(
                     title: "Default Counter Size",
-                    size: $defaultCounterSize,
-                    range: minCounterSize...maxCounterSize
+                    value: $defaultCounterSize,
+                    range: minCounterSize...maxCounterSize,
+                    step: 1,
+                    valueText: { "\(Int($0)) pt" },
+                    boundsText: { "\(Int($0)) pt" }
                 )
             } header: {
                 SettingsHeader(
@@ -48,30 +54,5 @@ struct ToolsSettingsView: View {
         }
         .formStyle(.grouped)
         .settingsScrollEdgeEffect()
-    }
-}
-
-private struct DefaultSizeSliderRow: View {
-    let title: String
-    @Binding var size: Double
-    let range: ClosedRange<Double>
-
-    var body: some View {
-        LabeledContent {
-            Slider(value: $size, in: range, step: 1) {
-            } minimumValueLabel: {
-                Text("\(Int(range.lowerBound)) pt")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } maximumValueLabel: {
-                Text("\(Int(range.upperBound)) pt")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        } label: {
-            Text(title)
-            Text("\(Int(size)) pt")
-                .monospacedDigit()
-        }
     }
 }

@@ -21,22 +21,14 @@ struct BoardSettingsView: View {
                     BoardManager.shared.isEnabled = enableBoard
                 }
 
-                LabeledContent {
-                    Slider(value: $boardOpacity, in: 0.1...1.0) {
-                    } minimumValueLabel: {
-                        Text("10%")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } maximumValueLabel: {
-                        Text("100%")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .onChange(of: boardOpacity) { _, newValue in
-                        BoardManager.shared.opacity = newValue
-                    }
-                } label: {
-                    Text("Board Opacity")
+                SettingsSliderRow(
+                    title: "Board Opacity",
+                    value: $boardOpacity,
+                    range: 0.1...1.0,
+                    boundsText: { "\(Int($0 * 100))%" }
+                )
+                .onChange(of: boardOpacity) { _, newValue in
+                    BoardManager.shared.opacity = newValue
                 }
             } header: {
                 SettingsHeader(

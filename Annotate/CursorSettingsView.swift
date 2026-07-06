@@ -40,24 +40,16 @@ struct CursorSettingsView: View {
                 }
 
                 if activeCursorStyle == .circle || activeCursorStyle == .crosshair {
-                    LabeledContent {
-                        Slider(value: $activeCursorSize, in: 8...24) {
-                        } minimumValueLabel: {
-                            Text("8")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        } maximumValueLabel: {
-                            Text("24")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                    SettingsSliderRow(
+                        title: "Cursor Size",
+                        value: $activeCursorSize,
+                        range: 8...24,
+                        boundsText: { "\(Int($0))" }
+                    )
+                    .onChange(of: activeCursorSize) { _, newValue in
+                        Task { @MainActor in
+                            CursorHighlightManager.shared.activeCursorSize = CGFloat(newValue)
                         }
-                        .onChange(of: activeCursorSize) { _, newValue in
-                            Task { @MainActor in
-                                CursorHighlightManager.shared.activeCursorSize = CGFloat(newValue)
-                            }
-                        }
-                    } label: {
-                        Text("Cursor Size")
                     }
                 }
             } header: {
@@ -79,24 +71,16 @@ struct CursorSettingsView: View {
                 }
 
                 if cursorHighlightEnabled {
-                    LabeledContent {
-                        Slider(value: $spotlightSize, in: 30...100) {
-                        } minimumValueLabel: {
-                            Text("30")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        } maximumValueLabel: {
-                            Text("100")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                    SettingsSliderRow(
+                        title: "Spotlight Size",
+                        value: $spotlightSize,
+                        range: 30...100,
+                        boundsText: { "\(Int($0))" }
+                    )
+                    .onChange(of: spotlightSize) { _, newValue in
+                        Task { @MainActor in
+                            CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
                         }
-                        .onChange(of: spotlightSize) { _, newValue in
-                            Task { @MainActor in
-                                CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
-                            }
-                        }
-                    } label: {
-                        Text("Spotlight Size")
                     }
                 }
 
@@ -109,24 +93,16 @@ struct CursorSettingsView: View {
                 }
 
                 if clickEffectsEnabled {
-                    LabeledContent {
-                        Slider(value: $effectSize, in: 30...100) {
-                        } minimumValueLabel: {
-                            Text("30")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        } maximumValueLabel: {
-                            Text("100")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                    SettingsSliderRow(
+                        title: "Click Effect Size",
+                        value: $effectSize,
+                        range: 30...100,
+                        boundsText: { "\(Int($0))" }
+                    )
+                    .onChange(of: effectSize) { _, newValue in
+                        Task { @MainActor in
+                            CursorHighlightManager.shared.effectSize = CGFloat(newValue)
                         }
-                        .onChange(of: effectSize) { _, newValue in
-                            Task { @MainActor in
-                                CursorHighlightManager.shared.effectSize = CGFloat(newValue)
-                            }
-                        }
-                    } label: {
-                        Text("Click Effect Size")
                     }
                 }
 
