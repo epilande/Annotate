@@ -1,84 +1,124 @@
 import SwiftUI
 
+/// The five settings panes shown in the sidebar.
+///
+/// Drives the sidebar list, the colored icon tiles, and each pane's header.
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case general = "General"
+    case tools = "Tools"
+    case board = "Board"
+    case cursor = "Cursor"
+    case shortcuts = "Shortcuts"
+
+    var id: String { rawValue }
+
+    /// Pane name shown in the sidebar, window title, and pane header.
+    var title: String { rawValue }
+
+    /// SF Symbol shown in the sidebar icon tile.
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .tools: "pencil.and.outline"
+        case .board: "rectangle.on.rectangle"
+        case .cursor: "cursorarrow.rays"
+        case .shortcuts: "keyboard"
+        }
+    }
+
+    /// System color for the sidebar icon tile.
+    var color: Color {
+        switch self {
+        case .general: .gray
+        case .tools: .orange
+        case .board: .indigo
+        case .cursor: .purple
+        case .shortcuts: .blue
+        }
+    }
+
+    /// Secondary line under the pane title in `PaneHeader`.
+    var subtitle: String {
+        switch self {
+        case .general: "Activation shortcuts and application behavior"
+        case .tools: "Default sizes for text and counter annotations"
+        case .board: "Board background appearance and visibility"
+        case .cursor: "Cursor style, spotlight, and click effects"
+        case .shortcuts: "Single-key shortcuts for tools and utilities"
+        }
+    }
+}
+
+/// Bold title and secondary subtitle shown at the top of each settings pane.
+struct PaneHeader: View {
+    let pane: SettingsPane
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(pane.title)
+                .font(.system(size: 21, weight: .bold))
+            Text(pane.subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 4)
+    }
+}
+
+/// Main settings window: a `NavigationSplitView` sidebar of the five panes
+/// with a grouped `Form` detail, mirroring the System Settings layout.
 struct SettingsView: View {
-    @State private var selectedTab = 0
-    @Environment(\.dismiss) private var dismiss
+    @State private var selection: SettingsPane? = .general
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Custom Tab Bar
-            HStack(spacing: 0) {
-                CustomTabButton(
-                    icon: "gearshape",
-                    label: "General",
-                    isSelected: selectedTab == 0
-                ) {
-                    selectedTab = 0
-                }
-
-                CustomTabButton(
-                    icon: "keyboard",
-                    label: "Shortcuts",
-                    isSelected: selectedTab == 1
-                ) {
-                    selectedTab = 1
+        NavigationSplitView {
+            List(selection: $selection) {
+                ForEach(SettingsPane.allCases) { pane in
+                    Label {
+                        Text(pane.title)
+                    } icon: {
+                        IconTile(symbol: pane.symbol, color: pane.color)
+                    }
+                    .tag(pane)
                 }
             }
-            .frame(height: 60)
-            .background(Color(nsColor: .controlBackgroundColor))
-
-            Divider()
-
-            // Content Area
+            .settingsScrollEdgeEffect()
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240)
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 10) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Annotate")
+                            .font(.headline)
+                        Text("Version \(appVersion)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+        } detail: {
             Group {
-                if selectedTab == 0 {
-                    GeneralSettingsView()
-                } else {
-                    ShortcutsSettingsView()
+                switch selection ?? .general {
+                case .general: GeneralSettingsView()
+                case .tools: ToolsSettingsView()
+                case .board: BoardSettingsView()
+                case .cursor: CursorSettingsView()
+                case .shortcuts: ShortcutsSettingsView()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .controlBackgroundColor))
-
-            Divider()
-
-            // Done Button
-            HStack {
-                Spacer()
-                Button("Done") {
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .frame(minWidth: 480)
         }
-        .frame(width: 600, height: 600)
+        .frame(minWidth: 780, minHeight: 580)
     }
 }
 
-struct CustomTabButton: View {
-    let icon: String
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundStyle(isSelected ? .blue : .secondary)
-
-                Text(label)
-                    .font(.system(size: 10))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 60)
-            .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
-            .contentShape(SwiftUI.Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}

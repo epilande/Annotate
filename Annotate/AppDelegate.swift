@@ -13,7 +13,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     var currentColor: NSColor = .systemRed
     var hotkeyMonitor: Any?
     var overlayWindows: [NSScreen: OverlayWindow] = [:]
-    var settingsWindow: NSWindow?
     var alwaysOnMode: Bool = false
     var aboutWindow: NSWindow?
     var updaterController: SPUStandardUpdaterController!
@@ -128,7 +127,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             NSApplication.shared.setActivationPolicy(.regular)
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        visibleSettingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// The settings window, if it is currently on screen.
+    private var visibleSettingsWindow: NSWindow? {
+        guard let window = SettingsWindowManager.shared.settingsWindow, window.isVisible else {
+            return nil
+        }
+        return window
     }
 
     func setupStatusBarItem() {
@@ -832,36 +839,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     @objc func showSettings() {
-        if let window = settingsWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let newWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 600),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        newWindow.title = "Annotate Settings"
-        newWindow.isReleasedWhenClosed = false
-        newWindow.center()
-        newWindow.delegate = self
-
-        let hostingController = NSHostingController(rootView: SettingsView())
-        newWindow.contentView = hostingController.view
-
-        self.settingsWindow = newWindow
-
-        newWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        if let window = notification.object as? NSWindow, window == settingsWindow {
-            settingsWindow = nil
-        }
+        SettingsWindowManager.shared.show()
     }
 
     /// Updates the status bar icon by layering a colored circle with a pencil.

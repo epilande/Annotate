@@ -19,5 +19,15 @@ struct AnnotateApp: App {
         Settings {
             SettingsView()
         }
+        .commands {
+            // Route Cmd+, and the app menu's Settings… item to the managed
+            // settings window so the scene's own window never appears.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    AppDelegate.shared?.showSettings()
+                }
+                .keyboardShortcut(",")
+            }
+        }
     }
 }
