@@ -199,6 +199,8 @@ private struct PresetColorButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(color.accessibilityName)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
