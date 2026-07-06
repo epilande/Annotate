@@ -319,7 +319,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 
 - **Activation Shortcut**: Set a global keyboard shortcut to activate Annotate (requires modifier keys).
 - **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
-- **Clear Drawings on Toggle**: Clear all drawings when toggling the overlay off.
+- **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
@@ -340,10 +340,10 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Cursor Style**: Choose how the cursor appears while annotating (None, Outline, Circle, Crosshair).
 - **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
-- **Spotlight Size**: Adjust the size of the cursor spotlight.
-- **Enable Click Effect**: Show a ripple effect on click and a highlight while holding.
-- **Click Effect Size**: Adjust the size of the click effect.
-- **Effect Color**: Choose the color used by the spotlight and click effects.
+- **Spotlight Size**: Adjust the size of the cursor spotlight (30-100).
+- **Enable Click Effect**: Show a ripple on click and a highlight while holding.
+- **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
+- **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.
 
 ### Shortcuts
 
