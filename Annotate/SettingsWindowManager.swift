@@ -23,8 +23,9 @@ final class SettingsWindowManager {
     /// Shows the settings window, creating it on first use and re-fronting
     /// the existing one on subsequent calls.
     func show() {
-        if let window = settingsWindow, window.isVisible {
+        if let window = settingsWindow {
             NSApp.activate(ignoringOtherApps: true)
+            window.deminiaturize(nil)
             window.makeKeyAndOrderFront(nil)
             return
         }
