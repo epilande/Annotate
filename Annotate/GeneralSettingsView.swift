@@ -13,6 +13,8 @@ struct GeneralSettingsView: View {
     private var enableBoard = false
     @AppStorage(UserDefaults.persistTextModeKey)
     private var persistTextMode = false
+    @AppStorage(UserDefaults.defaultToolKey)
+    private var defaultToolOption: DefaultToolOption = .lastUsed
     @AppStorage(UserDefaults.defaultTextFontSizeKey)
     private var defaultTextSize: Double = Double(defaultTextAnnotationFontSize)
     @AppStorage(UserDefaults.defaultCounterFontSizeKey)
@@ -25,6 +27,12 @@ struct GeneralSettingsView: View {
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
     @State private var activeCursorStyle: ActiveCursorStyle = CursorHighlightManager.shared.activeCursorStyle
     @State private var activeCursorSize: Double = Double(CursorHighlightManager.shared.activeCursorSize)
+
+    /// Tools offered in the Default Tool picker, excluding Select and Eraser since neither
+    /// is a sensible tool to land on when the overlay opens.
+    private static let selectableDefaultTools = ToolType.allCases.filter {
+        $0 != .select && $0 != .eraser
+    }
 
     var body: some View {
         let minTextSize = Double(textAnnotationFontSizeRange.lowerBound)
@@ -106,6 +114,26 @@ struct GeneralSettingsView: View {
                         description: "Stay in text mode after pressing Enter",
                         isOn: $persistTextMode
                     )
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Default Tool")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Tool selected each time the overlay is activated")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("", selection: $defaultToolOption) {
+                            Text("Last Used").tag(DefaultToolOption.lastUsed)
+                            ForEach(Self.selectableDefaultTools, id: \.self) { tool in
+                                Text(tool.displayName).tag(DefaultToolOption.tool(tool))
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 160, alignment: .trailing)
+                    }
                 }
 
                 Divider()

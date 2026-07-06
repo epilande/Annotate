@@ -177,7 +177,41 @@ final class ModelTests: XCTestCase {
             uniqueTools.insert(toolString)
         }
     }
-    
+
+    func testToolTypeRawValueRoundTrip() {
+        for tool in ToolType.allCases {
+            XCTAssertEqual(ToolType(rawValue: tool.rawValue), tool)
+        }
+        XCTAssertNil(ToolType(rawValue: "notATool"))
+    }
+
+    func testDefaultToolOptionRawValueRoundTrip() {
+        XCTAssertEqual(DefaultToolOption(rawValue: "lastUsed"), .lastUsed)
+        XCTAssertEqual(DefaultToolOption(rawValue: "rectangle"), .tool(.rectangle))
+        XCTAssertEqual(DefaultToolOption.lastUsed.rawValue, "lastUsed")
+        XCTAssertEqual(DefaultToolOption.tool(.rectangle).rawValue, "rectangle")
+        XCTAssertNil(DefaultToolOption(rawValue: "notATool"))
+    }
+
+    func testLastUsedToolDefaultsAndPersists() {
+        let defaults = TestUserDefaults.create()
+        XCTAssertEqual(defaults.lastUsedTool, .pen, "Should fall back to .pen when nothing is saved")
+
+        defaults.lastUsedTool = .highlighter
+        XCTAssertEqual(defaults.lastUsedTool, .highlighter)
+    }
+
+    func testDefaultToolOptionDefaultsAndPersists() {
+        let defaults = TestUserDefaults.create()
+        XCTAssertEqual(defaults.defaultToolOption, .lastUsed, "Should default to .lastUsed when nothing is saved")
+
+        defaults.defaultToolOption = .tool(.counter)
+        XCTAssertEqual(defaults.defaultToolOption, .tool(.counter))
+
+        defaults.defaultToolOption = .lastUsed
+        XCTAssertEqual(defaults.defaultToolOption, .lastUsed)
+    }
+
     func testLineWithLineWidth() {
         let start = NSPoint(x: 10, y: 20)
         let end = NSPoint(x: 50, y: 60)

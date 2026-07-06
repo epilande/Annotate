@@ -101,7 +101,7 @@ brew install --cask annotate
 
 1. Launch Annotate.
 2. Press the global hotkey (configurable in Settings) to toggle the overlay.
-3. Start annotating with the default pen tool.
+3. Start annotating with the pen tool (Annotate remembers your last-used tool, or set a fixed default in Settings).
 4. Press <kbd>Esc</kbd> to exit the overlay.
 
 > [!TIP]
@@ -322,8 +322,12 @@ Settings are organized into two tabs: **General** and **Shortcuts**.
 - **Clear Drawings on Toggle**: Automatically clear all drawings when activating Annotate.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
 - **Show in Dock**: Display Annotate icon in the Dock.
+- **Persist Text Mode**: Stay in text mode after pressing Enter.
+- **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
 - **Enable Board**: Show whiteboard or blackboard background.
 - **Board Opacity**: Adjust board background transparency (10-100%).
+- **Default Text Size**: Adjust the default font size for text annotations (12-48pt).
+- **Default Counter Size**: Adjust the default size for counter annotations (12-60pt).
 - **Cursor Style**: Choose how the cursor appears while annotating (None, Outline, Circle, Crosshair).
 - **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
