@@ -313,21 +313,30 @@ Always-On Mode displays your annotations persistently without any user interacti
 
 Access the Settings panel from the menu bar icon or by pressing <kbd>Command</kbd> + <kbd>,</kbd>.
 
-Settings are organized into two tabs: **General** and **Shortcuts**.
+Settings are organized into a sidebar with five panes: **General**, **Tools**, **Board**, **Cursor**, and **Shortcuts**.
 
-### General Settings
+### General
 
-- **Activation Shortcut**: Set a global keyboard shortcut to toggle Annotate.
-- **Always-On Mode**: Set a global keyboard shortcut to toggle always-on mode.
+- **Activation Shortcut**: Set a global keyboard shortcut to activate Annotate (requires modifier keys).
+- **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
+
+### Tools
+
+- **Default Text Size**: Adjust the default font size for text annotations.
+- **Default Counter Size**: Adjust the default size for counter annotations.
+
+### Board
+
 - **Enable Board**: Show whiteboard or blackboard background.
 - **Board Opacity**: Adjust board background transparency (10-100%).
-- **Default Text Size**: Adjust the default font size for text annotations (12-48pt).
-- **Default Counter Size**: Adjust the default size for counter annotations (12-60pt).
+
+### Cursor
+
 - **Cursor Style**: Choose how the cursor appears while annotating (None, Outline, Circle, Crosshair).
 - **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
@@ -336,16 +345,19 @@ Settings are organized into two tabs: **General** and **Shortcuts**.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.
 
-### Keyboard Shortcuts
+### Shortcuts
 
-Customize keyboard shortcuts for all tools, organized into categories:
+Customize single-key shortcuts for tools and utilities, organized into categories, with a **Reset All to Default** action:
 
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
 - **Shapes**: Rectangle, Circle
-- **Advanced Tools**: Counter, Text, Select
-- **Utilities**: Color Picker, Line Width, Toggle Board
+- **Advanced Tools**: Counter, Text, Select, Eraser
+- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight
 
-<img width="575" height="740" alt="image" src="https://github.com/user-attachments/assets/23909c0a-7d8f-4d36-8ea5-f6d5783e7d19" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7d600b2f-b103-486d-8336-7a13bf3bebfb">
+  <img width="700" alt="Annotate settings window" src="https://github.com/user-attachments/assets/4f3cfa0f-c87c-4c61-bb59-f54da1a2e26e" />
+</picture>
 
 ## 🔄 Auto-Updates
 

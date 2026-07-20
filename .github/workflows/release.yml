@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-sign-notarize-release:
     name: Build → Sign → Notarize → Release
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 15
     environment: release
     env:
@@ -28,11 +28,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Xcode 16.2
+      - name: Setup Xcode 26.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
-          
+          xcode-version: "26.2"
+
       - name: Verify Xcode version
         run: xcodebuild -version
 
@@ -111,7 +111,7 @@ jobs:
           ZIP_PATH="build/$ZIP_NAME"
           echo "ZIP_PATH=$ZIP_PATH" >> $GITHUB_ENV
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-          
+
           echo "📦 Creating ZIP archive: $ZIP_NAME"
           rm -f "$ZIP_PATH"
           # Use ditto to preserve extended attributes (code signatures)
@@ -133,7 +133,7 @@ jobs:
           echo "📎 Stapling notarization to .app bundle..."
           xcrun stapler staple "$EXPORT_DIR/$APP_NAME.app"
           xcrun stapler validate "$EXPORT_DIR/$APP_NAME.app"
-          
+
           echo "Verifying app signature and entitlements..."
           codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/$APP_NAME.app"
           spctl -a -vvv --type exec "$EXPORT_DIR/$APP_NAME.app"
@@ -188,7 +188,7 @@ jobs:
           VERSION_NUMBER="${{ steps.version.outputs.semver }}"
           SPARKLE_VERSION="${{ steps.version.outputs.build_number }}"
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/$ZIP_NAME"
-          
+
           # Use the isolated script to generate and insert the appcast entry
           chmod +x scripts/ci/generate_appcast_entry.sh
           ./scripts/ci/generate_appcast_entry.sh \
@@ -205,7 +205,7 @@ jobs:
           # Configure git if not already set
           git config user.name "github-actions[bot]" 2>/dev/null || true
           git config user.email "github-actions[bot]@users.noreply.github.com" 2>/dev/null || true
-          
+
           git add appcast.xml
           if git diff --cached --quiet; then
             echo "No changes to appcast.xml"
@@ -214,4 +214,3 @@ jobs:
             git push origin HEAD:main
             echo "✅ Committed updated appcast.xml"
           fi
-

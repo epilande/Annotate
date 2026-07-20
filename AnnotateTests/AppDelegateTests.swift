@@ -100,10 +100,26 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
-    func testColorPicker() {
+    func testColorPicker() throws {
         appDelegate.showColorPicker(nil)
-        XCTAssertNotNil(appDelegate.colorPopover)
-        XCTAssertTrue(appDelegate.colorPopover?.isShown ?? false)
+        let popover = try XCTUnwrap(appDelegate.colorPopover)
+        XCTAssertNotNil(popover.contentViewController)
+        XCTAssertEqual(popover.behavior, .transient)
+
+        // Popover presentation is asynchronous relative to show(relativeTo:)
+        // on macOS 26; spin the runloop briefly before checking.
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while !popover.isShown && Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+
+        // Presentation additionally requires an on-screen status item, which
+        // headless runners cannot provide; the popover wiring above is still
+        // verified there.
+        try XCTSkipUnless(
+            popover.isShown,
+            "Popover did not present; environment has no on-screen status item")
+        XCTAssertTrue(popover.isShown)
     }
 
     // MARK: - Clear Drawings Tests

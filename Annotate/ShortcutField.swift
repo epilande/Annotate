@@ -7,7 +7,6 @@ struct ShortcutField: View {
     @Binding var editingShortcut: ShortcutKey?
 
     @FocusState private var isFocused: Bool
-    @Environment(\.colorScheme) private var colorScheme
     @State private var eventMonitor: Any?
 
     var body: some View {
@@ -35,14 +34,14 @@ struct ShortcutField: View {
                 }
 
             Text("Recording...")
-                .font(.system(size: 13))
+                .font(.body)
                 .foregroundStyle(.primary)
                 .frame(minWidth: 100)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(colorScheme == .dark ? Color(white: 0.35) : Color.white)
+                        .fill(.quaternary)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.accentColor, lineWidth: 2)
