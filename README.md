@@ -354,7 +354,10 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Advanced Tools**: Counter, Text, Select, Eraser
 - **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight
 
-<img width="575" height="740" alt="image" src="https://github.com/user-attachments/assets/23909c0a-7d8f-4d36-8ea5-f6d5783e7d19" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7d600b2f-b103-486d-8336-7a13bf3bebfb">
+  <img width="700" alt="Annotate settings window" src="https://github.com/user-attachments/assets/4f3cfa0f-c87c-4c61-bb59-f54da1a2e26e" />
+</picture>
 
 ## 🔄 Auto-Updates
 
