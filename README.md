@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="logo" width="120" src="https://github.com/user-attachments/assets/f994edf4-c4be-46d2-a946-47d728171ffd" />
+  <img alt="logo" width="120" src="Annotate/Assets.xcassets/AppIcon.appiconset/mac256.png" />
   <h1>Annotate</h1>
 </div>
 
