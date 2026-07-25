@@ -54,18 +54,15 @@ done
 magick "$ICONSET_DIR/mac1024.png" -resize 32x32 -unsharp 0x0.6+1.2+0 -strip "PNG32:$ICONSET_DIR/mac32.png"
 magick "$ICONSET_DIR/mac1024.png" -resize 16x16 -unsharp 0x0.75+1.8+0 -strip "PNG32:$ICONSET_DIR/mac16.png"
 
-# Contents.json maps these three @2x slots (16x16@2x, 128x128@2x, 256x256@2x)
-# to byte-identical copies of the 1x file one size up. Skipping this step
-# ships stale @2x artwork silently, since Xcode never regenerates it for you.
-cp "$ICONSET_DIR/mac32.png" "$ICONSET_DIR/mac32 1.png"
-cp "$ICONSET_DIR/mac256.png" "$ICONSET_DIR/mac256 1.png"
-cp "$ICONSET_DIR/mac512.png" "$ICONSET_DIR/mac512 1.png"
+# The @2x slots whose pixel size collides with the next @1x size up
+# (16x16@2x, 128x128@2x, 256x256@2x) reference the same PNG in
+# Contents.json, so no extra files are needed for them.
 
 echo "" 1>&2
 echo "Verifying generated icons..." 1>&2
 
 status=0
-for f in mac16.png mac32.png "mac32 1.png" mac64.png mac128.png mac256.png "mac256 1.png" mac512.png "mac512 1.png" mac1024.png; do
+for f in mac16.png mac32.png mac64.png mac128.png mac256.png mac512.png mac1024.png; do
 	dims="$(magick identify -format "%wx%h" "$ICONSET_DIR/$f")"
 	echo "  $f: $dims" 1>&2
 done
