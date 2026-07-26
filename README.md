@@ -355,8 +355,8 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7d600b2f-b103-486d-8336-7a13bf3bebfb">
-  <img width="700" alt="Annotate settings window" src="https://github.com/user-attachments/assets/4f3cfa0f-c87c-4c61-bb59-f54da1a2e26e" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/0dcdd2c2-a26d-4fd4-9860-8f7340554ada">
+  <img width="700" alt="Annotate settings window" src="https://github.com/user-attachments/assets/10958639-d83e-40c6-876b-c975003dec6f" />
 </picture>
 
 ## 🔄 Auto-Updates
