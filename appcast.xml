@@ -6,6 +6,22 @@
         <description>Annotate App Updates</description>
         <language>en</language>
         <item>
+            <title>Version v1.4.2</title>
+            <link>https://github.com/epilande/Annotate/releases/tag/v1.4.2</link>
+            <description><![CDATA[
+<h1>Annotate v1.4.2</h1>
+
+<p>See the <a href="https://github.com/epilande/Annotate/releases/tag/v1.4.2">full changelog</a> for details.</p>
+            ]]></description>
+            <pubDate>Tue, 07 Jul 2026 00:39:59 +0000</pubDate>
+            <enclosure url="https://github.com/epilande/Annotate/releases/download/v1.4.2/Annotate-1.4.2.zip"
+                       sparkle:version="1206"
+                       sparkle:shortVersionString="1.4.2"
+                       sparkle:edSignature="DKUtpjfPrKPW30Zy0pUtumo2L2kX7Y6y5YnIt+rXUrL1Xy+MpZI/Nuj6aBgXcI/dURIqUhzUj8vCfui7CXAbCQ=="
+                       length="3050074"
+                       type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version v1.4.1</title>
             <link>https://github.com/epilande/Annotate/releases/tag/v1.4.1</link>
             <description><![CDATA[
