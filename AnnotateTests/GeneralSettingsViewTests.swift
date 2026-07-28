@@ -264,6 +264,18 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertFalse(BoardManager.shared.isEnabled)
     }
 
+    // MARK: - View Structure Tests
+
+    func testGeneralSettingsViewCanBeEmbeddedInHostingController() {
+        let hostingController = NSHostingController(rootView: GeneralSettingsView())
+        XCTAssertNotNil(hostingController.view)
+    }
+
+    func testShortcutsSettingsViewCanBeEmbeddedInHostingController() {
+        let hostingController = NSHostingController(rootView: ShortcutsSettingsView())
+        XCTAssertNotNil(hostingController.view)
+    }
+
     // MARK: - Persistence Tests
 
     func testSettingsPersistAcrossViewLifecycle() {
