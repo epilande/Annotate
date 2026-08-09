@@ -382,6 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
 
         updateCursorHighlightWindowsForScreenChange()
+        CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 
     func getCurrentScreen() -> NSScreen? {
@@ -501,6 +502,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.orderOut(nil)
             }
         }
+        CursorHighlightManager.shared.overlayVisibilityChanged()
 
         let iconColor = alwaysOnMode
             ? currentColor.withAlphaComponent(0.7)

@@ -125,6 +125,14 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    var spotlightRequiresOverlay: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.spotlightRequiresOverlayKey)
+            notifyStateChanged()
+        }
+    }
+
     var spotlightSize: CGFloat {
         get {
             let stored = userDefaults.double(forKey: UserDefaults.spotlightSizeKey)
@@ -194,8 +202,14 @@ class CursorHighlightManager: @unchecked Sendable {
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
+    /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
+    /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
+    var cursorHighlightAvailable: Bool {
+        cursorHighlightEnabled && (!spotlightRequiresOverlay || hasAnyActiveOverlay())
+    }
+
     var shouldShowCursorHighlight: Bool {
-        cursorHighlightEnabled && !isMouseDown
+        cursorHighlightAvailable && !isMouseDown
     }
 
     var hasActiveAnimation: Bool {

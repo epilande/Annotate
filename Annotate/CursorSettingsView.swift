@@ -4,6 +4,7 @@ import SwiftUI
 struct CursorSettingsView: View {
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
+    @State private var spotlightRequiresOverlay: Bool = CursorHighlightManager.shared.spotlightRequiresOverlay
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
@@ -82,6 +83,14 @@ struct CursorSettingsView: View {
                             CursorHighlightManager.shared.spotlightSize = CGFloat(newValue)
                         }
                     }
+
+                    Toggle(isOn: $spotlightRequiresOverlay) {
+                        Text("Only Show While Annotating")
+                        Text("Turn off the spotlight when the overlay is deactivated")
+                    }
+                    .onChange(of: spotlightRequiresOverlay) { _, _ in
+                        CursorHighlightManager.shared.spotlightRequiresOverlay = spotlightRequiresOverlay
+                    }
                 }
 
                 Toggle(isOn: $clickEffectsEnabled) {
@@ -146,6 +155,7 @@ struct CursorSettingsView: View {
     private func syncState() {
         clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
         cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
+        spotlightRequiresOverlay = CursorHighlightManager.shared.spotlightRequiresOverlay
         effectColor = Color(CursorHighlightManager.shared.effectColor)
         effectSize = Double(CursorHighlightManager.shared.effectSize)
         spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)

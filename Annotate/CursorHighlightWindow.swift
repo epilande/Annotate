@@ -123,7 +123,7 @@ class CursorHighlightWindow: NSPanel {
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
-        if manager.isActive || manager.cursorHighlightEnabled || manager.shouldShowActiveCursorOnAnyScreen() {
+        if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {
             orderFront(nil)
             startAnimationLoop()
         } else {

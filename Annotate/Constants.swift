@@ -20,6 +20,7 @@ extension UserDefaults {
     static let clickRippleSizeKey = "ClickRippleSize"
     static let cursorHighlightEnabledKey = "CursorHighlightEnabled"
     static let spotlightSizeKey = "SpotlightSize"
+    static let spotlightRequiresOverlayKey = "SpotlightRequiresOverlay"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let persistTextModeKey = "PersistTextMode"
