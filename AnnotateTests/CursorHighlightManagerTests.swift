@@ -145,25 +145,27 @@ final class CursorHighlightManagerTests: XCTestCase {
         overlayWindow.orderFront(nil)
         try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
 
-        manager.cursorHighlightEnabled = true
-        manager.spotlightRequiresOverlay = true
+        withExtendedLifetime(appDelegate) {
+            manager.cursorHighlightEnabled = true
+            manager.spotlightRequiresOverlay = true
 
-        XCTAssertTrue(
-            manager.cursorHighlightAvailable,
-            "cursorHighlightAvailable should be true when the gate is on and an overlay is visible"
-        )
+            XCTAssertTrue(
+                manager.cursorHighlightAvailable,
+                "cursorHighlightAvailable should be true when the gate is on and an overlay is visible"
+            )
 
-        manager.isMouseDown = true
-        XCTAssertFalse(
-            manager.shouldShowCursorHighlight,
-            "shouldShowCursorHighlight should be false while the mouse is down"
-        )
+            manager.isMouseDown = true
+            XCTAssertFalse(
+                manager.shouldShowCursorHighlight,
+                "shouldShowCursorHighlight should be false while the mouse is down"
+            )
 
-        manager.isMouseDown = false
-        XCTAssertTrue(
-            manager.shouldShowCursorHighlight,
-            "shouldShowCursorHighlight should be true when the gate is satisfied and the mouse is up"
-        )
+            manager.isMouseDown = false
+            XCTAssertTrue(
+                manager.shouldShowCursorHighlight,
+                "shouldShowCursorHighlight should be true when the gate is satisfied and the mouse is up"
+            )
+        }
     }
 
     // MARK: - clickEffectsEnabled Tests
@@ -332,6 +334,14 @@ final class CursorHighlightManagerTests: XCTestCase {
         let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
 
         manager.clickEffectsEnabled = true
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testSettingSpotlightRequiresOverlayPostsNotification() {
+        let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
+
+        manager.spotlightRequiresOverlay = true
 
         wait(for: [expectation], timeout: 1.0)
     }

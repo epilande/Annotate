@@ -86,7 +86,7 @@ struct CursorSettingsView: View {
 
                     Toggle(isOn: $spotlightRequiresOverlay) {
                         Text("Only Show While Annotating")
-                        Text("Turn off the spotlight when the overlay is deactivated")
+                        Text("Show the spotlight only while the overlay is active")
                     }
                     .onChange(of: spotlightRequiresOverlay) { _, _ in
                         CursorHighlightManager.shared.spotlightRequiresOverlay = spotlightRequiresOverlay

@@ -127,6 +127,8 @@ class CursorHighlightWindow: NSPanel {
             orderFront(nil)
             startAnimationLoop()
         } else {
+            // Zero the spotlight layer before ordering out to avoid a stale flash on the next orderFront.
+            highlightView.updateSpotlightPosition()
             orderOut(nil)
             stopAnimationLoop()
         }
