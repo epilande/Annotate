@@ -11,11 +11,13 @@ final class CursorHighlightManagerTests: XCTestCase {
         super.setUp()
         testDefaults = TestUserDefaults.create()
         manager = CursorHighlightManager(userDefaults: testDefaults)
+        AppDelegate.shared = nil
     }
 
     override func tearDown() {
         TestUserDefaults.removeSuite()
         manager = nil
+        AppDelegate.shared = nil
         super.tearDown()
     }
 
@@ -82,6 +84,88 @@ final class CursorHighlightManagerTests: XCTestCase {
             manager.shouldShowCursorHighlight,
             "shouldShowCursorHighlight should return false when both conditions are not met"
         )
+    }
+
+    // MARK: - spotlightRequiresOverlay Tests
+
+    func testSpotlightRequiresOverlayDefaultsToFalse() {
+        XCTAssertFalse(manager.spotlightRequiresOverlay, "spotlightRequiresOverlay should default to false")
+    }
+
+    func testSpotlightRequiresOverlaySetToTruePersistsToUserDefaults() {
+        manager.spotlightRequiresOverlay = true
+
+        XCTAssertTrue(manager.spotlightRequiresOverlay, "spotlightRequiresOverlay should be true after setting")
+        let persistedValue = testDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey)
+        XCTAssertTrue(persistedValue, "spotlightRequiresOverlay should be persisted to UserDefaults")
+    }
+
+    // MARK: - cursorHighlightAvailable Computed Property Tests
+
+    func testCursorHighlightAvailableMatchesCursorHighlightEnabledWhenGateIsOff() {
+        manager.spotlightRequiresOverlay = false
+
+        manager.cursorHighlightEnabled = true
+        XCTAssertTrue(
+            manager.cursorHighlightAvailable,
+            "cursorHighlightAvailable should be true when the spotlight is enabled and the gate is off"
+        )
+
+        manager.cursorHighlightEnabled = false
+        XCTAssertFalse(
+            manager.cursorHighlightAvailable,
+            "cursorHighlightAvailable should be false when the spotlight is disabled regardless of the gate"
+        )
+    }
+
+    func testCursorHighlightAvailableFalseWhenGateOnAndNoActiveOverlay() {
+        manager.cursorHighlightEnabled = true
+        manager.spotlightRequiresOverlay = true
+
+        // AppDelegate.shared is nil in unit tests, so hasAnyActiveOverlay() is false.
+        XCTAssertFalse(
+            manager.cursorHighlightAvailable,
+            "cursorHighlightAvailable should be false when spotlightRequiresOverlay is true and no overlay is active"
+        )
+    }
+
+    func testCursorHighlightAvailableTrueWhenGateOnAndOverlayVisible() throws {
+        let appDelegate = MockAppDelegate()
+        let screen = try XCTUnwrap(NSScreen.main)
+        let overlayWindow = OverlayWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        appDelegate.overlayWindows[screen] = overlayWindow
+        AppDelegate.shared = appDelegate
+        defer { overlayWindow.orderOut(nil) }
+
+        overlayWindow.orderFront(nil)
+        try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
+
+        withExtendedLifetime(appDelegate) {
+            manager.cursorHighlightEnabled = true
+            manager.spotlightRequiresOverlay = true
+
+            XCTAssertTrue(
+                manager.cursorHighlightAvailable,
+                "cursorHighlightAvailable should be true when the gate is on and an overlay is visible"
+            )
+
+            manager.isMouseDown = true
+            XCTAssertFalse(
+                manager.shouldShowCursorHighlight,
+                "shouldShowCursorHighlight should be false while the mouse is down"
+            )
+
+            manager.isMouseDown = false
+            XCTAssertTrue(
+                manager.shouldShowCursorHighlight,
+                "shouldShowCursorHighlight should be true when the gate is satisfied and the mouse is up"
+            )
+        }
     }
 
     // MARK: - clickEffectsEnabled Tests
@@ -250,6 +334,14 @@ final class CursorHighlightManagerTests: XCTestCase {
         let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
 
         manager.clickEffectsEnabled = true
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testSettingSpotlightRequiresOverlayPostsNotification() {
+        let expectation = expectation(forNotification: .cursorHighlightStateChanged, object: nil)
+
+        manager.spotlightRequiresOverlay = true
 
         wait(for: [expectation], timeout: 1.0)
     }

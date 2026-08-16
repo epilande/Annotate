@@ -341,6 +341,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
 - **Spotlight Size**: Adjust the size of the cursor spotlight (30-100).
+- **Only Show While Annotating**: Show the spotlight only while the overlay is active.
 - **Enable Click Effect**: Show a ripple on click and a highlight while holding.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.

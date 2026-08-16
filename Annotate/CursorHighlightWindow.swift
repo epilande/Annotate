@@ -123,10 +123,12 @@ class CursorHighlightWindow: NSPanel {
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
-        if manager.isActive || manager.cursorHighlightEnabled || manager.shouldShowActiveCursorOnAnyScreen() {
+        if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {
             orderFront(nil)
             startAnimationLoop()
         } else {
+            // Zero the spotlight layer before ordering out to avoid a stale flash on the next orderFront.
+            highlightView.updateSpotlightPosition()
             orderOut(nil)
             stopAnimationLoop()
         }
