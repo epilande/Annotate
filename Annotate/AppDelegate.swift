@@ -4,12 +4,10 @@ import Sparkle
 import SwiftUI
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     static weak var shared: AppDelegate?
 
     var statusItem: NSStatusItem!
-    var colorPopover: NSPopover?
-    var lineWidthPopover: NSPopover?
     var currentColor: NSColor = .systemRed
     var hotkeyMonitor: Any?
     var overlayWindows: [NSScreen: OverlayWindow] = [:]
@@ -151,14 +149,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let menu = NSMenu()
 
             let colorItem = NSMenuItem(
-                title: "Color",
+                title: "Color…",
                 action: #selector(showColorPicker(_:)),
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .colorPicker))
             colorItem.keyEquivalentModifierMask = []
             menu.addItem(colorItem)
 
             let lineWidthItem = NSMenuItem(
-                title: "Line Width",
+                title: "Line Width…",
                 action: #selector(showLineWidthPicker(_:)),
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .lineWidthPicker))
             lineWidthItem.keyEquivalentModifierMask = []
@@ -409,47 +407,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     @objc func showColorPicker(_ sender: Any?) {
-        if colorPopover == nil {
-            colorPopover = NSPopover()
-            colorPopover?.contentViewController = ColorPickerViewController(userDefaults: userDefaults)
-            colorPopover?.behavior = .transient
-            colorPopover?.delegate = self
-        }
-
-        if let button = statusItem.button {
-            colorPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-
-            if let popoverWindow = colorPopover?.contentViewController?.view.window {
-                popoverWindow.level = .popUpMenu
-            }
-        }
+        showQuickPicker(.color)
     }
 
     @objc func showLineWidthPicker(_ sender: Any?) {
-        if lineWidthPopover == nil {
-            lineWidthPopover = NSPopover()
-            lineWidthPopover?.contentViewController = LineWidthPickerViewController(userDefaults: userDefaults)
-            lineWidthPopover?.behavior = .transient
-            lineWidthPopover?.delegate = self
-        }
+        showQuickPicker(.width)
+    }
 
-        if let button = statusItem.button {
-            lineWidthPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-
-            if let popoverWindow = lineWidthPopover?.contentViewController?.view.window {
-                popoverWindow.level = .popUpMenu
-            }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(showColorPicker(_:)), #selector(showLineWidthPicker(_:)):
+            return visibleMainOverlayWindow != nil
+        default:
+            return true
         }
     }
 
-    func popoverWillClose(_ notification: Notification) {
-        if let popover = notification.object as? NSPopover {
-            if popover == colorPopover {
-                colorPopover = nil
-            } else if popover == lineWidthPopover {
-                lineWidthPopover = nil
-            }
-        }
+    private var visibleMainOverlayWindow: OverlayWindow? {
+        guard let mainScreen = NSScreen.main,
+            let overlayWindow = overlayWindows[mainScreen],
+            overlayWindow.isVisible
+        else { return nil }
+        return overlayWindow
+    }
+
+    private func showQuickPicker(_ mode: QuickPickerView.Mode) {
+        guard let overlayWindow = visibleMainOverlayWindow else { return }
+        let anchor = NSPoint(
+            x: overlayWindow.overlayView.bounds.midX,
+            y: overlayWindow.overlayView.bounds.midY)
+        overlayWindow.beginQuickPicker(mode, anchor: anchor)
     }
 
     @objc func toggleOverlay() {

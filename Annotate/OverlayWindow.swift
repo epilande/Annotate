@@ -20,6 +20,19 @@ class OverlayWindow: NSPanel {
     // Track the current feedback view to remove it when a new one appears
     private var currentFeedbackView: NSView?
     private var feedbackRemovalTask: DispatchWorkItem?
+    private enum QuickPickerInteraction {
+        case waitingForRelease(key: String, openedAt: CFTimeInterval, moved: Bool, holdActive: Bool)
+        case open(key: String)
+    }
+
+    private static let quickPickerHoldDuration: CFTimeInterval = 0.25
+    private var quickPicker: QuickPickerView?
+    private var quickPickerInteraction: QuickPickerInteraction?
+    private var quickPickerHoldTask: DispatchWorkItem?
+    private var quickPickerMoveMonitor: Any?
+    private var quickPickerInitialMouseLocation: NSPoint?
+    private var acceptedMouseMovedBeforePicker = false
+    private var pickerCommitInFlight = false
     private var lastLiveShapeRect: NSRect?
     private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
@@ -96,6 +109,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func orderOut(_ sender: Any?) {
+        cancelQuickPicker()
         restoreMouseCoalescing()
         super.orderOut(sender)
     }
@@ -149,8 +163,371 @@ class OverlayWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    var isQuickPickerOpen: Bool { quickPicker != nil }
+
+    override func sendEvent(_ event: NSEvent) {
+        if quickPicker != nil {
+            switch event.type {
+            case .leftMouseDown:
+                mouseDown(with: event)
+                return
+            case .rightMouseDown, .otherMouseDown:
+                cancelQuickPicker()
+                return
+            case .leftMouseDragged:
+                mouseDragged(with: event)
+                return
+            case .leftMouseUp, .rightMouseUp, .otherMouseUp, .scrollWheel:
+                return
+            default:
+                break
+            }
+        }
+        if event.type == .keyDown, handleQuickPickerKeyDown(event) {
+            return
+        }
+        if event.type == .keyUp, handleQuickPickerKeyUp(event) {
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    func beginQuickPicker(
+        _ requestedMode: QuickPickerView.Mode,
+        anchor requestedAnchor: NSPoint? = nil,
+        activationKey: String? = nil
+    ) {
+        guard quickPicker == nil else { return }
+
+        let mode = contextualPickerMode(for: requestedMode)
+        let defaults = pickerUserDefaults
+        let anchor =
+            requestedAnchor
+            ?? overlayView.convert(mouseLocationOutsideOfEventStream, from: nil)
+        let picker = QuickPickerView(
+            mode: mode,
+            anchor: anchor,
+            within: overlayView.bounds,
+            currentColor: overlayView.currentColor,
+            currentWidth: overlayView.currentLineWidth,
+            currentFontSize: defaults.textToolFontSize,
+            currentCounterSize: defaults.counterToolFontSize,
+            previewTool: overlayView.currentTool)
+
+        overlayView.addSubview(picker)
+        quickPicker = picker
+        acceptedMouseMovedBeforePicker = acceptsMouseMovedEvents
+        acceptsMouseMovedEvents = true
+        quickPickerInitialMouseLocation = NSEvent.mouseLocation
+
+        let key = activationKey ?? shortcut(for: requestedMode)
+        if activationKey == nil {
+            quickPickerInteraction = .open(key: key)
+        } else {
+            quickPickerInteraction = .waitingForRelease(
+                key: key, openedAt: CACurrentMediaTime(), moved: false, holdActive: false)
+            scheduleQuickPickerHold(for: key)
+        }
+
+        quickPickerMoveMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged]
+        ) { [weak self] event in
+            self?.handleQuickPickerMouseMovement(screenPoint: NSEvent.mouseLocation)
+            return event
+        }
+    }
+
+    func commitQuickPicker() {
+        guard let picker = quickPicker, !pickerCommitInFlight else { return }
+        pickerCommitInFlight = true
+        quickPickerHoldTask?.cancel()
+        quickPickerHoldTask = nil
+
+        switch picker.mode {
+        case .color:
+            if let color = picker.selectedColor {
+                applyColor(color)
+            }
+        case .width:
+            if let width = picker.selectedWidth {
+                applyLineWidth(width, showsFeedback: false)
+            }
+        case .fontSize:
+            if let size = picker.selectedFontSize {
+                applyTextFontSize(size, showsFeedback: false)
+            }
+        case .counterSize:
+            if let size = picker.selectedCounterSize {
+                applyCounterFontSize(size, showsFeedback: false)
+            }
+        }
+
+        picker.animateCommittedSelection { [weak self, weak picker] in
+            guard let self, self.quickPicker === picker else { return }
+            self.dismissQuickPicker()
+        }
+    }
+
+    func cancelQuickPicker() {
+        guard quickPicker != nil else { return }
+        dismissQuickPicker()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard quickPicker != nil else {
+            super.mouseMoved(with: event)
+            return
+        }
+        handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard quickPicker != nil else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        cancelQuickPicker()
+    }
+
+    override func keyUp(with event: NSEvent) {
+        if handleQuickPickerKeyUp(event) {
+            return
+        }
+        super.keyUp(with: event)
+    }
+
+    private var pickerUserDefaults: UserDefaults {
+        AppDelegate.shared?.userDefaults ?? .standard
+    }
+
+    private var runtimeOverlayWindows: [OverlayWindow] {
+        var windows = AppDelegate.shared?.overlayWindows.values.map { $0 } ?? []
+        if !windows.contains(where: { $0 === self }) {
+            windows.append(self)
+        }
+        return windows
+    }
+
+    private func contextualPickerMode(for requestedMode: QuickPickerView.Mode) -> QuickPickerView.Mode {
+        guard requestedMode == .width else { return requestedMode }
+        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+            return .fontSize
+        }
+        if overlayView.currentTool == .counter {
+            return .counterSize
+        }
+        return .width
+    }
+
+    private func shortcut(for mode: QuickPickerView.Mode) -> String {
+        switch mode {
+        case .color:
+            return ShortcutManager.shared.getShortcut(for: .colorPicker)
+        case .width, .fontSize, .counterSize:
+            return ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
+        }
+    }
+
+    private func scheduleQuickPickerHold(for key: String) {
+        let task = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard let interaction = self.quickPickerInteraction,
+                case .waitingForRelease(let activeKey, let openedAt, let moved, _) = interaction,
+                activeKey == key
+            else { return }
+            self.quickPickerInteraction = .waitingForRelease(
+                key: activeKey, openedAt: openedAt, moved: moved, holdActive: true)
+        }
+        quickPickerHoldTask = task
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.quickPickerHoldDuration, execute: task)
+    }
+
+    private func handleQuickPickerMouseMovement(screenPoint: NSPoint) {
+        guard !pickerCommitInFlight, let picker = quickPicker,
+            let interaction = quickPickerInteraction,
+            case .waitingForRelease(let key, let openedAt, _, _) = interaction
+        else { return }
+
+        if let initial = quickPickerInitialMouseLocation,
+            hypot(screenPoint.x - initial.x, screenPoint.y - initial.y) < 0.5
+        {
+            return
+        }
+
+        quickPickerInteraction = .waitingForRelease(
+            key: key, openedAt: openedAt, moved: true, holdActive: true)
+        let windowPoint = convertPoint(fromScreen: screenPoint)
+        picker.updateSelection(mouseInSuperview: overlayView.convert(windowPoint, from: nil))
+    }
+
+    private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        if let picker = quickPicker {
+            if pickerCommitInFlight {
+                return true
+            }
+            if event.isARepeat {
+                return true
+            }
+            if event.keyCode == 53 {
+                cancelQuickPicker()
+                return true
+            }
+            if let digit = Int(key), (1...picker.optionCount).contains(digit) {
+                picker.select(index: digit - 1)
+                commitQuickPicker()
+                return true
+            }
+            if key == activeQuickPickerKey {
+                cancelQuickPicker()
+            }
+            return true
+        }
+
+        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        else { return false }
+
+        if key == "[" || key == "]" {
+            if performToolShortcut(mappedTo: key) {
+                return true
+            }
+            stepActiveLadder(key == "[" ? -1 : 1)
+            return true
+        }
+        guard !event.isARepeat else { return false }
+
+
+        guard !toolShortcuts.contains(key) else { return false }
+
+        let colorKey = ShortcutManager.shared.getShortcut(for: .colorPicker)
+        if key == colorKey {
+            beginQuickPicker(.color, activationKey: colorKey)
+            return true
+        }
+
+        let sizeKey = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
+        if key == sizeKey {
+            beginQuickPicker(.width, activationKey: sizeKey)
+            return true
+        }
+        return false
+    }
+
+    private func handleQuickPickerKeyUp(_ event: NSEvent) -> Bool {
+        guard quickPicker != nil, let interaction = quickPickerInteraction,
+            case .waitingForRelease(let key, let openedAt, let moved, let holdActive) =
+                interaction,
+            event.charactersIgnoringModifiers?.lowercased() == key
+        else { return false }
+
+        quickPickerHoldTask?.cancel()
+        quickPickerHoldTask = nil
+        if holdActive || moved || CACurrentMediaTime() - openedAt >= Self.quickPickerHoldDuration {
+            commitQuickPicker()
+        } else {
+            quickPickerInteraction = .open(key: key)
+        }
+        return true
+    }
+
+    private var activeQuickPickerKey: String? {
+        guard let interaction = quickPickerInteraction else { return nil }
+        switch interaction {
+        case .waitingForRelease(let key, _, _, _), .open(let key):
+            return key
+        }
+    }
+
+    private var toolShortcuts: Set<String> {
+        Set([
+            ShortcutManager.shared.getShortcut(for: .pen),
+            ShortcutManager.shared.getShortcut(for: .arrow),
+            ShortcutManager.shared.getShortcut(for: .line),
+            ShortcutManager.shared.getShortcut(for: .highlighter),
+            ShortcutManager.shared.getShortcut(for: .rectangle),
+            ShortcutManager.shared.getShortcut(for: .circle),
+            ShortcutManager.shared.getShortcut(for: .counter),
+            ShortcutManager.shared.getShortcut(for: .text),
+            ShortcutManager.shared.getShortcut(for: .select),
+            ShortcutManager.shared.getShortcut(for: .eraser),
+        ])
+    }
+    private func performToolShortcut(mappedTo key: String) -> Bool {
+        let shortcutManager = ShortcutManager.shared
+        let appDelegate = AppDelegate.shared
+        if key == shortcutManager.getShortcut(for: .pen) {
+            appDelegate?.enablePenMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .arrow) {
+            appDelegate?.enableArrowMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .line) {
+            appDelegate?.enableLineMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .highlighter) {
+            appDelegate?.enableHighlighterMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .rectangle) {
+            appDelegate?.enableRectangleMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .circle) {
+            appDelegate?.enableCircleMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .counter) {
+            appDelegate?.enableCounterMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .text) {
+            appDelegate?.enableTextMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .select) {
+            appDelegate?.enableSelectMode(NSMenuItem())
+        } else if key == shortcutManager.getShortcut(for: .eraser) {
+            appDelegate?.enableEraserMode(NSMenuItem())
+        } else {
+            return false
+        }
+        return true
+    }
+
+
+    private func applyColor(_ color: NSColor) {
+        if let colorData = try? NSKeyedArchiver.archivedData(
+            withRootObject: color, requiringSecureCoding: false)
+        {
+            pickerUserDefaults.set(colorData, forKey: "SelectedColor")
+        }
+
+        let appDelegate = AppDelegate.shared
+        appDelegate?.currentColor = color
+        runtimeOverlayWindows.forEach { $0.currentColor = color }
+        appDelegate?.updateStatusBarIcon(with: color)
+        CursorHighlightManager.shared.annotationColor = color
+    }
+
+    private func dismissQuickPicker() {
+        quickPickerHoldTask?.cancel()
+        quickPickerHoldTask = nil
+        if let monitor = quickPickerMoveMonitor {
+            NSEvent.removeMonitor(monitor)
+            quickPickerMoveMonitor = nil
+        }
+        quickPicker?.removeFromSuperview()
+        quickPicker = nil
+        quickPickerInteraction = nil
+        quickPickerInitialMouseLocation = nil
+        pickerCommitInFlight = false
+        acceptsMouseMovedEvents = acceptedMouseMovedBeforePicker
+    }
+
 
     override func mouseDown(with event: NSEvent) {
+        if let picker = quickPicker {
+            if pickerCommitInFlight {
+                return
+            }
+            let point = overlayView.convert(event.locationInWindow, from: nil)
+            if picker.select(at: point) {
+                commitQuickPicker()
+            } else {
+                cancelQuickPicker()
+            }
+            return
+        }
+
         // Update cursor highlight for local events (global monitors don't capture our own app's events)
         let cursorManager = CursorHighlightManager.shared
         if cursorManager.isActive {
@@ -388,6 +765,11 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if quickPicker != nil {
+            handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
+            return
+        }
+
         // Update cursor highlight position during drag (animation loop handles rendering)
         let cursorManager = CursorHighlightManager.shared
         if cursorManager.isActive && cursorManager.isMouseDown {
@@ -641,6 +1023,10 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if quickPicker != nil {
+            return
+        }
+
         restoreMouseCoalescing()
 
         // Commit before the selection and text branches below, which return early.
@@ -768,6 +1154,10 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
+        if handleQuickPickerKeyDown(event) {
+            return
+        }
+
         let cmdPressed = event.modifierFlags.contains(.command)
         let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
@@ -1021,17 +1411,16 @@ class OverlayWindow: NSPanel {
         }
     }
     
-    // Support for mouse backward/forward buttons (typically buttons 3 and 4)
     override func otherMouseDown(with event: NSEvent) {
-        // Button numbers:
-        // 2 = middle mouse button
-        // 3 = backward button (typically)
-        // 4 = forward button (typically)
-        
+        if quickPicker != nil {
+            cancelQuickPicker()
+            return
+        }
+
         switch event.buttonNumber {
-        case 3:  // Backward button - Undo
+        case 3:
             overlayView.undo()
-        case 4:  // Forward button - Redo
+        case 4:
             overlayView.redo()
         default:
             super.otherMouseDown(with: event)
@@ -1039,99 +1428,113 @@ class OverlayWindow: NSPanel {
     }
     
     private func scrollWheelForLineWidth(with event: NSEvent) {
-        // Adjust line width with Command + Scroll
-        let minLineWidth: CGFloat = 0.5
-        let maxLineWidth: CGFloat = 20.0
-        let ratio: CGFloat = 0.25
-        
-        // Get scroll delta (negative means scroll up, positive means scroll down)
         let scrollDelta = event.scrollingDeltaY
-        
-        // Determine direction and amount
+        guard scrollDelta != 0 else { return }
+
+        let ratio: CGFloat = 0.25
         let increment: CGFloat = scrollDelta > 0 ? ratio : -ratio
-        
-        // Get current line width
-        let currentWidth = overlayView.currentLineWidth
-        
-        // Calculate new width
-        var newWidth = currentWidth + increment
-        
-        // Round to nearest ratio increment
-        newWidth = round(newWidth / ratio) * ratio
-        
-        // Clamp to min/max
-        newWidth = max(minLineWidth, min(maxLineWidth, newWidth))
-        
-        // Only update if value changed
-        if newWidth != currentWidth {
-            // Update the line width globally
-            overlayView.currentLineWidth = newWidth
-            
-            // Save to UserDefaults
-            UserDefaults.standard.set(Double(newWidth), forKey: UserDefaults.lineWidthKey)
-            
-            // Apply to all overlay windows
-            AppDelegate.shared?.overlayWindows.values.forEach { window in
-                window.overlayView.currentLineWidth = newWidth
-            }
-            
-            // Show visual feedback
-            showLineWidthFeedback(newWidth)
+        let newWidth =
+            (round((overlayView.currentLineWidth + increment) / ratio) * ratio)
+            .clamped(to: 0.5...20)
+        applyLineWidth(newWidth)
+    }
+
+    func applyLineWidth(_ width: CGFloat, showsFeedback: Bool = true) {
+        guard width != overlayView.currentLineWidth else { return }
+        pickerUserDefaults.set(Double(width), forKey: UserDefaults.lineWidthKey)
+        runtimeOverlayWindows.forEach { $0.overlayView.currentLineWidth = width }
+        if showsFeedback {
+            showLineWidthFeedback(width)
         }
     }
-    
+
     private func showLineWidthFeedback(_ width: CGFloat) {
         let text = String(format: "Line Width: %.2f px", width)
         showFeedback(text, lineColor: overlayView.currentColor, lineWidth: width)
     }
-    
+
     private func scrollWheelForFontSize(with event: NSEvent) {
         let scrollDelta = event.scrollingDeltaY
         guard scrollDelta != 0 else { return }
 
-        let step: CGFloat = 1.0
-        let increment: CGFloat = scrollDelta > 0 ? step : -step
-        let currentSize = UserDefaults.standard.textToolFontSize
-        let newSize = (currentSize + increment).clamped(to: textAnnotationFontSizeRange)
+        let increment: CGFloat = scrollDelta > 0 ? 1 : -1
+        let size =
+            (pickerUserDefaults.textToolFontSize + increment)
+            .clamped(to: textAnnotationFontSizeRange)
+        applyTextFontSize(size)
+    }
 
-        guard newSize != currentSize else { return }
+    func applyTextFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
+        guard size != pickerUserDefaults.textToolFontSize else { return }
+        pickerUserDefaults.textToolFontSize = size
 
-        UserDefaults.standard.textToolFontSize = newSize
-
-        if let textField = overlayView.activeTextField {
-            textField.font = NSFont.systemFont(ofSize: newSize)
-            overlayView.currentTextAnnotation?.fontSize = newSize
-            overlayView.resizeActiveTextField(textField)
-            textField.needsDisplay = true
+        runtimeOverlayWindows.forEach { window in
+            if let textField = window.overlayView.activeTextField {
+                textField.font = NSFont.systemFont(ofSize: size)
+                window.overlayView.currentTextAnnotation?.fontSize = size
+                window.overlayView.resizeActiveTextField(textField)
+                textField.needsDisplay = true
+            }
+            window.overlayView.needsDisplay = true
         }
 
-        showFontSizeFeedback(newSize)
+        if showsFeedback {
+            showFontSizeFeedback(size)
+        }
     }
 
     private func showFontSizeFeedback(_ size: CGFloat) {
-        let text = String(format: "Font Size: %.0f pt", size)
-        showFeedback(text)
+        showFeedback(String(format: "Font Size: %.0f pt", size))
     }
 
     private func scrollWheelForCounterSize(with event: NSEvent) {
         let scrollDelta = event.scrollingDeltaY
         guard scrollDelta != 0 else { return }
 
-        let step: CGFloat = 1.0
-        let increment: CGFloat = scrollDelta > 0 ? step : -step
-        let currentSize = UserDefaults.standard.counterToolFontSize
-        let newSize = (currentSize + increment).clamped(to: counterFontSizeRange)
+        let increment: CGFloat = scrollDelta > 0 ? 1 : -1
+        let size =
+            (pickerUserDefaults.counterToolFontSize + increment)
+            .clamped(to: counterFontSizeRange)
+        applyCounterFontSize(size)
+    }
 
-        guard newSize != currentSize else { return }
-
-        UserDefaults.standard.counterToolFontSize = newSize
-
-        showCounterSizeFeedback(newSize)
+    func applyCounterFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
+        guard size != pickerUserDefaults.counterToolFontSize else { return }
+        pickerUserDefaults.counterToolFontSize = size
+        runtimeOverlayWindows.forEach { $0.overlayView.needsDisplay = true }
+        if showsFeedback {
+            showCounterSizeFeedback(size)
+        }
     }
 
     private func showCounterSizeFeedback(_ size: CGFloat) {
-        let text = String(format: "Counter Size: %.0f pt", size)
-        showFeedback(text)
+        showFeedback(String(format: "Counter Size: %.0f pt", size))
+    }
+
+    private func stepActiveLadder(_ direction: Int) {
+        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+            applyTextFontSize(
+                QuickPickerView.steppedValue(
+                    in: QuickPickerView.fontSizeOptions,
+                    current: pickerUserDefaults.textToolFontSize,
+                    direction: direction))
+            return
+        }
+
+        if overlayView.currentTool == .counter {
+            applyCounterFontSize(
+                QuickPickerView.steppedValue(
+                    in: QuickPickerView.counterSizeOptions,
+                    current: pickerUserDefaults.counterToolFontSize,
+                    direction: direction))
+            return
+        }
+
+        applyLineWidth(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.widthOptions,
+                current: overlayView.currentLineWidth,
+                direction: direction))
     }
     
     func showToggleFeedback(_ text: String, icon: String) {

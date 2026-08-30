@@ -100,26 +100,50 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
-    func testColorPicker() throws {
+    func testQuickPickerMenuItemsFailClosedWhenMainOverlayIsHidden() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let colorItem = try XCTUnwrap(
+            menu.items.first { $0.action == #selector(AppDelegate.showColorPicker(_:)) })
+        let widthItem = try XCTUnwrap(
+            menu.items.first { $0.action == #selector(AppDelegate.showLineWidthPicker(_:)) })
+
+        appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+
+        XCTAssertEqual(colorItem.title, "Color…")
+        XCTAssertEqual(widthItem.title, "Line Width…")
+        XCTAssertFalse(appDelegate.validateMenuItem(colorItem))
+        XCTAssertFalse(appDelegate.validateMenuItem(widthItem))
+    }
+
+    func testPickerMenuRoutesToVisibleMainOverlayCenter() throws {
+        let mainScreen = try XCTUnwrap(NSScreen.main)
+        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])
+        appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+        overlayWindow.makeKeyAndOrderFront(nil)
+        defer { overlayWindow.orderOut(nil) }
+
+        let colorItem = NSMenuItem()
+        colorItem.action = #selector(AppDelegate.showColorPicker(_:))
+        XCTAssertTrue(appDelegate.validateMenuItem(colorItem))
+
         appDelegate.showColorPicker(nil)
-        let popover = try XCTUnwrap(appDelegate.colorPopover)
-        XCTAssertNotNil(popover.contentViewController)
-        XCTAssertEqual(popover.behavior, .transient)
+        let colorPicker = try XCTUnwrap(
+            overlayWindow.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first)
+        XCTAssertEqual(colorPicker.mode, .color)
+        let expectedColorFrame = QuickPickerView.pickerFrame(
+            itemCount: colorPalette.count,
+            anchor: NSPoint(
+                x: overlayWindow.overlayView.bounds.midX,
+                y: overlayWindow.overlayView.bounds.midY),
+            within: overlayWindow.overlayView.bounds)
+        XCTAssertEqual(colorPicker.frame, expectedColorFrame)
 
-        // Popover presentation is asynchronous relative to show(relativeTo:)
-        // on macOS 26; spin the runloop briefly before checking.
-        let deadline = Date(timeIntervalSinceNow: 2)
-        while !popover.isShown && Date() < deadline {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
-        }
-
-        // Presentation additionally requires an on-screen status item, which
-        // headless runners cannot provide; the popover wiring above is still
-        // verified there.
-        try XCTSkipUnless(
-            popover.isShown,
-            "Popover did not present; environment has no on-screen status item")
-        XCTAssertTrue(popover.isShown)
+        overlayWindow.cancelQuickPicker()
+        overlayWindow.overlayView.currentTool = .counter
+        appDelegate.showLineWidthPicker(nil)
+        let counterPicker = try XCTUnwrap(
+            overlayWindow.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first)
+        XCTAssertEqual(counterPicker.mode, .counterSize)
     }
 
     // MARK: - Clear Drawings Tests
@@ -604,3 +628,6 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(testDefaults.lastUsedTool, .text, "Internal tool restores should not overwrite the persisted last-used tool")
     }
 }
+
+@MainActor
+final class MockAppDelegate: AppDelegate {}
