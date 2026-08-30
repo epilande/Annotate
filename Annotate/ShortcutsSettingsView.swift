@@ -140,6 +140,13 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .clearAll,
+                    label: "Clear All",
+                    description: "Remove all annotations (⌥⌫ also works)",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "slider.horizontal.3",

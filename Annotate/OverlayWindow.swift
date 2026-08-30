@@ -694,6 +694,9 @@ class OverlayWindow: NSPanel {
             case ShortcutManager.shared.getShortcut(for: .toggleClickEffects):
                 AppDelegate.shared?.toggleClickEffects(nil)
                 return
+            case ShortcutManager.shared.getShortcut(for: .clearAll):
+                AppDelegate.shared?.clearAllAnnotations()
+                return
             default:
                 break
             }
