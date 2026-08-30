@@ -27,6 +27,7 @@ extension UserDefaults {
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let persistTextModeKey = "PersistTextMode"
     static let defaultTextFontSizeKey = "TextFontSize"
+    static let textBackgroundKey = "TextBackgroundOn"
     static let defaultCounterFontSizeKey = "CounterFontSize"
     static let defaultToolKey = "DefaultTool"
     static let lastUsedToolKey = "LastUsedTool"
@@ -39,7 +40,7 @@ let colorPalette: [NSColor] = [
 ]
 
 let defaultTextAnnotationFontSize: CGFloat = 18
-let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
+let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...120
 
 /// Matches the quick-picker stroke ladder (`QuickPickerView.widthOptions` max 24).
 let lineWidthRange: ClosedRange<CGFloat> = 0.5...24
@@ -72,6 +73,11 @@ extension UserDefaults {
         set {
             set(Double(newValue), forKey: Self.defaultTextFontSizeKey)
         }
+    }
+
+    var textBackgroundEnabled: Bool {
+        get { bool(forKey: Self.textBackgroundKey) }
+        set { set(newValue, forKey: Self.textBackgroundKey) }
     }
 
     var counterToolFontSize: CGFloat {

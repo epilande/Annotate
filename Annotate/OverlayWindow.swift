@@ -815,7 +815,8 @@ class OverlayWindow: NSPanel {
                 text: "",
                 position: startPoint,
                 color: currentColor,
-                fontSize: UserDefaults.standard.textToolFontSize
+                fontSize: pickerUserDefaults.textToolFontSize,
+                hasBackground: pickerUserDefaults.textBackgroundEnabled
             )
             overlayView.createTextField(at: startPoint)
         }
@@ -872,11 +873,14 @@ class OverlayWindow: NSPanel {
             .font: NSFont.systemFont(ofSize: annotation.fontSize)
         ]
         let size = annotation.text.size(withAttributes: attributes)
+        let padding = annotation.hasBackground
+            ? NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+            : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         return NSRect(
-            x: annotation.position.x,
-            y: annotation.position.y,
-            width: size.width + 20,
-            height: size.height + 10
+            x: annotation.position.x - padding.left,
+            y: annotation.position.y - padding.bottom,
+            width: size.width + padding.left + padding.right,
+            height: size.height + padding.top + padding.bottom
         )
     }
 
@@ -1605,8 +1609,14 @@ class OverlayWindow: NSPanel {
         applyTextFontSize(size)
     }
 
-    func applyTextFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
-        guard size != pickerUserDefaults.textToolFontSize else { return }
+    func applyTextFontSize(_ requestedSize: CGFloat, showsFeedback: Bool = true) {
+        let size = requestedSize.clamped(to: textAnnotationFontSizeRange)
+        guard size != pickerUserDefaults.textToolFontSize
+            || runtimeOverlayWindows.contains(where: {
+                $0.overlayView.activeTextField != nil
+                    && $0.overlayView.currentTextAnnotation?.fontSize != size
+            })
+        else { return }
         pickerUserDefaults.textToolFontSize = size
 
         runtimeOverlayWindows.forEach { window in
@@ -1622,6 +1632,25 @@ class OverlayWindow: NSPanel {
         if showsFeedback {
             showFontSizeFeedback(size)
         }
+    }
+
+    func stepTextFontSize(_ direction: Int) {
+        let currentSize =
+            overlayView.currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+        applyTextFontSize(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.fontSizeOptions,
+                current: currentSize,
+                direction: direction))
+    }
+
+    func toggleTextBackground() {
+        let enabled = !(overlayView.currentTextAnnotation?.hasBackground
+            ?? pickerUserDefaults.textBackgroundEnabled)
+        overlayView.currentTextAnnotation?.hasBackground = enabled
+        pickerUserDefaults.textBackgroundEnabled = enabled
+        overlayView.needsDisplay = true
+        showFeedback(enabled ? "Label background on" : "Label background off")
     }
 
     private func showFontSizeFeedback(_ size: CGFloat) {
@@ -1654,11 +1683,7 @@ class OverlayWindow: NSPanel {
 
     private func stepActiveLadder(_ direction: Int) {
         if overlayView.currentTool == .text || overlayView.activeTextField != nil {
-            applyTextFontSize(
-                QuickPickerView.steppedValue(
-                    in: QuickPickerView.fontSizeOptions,
-                    current: pickerUserDefaults.textToolFontSize,
-                    direction: direction))
+            stepTextFontSize(direction)
             return
         }
 

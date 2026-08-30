@@ -1556,6 +1556,42 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             "Annotation field must stay active so c / [ / ] type instead of opening pickers")
         return field
     }
+
+    func testTextSizeSteppingUsesQuickPickerLadderAndResizesActiveField() throws {
+        UserDefaults.standard.textToolFontSize = 18
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: NSPoint(x: 100, y: 100), color: .red, fontSize: 44)
+        window.overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Headline")
+        let textField = try XCTUnwrap(window.overlayView.activeTextField)
+        let initialSize = textField.frame.size
+
+        window.stepTextFontSize(1)
+
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 60)
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.fontSize, 60)
+        XCTAssertEqual(textField.font?.pointSize, 60)
+        XCTAssertGreaterThan(textField.frame.height, initialSize.height)
+
+        window.stepTextFontSize(-1)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+    }
+
+    func testToggleTextBackgroundUpdatesCurrentAnnotationAndPersistedDefault() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: .zero, color: .red, fontSize: 18)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, true)
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, false)
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
 }
 
 @MainActor

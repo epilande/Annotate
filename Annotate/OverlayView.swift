@@ -4,6 +4,8 @@ import Cocoa
 @MainActor
 class AnnotationTextField: NSTextField {
     var onCommandReturn: (() -> Void)?
+    var onFontSizeStep: ((Int) -> Void)?
+    var onToggleBackground: (() -> Void)?
 
     /// The unclamped left-edge x the field targets before any right-edge shifting. Set when
     /// the field is created so that shrinking text after a left-shift can move it back toward
@@ -11,9 +13,24 @@ class AnnotationTextField: NSTextField {
     var anchorX: CGFloat = 0
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.contains(.command) && event.keyCode == 36 {
-            onCommandReturn?()
-            return true
+        if event.modifierFlags.contains(.command) {
+            if event.keyCode == 36 {
+                onCommandReturn?()
+                return true
+            }
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "=", "+":
+                onFontSizeStep?(1)
+                return true
+            case "-":
+                onFontSizeStep?(-1)
+                return true
+            case "b":
+                onToggleBackground?()
+                return true
+            default:
+                break
+            }
         }
         return super.performKeyEquivalent(with: event)
     }
@@ -691,8 +708,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         for (index, annotation) in textAnnotations.enumerated() {
             if index == editingTextAnnotationIndex { continue }
+            guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
             guard intersectsDirtyRect(getTextRect(for: annotation), dirtyRect) else { continue }
-            drawText(annotation)
+            drawText(annotation, alpha: alpha)
         }
 
         for counter in counterAnnotations {
@@ -938,6 +956,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
+        compactItems(
+            &textAnnotations,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .text(let index) = $0 { return index }; return nil },
+            make: { .text(index: $0) }
+        )
         compactFadedPaths(
             &paths,
             now: now,
@@ -1151,14 +1175,27 @@ class OverlayView: NSView, NSTextFieldDelegate {
         renderedPath.stroke()
     }
 
-    private func drawText(_ annotation: TextAnnotation) {
+    private func drawText(_ annotation: TextAnnotation, alpha: CGFloat) {
         let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
-
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: adaptedColor,
+            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
             .font: NSFont.systemFont(ofSize: annotation.fontSize),
         ]
         let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
+
+        if annotation.hasBackground {
+            let textSize = attributedString.size()
+            let pillRect = NSRect(
+                x: annotation.position.x - 8,
+                y: annotation.position.y - 4,
+                width: textSize.width + 16,
+                height: textSize.height + 8
+            )
+            let pill = NSBezierPath(roundedRect: pillRect, xRadius: 6, yRadius: 6)
+            adaptedColor.contrastingColor().withAlphaComponent(0.85 * alpha).setFill()
+            pill.fill()
+        }
+
         attributedString.draw(at: annotation.position)
     }
 
@@ -1540,6 +1577,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
             case .text(var text):
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
+                text.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 textAnnotations.append(text)
                 registerUndo(action: .addText(text))
                 pastedObjects.append(.text(index: textAnnotations.count - 1))
@@ -1560,6 +1598,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         startFadeLoopIfNeeded()
         needsDisplay = true
+        if fadeMode {
+            (window as? OverlayWindow)?.startFadeLoop()
+        }
     }
     
     /// Calculate the center point of objects in clipboard
@@ -1701,6 +1742,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             guard let self = self, let textField = textField else { return }
             self.finalizeTextAnnotation(textField)
         }
+        textField.onFontSizeStep = { [weak self] direction in
+            (self?.window as? OverlayWindow)?.stepTextFontSize(direction)
+        }
+        textField.onToggleBackground = { [weak self] in
+            (self?.window as? OverlayWindow)?.toggleTextBackground()
+        }
         activeTextField = textField
         // Remember where the field started so resize can slide it back right as text shrinks.
         textField.anchorX = textField.frame.origin.x
@@ -1800,7 +1847,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 text: typedText,
                 position: position,
                 color: currentText.color,
-                fontSize: currentText.fontSize
+                fontSize: currentText.fontSize,
+                hasBackground: currentText.hasBackground,
+                creationTime: currentText.creationTime ?? CACurrentMediaTime()
             )
 
             if let editingIndex = editingTextAnnotationIndex {
@@ -1813,6 +1862,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             } else {
                 registerUndo(action: .addText(finalAnnotation))
                 textAnnotations.append(finalAnnotation)
+            }
+            if fadeMode {
+                (window as? OverlayWindow)?.startFadeLoop()
             }
         } else if let editingIndex = editingTextAnnotationIndex {
             if editingIndex < textAnnotations.count {
@@ -1859,7 +1911,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: UserDefaults.standard.textToolFontSize
+            fontSize: UserDefaults.standard.textToolFontSize,
+            hasBackground: UserDefaults.standard.textBackgroundEnabled
         )
         createTextField(at: point)
     }
@@ -1945,6 +1998,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
+        let stillFadingText = textAnnotations.contains { annotation in
+            if let creationTime = annotation.creationTime {
+                return (now - creationTime) < fadeDuration
+            }
+            return false
+        }
+
         let maxPathAge =
             highlightPaths.contains { path in
                 if let minTimestamp = path.points.map({ $0.timestamp }).min() {
@@ -1963,6 +2023,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || stillFadingLines
             || stillFadingRectangles
             || stillFadingCircles
+            || stillFadingText
             || stillFadingCounters
             || maxPathAge
     }
@@ -2007,7 +2068,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .highlight(let index):
             guard index < highlightPaths.count else { return true }
             return !isPathVisible(highlightPaths[index], now: now)
-        case .text, .none:
+        case .text(let index):
+            guard index < textAnnotations.count else { return true }
+            return fadeAlphaIfVisible(creationTime: textAnnotations[index].creationTime, now: now) == nil
+        case .none:
             return false
         }
     }
@@ -2359,11 +2423,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             .font: NSFont.systemFont(ofSize: annotation.fontSize)
         ]
         let size = annotation.text.size(withAttributes: attributes)
+        let padding = annotation.hasBackground
+            ? NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+            : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         return NSRect(
-            x: annotation.position.x,
-            y: annotation.position.y,
-            width: size.width + 4,
-            height: size.height + 4
+            x: annotation.position.x - padding.left,
+            y: annotation.position.y - padding.bottom,
+            width: size.width + padding.left + padding.right,
+            height: size.height + padding.top + padding.bottom
         )
     }
     

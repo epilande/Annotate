@@ -7,10 +7,12 @@ import XCTest
 final class QuickPickerViewTests: XCTestCase, Sendable {
     func testLaddersMatchPickerContract() {
         XCTAssertEqual(QuickPickerView.widthOptions, [1, 2, 3, 5, 8, 12, 16, 24])
-        XCTAssertEqual(QuickPickerView.fontSizeOptions, [14, 18, 24, 32, 44, 60, 80, 110])
+        XCTAssertEqual(QuickPickerView.fontSizeOptions, [12, 18, 24, 32, 44, 60, 80, 120])
         XCTAssertEqual(QuickPickerView.counterSizeOptions, [12, 19, 26, 33, 39, 46, 53, 60])
         XCTAssertEqual(QuickPickerView.counterSizeOptions.first, counterFontSizeRange.lowerBound)
         XCTAssertEqual(QuickPickerView.counterSizeOptions.last, counterFontSizeRange.upperBound)
+        XCTAssertEqual(QuickPickerView.fontSizeOptions.first, textAnnotationFontSizeRange.lowerBound)
+        XCTAssertEqual(QuickPickerView.fontSizeOptions.last, textAnnotationFontSizeRange.upperBound)
     }
 
     func testNearestAndSteppedValuesSnapBeforeMovingAndClampAtEnds() {

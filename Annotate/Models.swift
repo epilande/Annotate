@@ -169,6 +169,8 @@ struct TextAnnotation {
     var position: NSPoint
     var color: NSColor
     var fontSize: CGFloat
+    var hasBackground: Bool = false
+    var creationTime: CFTimeInterval?
 }
 
 struct CounterAnnotation {
@@ -287,7 +289,8 @@ extension Circle: Equatable {
 extension TextAnnotation: Equatable {
     public static func == (lhs: TextAnnotation, rhs: TextAnnotation) -> Bool {
         return lhs.text == rhs.text && lhs.position == rhs.position && lhs.color.isEqual(rhs.color)
-            && lhs.fontSize == rhs.fontSize
+            && lhs.fontSize == rhs.fontSize && lhs.hasBackground == rhs.hasBackground
+            && lhs.creationTime == rhs.creationTime
     }
 }
 

@@ -562,10 +562,13 @@ final class OverlayViewTests: XCTestCase, Sendable {
             textField.frame.origin.x, originalX,
             "Text field should slide left when it would overflow the right edge"
         )
-        let textWidth = textField.stringValue.size(withAttributes: [.font: font]).width
-        XCTAssertGreaterThanOrEqual(
-            textField.frame.size.width, textWidth,
-            "Text field should stay wide enough to show the full text instead of clipping it"
+        XCTAssertEqual(
+            textField.frame.size.width, overlayView.bounds.width - margin * 2,
+            "Text wider than the display should use the full safe editing width"
+        )
+        XCTAssertEqual(
+            textField.frame.origin.x, margin,
+            "A full-width field should stay inside the left screen margin"
         )
 
         textField.removeFromSuperview()
@@ -674,5 +677,76 @@ final class OverlayViewTests: XCTestCase, Sendable {
         let expectedY = clickPoint.y - 16 + 4  // -16 for field offset, +4 for padding
         XCTAssertEqual(annotation.position.x, expectedX, accuracy: 0.01, "Position X should account for padding")
         XCTAssertEqual(annotation.position.y, expectedY, accuracy: 0.01, "Position Y should account for padding")
+    }
+
+    func testTextFieldCommandShortcutsStepAndToggle() throws {
+        let textField = AnnotationTextField(frame: .zero)
+        var directions: [Int] = []
+        var toggleCount = 0
+        textField.onFontSizeStep = { directions.append($0) }
+        textField.onToggleBackground = { toggleCount += 1 }
+
+        for character in ["=", "+", "-", "b"] {
+            let event = try XCTUnwrap(
+                NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: .command,
+                    timestamp: 0,
+                    windowNumber: 0,
+                    context: nil,
+                    characters: character,
+                    charactersIgnoringModifiers: character,
+                    isARepeat: false,
+                    keyCode: 0))
+            XCTAssertTrue(textField.performKeyEquivalent(with: event))
+        }
+
+        XCTAssertEqual(directions, [1, 1, -1])
+        XCTAssertEqual(toggleCount, 1)
+    }
+
+    func testFinalizePreservesBackgroundAndStartsFadeLifecycle() throws {
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: NSPoint(x: 200, y: 300),
+            color: .red,
+            fontSize: 44,
+            hasBackground: true)
+        overlayView.createTextField(at: NSPoint(x: 200, y: 300))
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        textField.stringValue = "Pill"
+
+        overlayView.finalizeTextAnnotation(textField)
+
+        let annotation = try XCTUnwrap(overlayView.textAnnotations.first)
+        XCTAssertTrue(annotation.hasBackground)
+        XCTAssertEqual(annotation.fontSize, 44)
+        XCTAssertNotNil(annotation.creationTime)
+    }
+
+    func testBackgroundPillAddsRenderedAreaAndFadesWithText() {
+        overlayView.fadeMode = false
+        let plain = TextAnnotation(
+            text: "A",
+            position: NSPoint(x: 120, y: 300),
+            color: .red,
+            fontSize: 44)
+        overlayView.textAnnotations = [plain]
+        let plainPixels = renderedPixelCount(of: overlayView)
+
+        var pill = plain
+        pill.hasBackground = true
+        overlayView.textAnnotations = [pill]
+        XCTAssertGreaterThan(renderedPixelCount(of: overlayView), plainPixels)
+
+        pill.creationTime = CACurrentMediaTime() - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [pill]
+        _ = renderedPixelCount(of: overlayView)
+        XCTAssertEqual(overlayView.textAnnotations.count, 1, "draw must not compact expired text")
+        overlayView.compactExpiredAnnotations()
+        XCTAssertTrue(overlayView.textAnnotations.isEmpty)
     }
 }

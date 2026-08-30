@@ -3,6 +3,8 @@ import SwiftUI
 struct ToolsSettingsView: View {
     @AppStorage(UserDefaults.defaultTextFontSizeKey)
     private var defaultTextSize: Double = Double(defaultTextAnnotationFontSize)
+    @AppStorage(UserDefaults.textBackgroundKey)
+    private var textBackgroundEnabled = false
     @AppStorage(UserDefaults.defaultCounterFontSizeKey)
     private var defaultCounterSize: Double = Double(defaultCounterFontSize)
 
@@ -25,6 +27,7 @@ struct ToolsSettingsView: View {
                     valueText: { "\(Int($0)) pt" },
                     boundsText: { "\(Int($0)) pt" }
                 )
+                Toggle("Label background", isOn: $textBackgroundEnabled)
             } header: {
                 SettingsHeader(
                     icon: "textformat.size",
