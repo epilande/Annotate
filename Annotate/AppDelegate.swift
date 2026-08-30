@@ -4,7 +4,9 @@ import Sparkle
 import SwiftUI
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate,
+    NSMenuDelegate
+{
     static weak var shared: AppDelegate?
 
     var statusItem: NSStatusItem!
@@ -285,6 +287,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             toggleDrawingModeItem.keyEquivalentModifierMask = []
             menu.addItem(toggleDrawingModeItem)
 
+            let fadeTimeItem = NSMenuItem(title: "Fade Time", action: nil, keyEquivalent: "")
+            let fadeTimeMenu = NSMenu()
+            for delay in Self.fadeDelayPresets {
+                let presetItem = NSMenuItem(
+                    title: Self.formatFadeDelay(delay),
+                    action: #selector(setFadeDelay(_:)),
+                    keyEquivalent: "")
+                presetItem.representedObject = delay
+                fadeTimeMenu.addItem(presetItem)
+            }
+            fadeTimeItem.submenu = fadeTimeMenu
+            menu.addItem(fadeTimeItem)
+
             menu.addItem(NSMenuItem.separator())
             
             let currentOverlayModeItem = NSMenuItem(
@@ -307,9 +322,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let clearAllItem = NSMenuItem(
                 title: "Clear All",
                 action: #selector(clearAllAnnotations),
-                keyEquivalent: "\u{8}"
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .clearAll)
             )
-            clearAllItem.keyEquivalentModifierMask = [.option]
+            clearAllItem.keyEquivalentModifierMask = []
             menu.addItem(clearAllItem)
 
             let undoItem = NSMenuItem(
@@ -352,8 +367,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                     title: "Quit", action: #selector(NSApplication.terminate(_:)),
                     keyEquivalent: "q"))
 
+            menu.delegate = self
             statusItem.menu = menu
+            updateFadeTimeMenuItems()
         }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem.menu else { return }
+        updateFadeTimeMenuItems()
     }
 
     @objc func screenParametersChanged() {
@@ -705,6 +727,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         overlayWindow.stopFadeLoop()
     }
     
+    static let fadeDelayPresets: [Double] = [0.25, 0.5, 1, 2, 3, 5]
+
+    static func formatFadeDelay(_ delay: Double) -> String {
+        delay == delay.rounded() ? "\(Int(delay))s" : String(format: "%gs", delay)
+    }
+
+    @objc func setFadeDelay(_ sender: NSMenuItem) {
+        guard let delay = sender.representedObject as? Double else { return }
+        userDefaults.fadeDelay = delay
+        updateFadeTimeMenuItems()
+    }
+
+    private func updateFadeTimeMenuItems() {
+        guard let submenu = statusItem.menu?.items.first(where: { $0.title == "Fade Time" })?
+            .submenu
+        else { return }
+
+        let current = userDefaults.fadeDelay
+        for item in submenu.items {
+            guard let delay = item.representedObject as? Double else { continue }
+            item.state = abs(delay - current) < 0.01 ? .on : .off
+        }
+    }
+
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
         guard let menu = statusItem.menu else { return }
         
@@ -799,6 +845,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
             case #selector(toggleClickEffects(_:)):
                 item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleClickEffects)
+            case #selector(clearAllAnnotations):
+                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .clearAll)
             default:
                 break
             }
