@@ -1,4 +1,5 @@
 import Cocoa
+import SwiftUI
 
 class OverlayWindow: NSPanel {
     var overlayView: OverlayView!
@@ -40,6 +41,10 @@ class OverlayWindow: NSPanel {
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     
+    private(set) var toolbarHost: NSHostingView<ToolbarView>?
+    let toolbarModel = ToolbarModel()
+    private var isToolbarGestureActive = false
+
     // Create undo manager for this window
     private let _undoManager = UndoManager()
     
@@ -102,6 +107,111 @@ class OverlayWindow: NSPanel {
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
+        installToolbar(in: containerView)
+    }
+
+    private func installToolbar(in container: NSView) {
+        let host = NSHostingView(
+            rootView: ToolbarView(model: toolbarModel) { [weak self] action in
+                self?.performToolbarAction(action)
+            }
+        )
+        host.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(host)
+        NSLayoutConstraint.activate([
+            host.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            host.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
+            host.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 20),
+            host.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -20),
+        ])
+        toolbarHost = host
+        updateToolbarVisibility()
+        refreshToolbar()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(toolbarShortcutsDidChange),
+            name: .shortcutsDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func toolbarShortcutsDidChange() {
+        toolbarModel.shortcutsVersion += 1
+    }
+
+    func refreshToolbar() {
+        guard overlayView != nil else { return }
+        toolbarModel.activeTool = overlayView.currentTool
+        toolbarModel.currentColor = overlayView.currentColor
+        toolbarModel.currentWidth = overlayView.currentLineWidth
+        toolbarModel.fadeMode = overlayView.fadeMode
+    }
+
+    func updateToolbarVisibility() {
+        let oldFeedbackPadding = feedbackBottomPadding
+        let defaults = AppDelegate.shared?.userDefaults ?? .standard
+        let visible = defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool ?? true
+        let changed = toolbarHost?.isHidden != !visible
+        toolbarHost?.isHidden = !visible
+        isToolbarGestureActive = false
+        if changed {
+            cancelQuickPicker()
+            if let feedback = currentFeedbackView {
+                feedback.setFrameOrigin(
+                    NSPoint(
+                        x: feedback.frame.origin.x,
+                        y: feedback.frame.origin.y + feedbackBottomPadding - oldFeedbackPadding
+                    )
+                )
+            }
+        }
+    }
+
+    var toolbarFrame: NSRect {
+        contentView?.layoutSubtreeIfNeeded()
+        return toolbarHost?.isHidden == false ? toolbarHost?.frame ?? .zero : .zero
+    }
+
+    var toolbarClearance: CGFloat {
+        toolbarFrame.isEmpty ? 0 : toolbarFrame.maxY
+    }
+
+    var feedbackBottomPadding: CGFloat {
+        toolbarClearance > 0 ? toolbarClearance + 8 : 20
+    }
+
+    func isPointInToolbar(_ windowPoint: NSPoint) -> Bool {
+        guard let host = toolbarHost, !host.isHidden, let container = contentView else {
+            return false
+        }
+        container.layoutSubtreeIfNeeded()
+        return host.frame.contains(container.convert(windowPoint, from: nil))
+    }
+
+    func performToolbarAction(_ action: ToolbarAction) {
+        switch action {
+        case .tool(let tool):
+            AppDelegate.shared?.switchTool(to: tool)
+        case .colorPicker:
+            beginQuickPicker(.color, anchor: toolbarActionAnchor)
+        case .widthPicker:
+            beginQuickPicker(.width, anchor: toolbarActionAnchor)
+        case .toggleFade:
+            AppDelegate.shared?.toggleFadeMode(nil)
+        case .deleteLast:
+            overlayView.deleteLastItem()
+        case .clearAll:
+            if overlayView.clearAll() {
+                SoundPlayer.shared.playClearAll()
+            }
+        case .undo:
+            overlayView.undo()
+        }
+    }
+
+    private var toolbarActionAnchor: NSPoint {
+        let windowPoint = convertPoint(fromScreen: NSEvent.mouseLocation)
+        return overlayView.convert(windowPoint, from: nil)
     }
 
     deinit {
@@ -111,6 +221,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func orderOut(_ sender: Any?) {
+        isToolbarGestureActive = false
         cancelQuickPicker()
         restoreMouseCoalescing()
         super.orderOut(sender)
@@ -169,6 +280,11 @@ class OverlayWindow: NSPanel {
     var isQuickPickerOpen: Bool { quickPicker != nil }
 
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, isToolbarToggleEvent(event) {
+            AppDelegate.shared?.toggleToolbar()
+            return
+        }
+
         if routeOverlayMouseEvent(event) {
             return
         }
@@ -207,7 +323,8 @@ class OverlayWindow: NSPanel {
     /// Canvas mouse goes through OverlayWindow's drawing handlers even when AppKit
     /// would drop a synthetic or non-key event. Clicks on the annotation field still
     /// take the normal first-responder path. While a picker is open, leftover mouse-up
-    /// restores coalescing and must not commit geometry.
+    /// restores coalescing and must not commit geometry. Toolbar hits also take the
+    /// view path so the SwiftUI host can receive clicks.
     private func routeOverlayMouseEvent(_ event: NSEvent) -> Bool {
         switch event.type {
         case .leftMouseDown, .leftMouseDragged, .leftMouseUp,
@@ -232,6 +349,22 @@ class OverlayWindow: NSPanel {
                 cancelQuickPicker()
             default:
                 break
+            }
+            return true
+        }
+
+        let overToolbar = isPointInToolbar(event.locationInWindow)
+        if overToolbar {
+            if event.type == .leftMouseDown {
+                isToolbarGestureActive = true
+            } else if event.type == .leftMouseUp {
+                isToolbarGestureActive = false
+            }
+            return false
+        }
+        if isToolbarGestureActive {
+            if event.type == .leftMouseUp {
+                isToolbarGestureActive = false
             }
             return true
         }
@@ -280,10 +413,17 @@ class OverlayWindow: NSPanel {
         let anchor =
             requestedAnchor
             ?? overlayView.convert(mouseLocationOutsideOfEventStream, from: nil)
+        var placementBounds = overlayView.bounds
+        let placementTop = placementBounds.maxY
+        let clearance = toolbarClearance
+        if clearance > 0 {
+            placementBounds.origin.y = clearance + 8
+            placementBounds.size.height = max(0, placementTop - placementBounds.origin.y)
+        }
         let picker = QuickPickerView(
             mode: mode,
             anchor: anchor,
-            within: overlayView.bounds,
+            within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
             currentFontSize: defaults.textToolFontSize,
@@ -644,6 +784,11 @@ class OverlayWindow: NSPanel {
             return
         }
 
+        isToolbarGestureActive = isPointInToolbar(event.locationInWindow)
+        if isToolbarGestureActive {
+            return
+        }
+
         // Update cursor highlight for local events (global monitors don't capture our own app's events)
         let cursorManager = CursorHighlightManager.shared
         if cursorManager.isActive {
@@ -881,6 +1026,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if isToolbarGestureActive { return }
         if quickPicker != nil {
             handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
             return
@@ -1158,6 +1304,10 @@ class OverlayWindow: NSPanel {
             restoreMouseCoalescing()
             return
         }
+        if isToolbarGestureActive {
+            isToolbarGestureActive = false
+            return
+        }
         if quickPicker != nil {
             restoreMouseCoalescing()
             return
@@ -1290,6 +1440,11 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
+        if isToolbarToggleEvent(event) {
+            AppDelegate.shared?.toggleToolbar()
+            return
+        }
+
         if handleQuickPickerKeyDown(event) {
             return
         }
@@ -1834,7 +1989,7 @@ class OverlayWindow: NSPanel {
         height: CGFloat,
         lineWidth: CGFloat?
     ) -> NSRect {
-        let bottomPadding: CGFloat = 20
+        let bottomPadding = feedbackBottomPadding
         let extraLinePadding = lineWidth != nil ? max(0, lineWidth! / 2) : 0
         
         return NSRect(
@@ -2029,5 +2184,14 @@ class LinePreviewView: NSView {
         path.lineWidth = lineWidth
         path.lineCapStyle = .round
         path.stroke()
+    }
+}
+
+private extension OverlayWindow {
+    func isToolbarToggleEvent(_ event: NSEvent) -> Bool {
+        let disallowedModifiers = event.modifierFlags.intersection([.command, .option, .control])
+        return disallowedModifiers.isEmpty
+            && (event.characters == "?"
+                || (event.keyCode == 44 && event.modifierFlags.contains(.shift)))
     }
 }

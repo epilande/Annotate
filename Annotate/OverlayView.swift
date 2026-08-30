@@ -94,12 +94,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var clipboard: [ClipboardItem] = []
     var lastMousePosition: NSPoint = .zero
 
-    var currentColor: NSColor = .systemRed
-    var currentTool: ToolType = .pen
+    var currentColor: NSColor = .systemRed {
+        didSet { (window as? OverlayWindow)?.refreshToolbar() }
+    }
+    var currentTool: ToolType = .pen {
+        didSet { (window as? OverlayWindow)?.refreshToolbar() }
+    }
     var previousTool: ToolType = .pen
-    var currentLineWidth: CGFloat = 3.0
+    var currentLineWidth: CGFloat = 3.0 {
+        didSet { (window as? OverlayWindow)?.refreshToolbar() }
+    }
 
-    var fadeMode: Bool = true
+    var fadeMode: Bool = true {
+        didSet { (window as? OverlayWindow)?.refreshToolbar() }
+    }
     let fadeDuration: CFTimeInterval = 1.25
     var isReadOnlyMode: Bool = false
 

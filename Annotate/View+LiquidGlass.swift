@@ -23,4 +23,25 @@ extension View {
             self.buttonStyle(.bordered)
         }
     }
+
+    @ViewBuilder
+    func toolbarGlassSegment(cornerRadius: CGFloat = 18) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            self
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.32), .white.opacity(0.09)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
+    }
 }

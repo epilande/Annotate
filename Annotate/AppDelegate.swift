@@ -301,6 +301,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             )
             menu.addItem(toggleAlwaysOnModeItem)
 
+
+            let toolbarItem = NSMenuItem(
+                title: "Toolbar",
+                action: #selector(toggleToolbar),
+                keyEquivalent: "/"
+            )
+            toolbarItem.keyEquivalentModifierMask = [.shift]
+            toolbarItem.state = toolbarVisible ? .on : .off
+            menu.addItem(toolbarItem)
             menu.addItem(NSMenuItem.separator())
 
             let clearAllItem = NSMenuItem(
@@ -759,6 +768,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func shortcutsDidChange() {
+        refreshAllToolbars()
         refreshMenuKeyEquivalents()
     }
 
@@ -851,6 +861,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         for (_, window) in overlayWindows where window.isVisible {
             window.showToggleFeedback(text, icon: icon)
         }
+    }
+
+    var toolbarVisible: Bool {
+        userDefaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool ?? true
+    }
+
+    @objc func toggleToolbar() {
+        setToolbarVisible(!toolbarVisible)
+    }
+
+    func setToolbarVisible(_ visible: Bool) {
+        userDefaults.set(visible, forKey: UserDefaults.toolbarVisibleKey)
+        overlayWindows.values.forEach { $0.updateToolbarVisibility() }
+        if let item = statusItem?.menu?.items.first(where: { $0.action == #selector(toggleToolbar) }) {
+            item.state = visible ? .on : .off
+        }
+    }
+
+    func refreshAllToolbars() {
+        overlayWindows.values.forEach { $0.refreshToolbar() }
     }
 
     @objc func showSettings() {
