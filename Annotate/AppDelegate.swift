@@ -469,6 +469,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         } else {
@@ -479,6 +480,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             }
 
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
@@ -522,6 +524,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         }
@@ -540,6 +543,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             configureWindowForNormalMode(overlayWindow)
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)

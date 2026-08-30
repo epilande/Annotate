@@ -1216,6 +1216,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || !rectangles.isEmpty
             || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
         {
+            SoundPlayer.shared.playClearAll()
             let oldPaths = paths
             let oldArrows = arrows
             let oldLines = lines

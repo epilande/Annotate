@@ -56,6 +56,20 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertFalse(finalValue, "hideToolFeedback should be false after resetting")
     }
 
+    func testSoundsEnabledDefaultsToTrueWhenAbsent() {
+        testDefaults.removeObject(forKey: UserDefaults.soundsEnabledKey)
+
+        XCTAssertTrue(testDefaults.soundsEnabled)
+    }
+
+    func testSoundsEnabledPersistsExplicitValue() {
+        testDefaults.soundsEnabled = false
+        XCTAssertFalse(testDefaults.soundsEnabled)
+
+        testDefaults.soundsEnabled = true
+        XCTAssertTrue(testDefaults.soundsEnabled)
+    }
+
     func testEnableBoardBinding() {
         let initialValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertFalse(initialValue, "enableBoard should default to false")

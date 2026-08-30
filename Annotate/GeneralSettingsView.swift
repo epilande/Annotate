@@ -8,6 +8,8 @@ struct GeneralSettingsView: View {
     private var hideDockIcon = false
     @AppStorage(UserDefaults.hideToolFeedbackKey)
     private var hideToolFeedback = false
+    @AppStorage(UserDefaults.soundsEnabledKey)
+    private var soundsEnabled = UserDefaults.soundsEnabledDefault
     @AppStorage(UserDefaults.persistTextModeKey)
     private var persistTextMode = false
     @AppStorage(UserDefaults.defaultToolKey)
@@ -59,6 +61,10 @@ struct GeneralSettingsView: View {
                 Toggle(isOn: $hideToolFeedback) {
                     Text("Hide Tool Feedback")
                     Text("Disable visual feedback when switching tools")
+                }
+                Toggle(isOn: $soundsEnabled) {
+                    Text("Play sounds")
+                    Text("Play feedback sounds for overlay and clear actions")
                 }
 
                 Toggle(
