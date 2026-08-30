@@ -45,6 +45,63 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertNil(overlayView.currentTextAnnotation)
     }
 
+    func testFreehandStrokeLifecyclePreservesEveryPoint() {
+        let points = (0...256).map { index in
+            TimedPoint(
+                point: NSPoint(x: CGFloat(index), y: CGFloat(index % 17)),
+                timestamp: CFTimeInterval(index)
+            )
+        }
+
+        for tool in [ToolType.pen, .highlighter] {
+            overlayView.beginFreehandStroke(
+                DrawingPath(points: [points[0]], color: .systemRed, lineWidth: 3),
+                tool: tool
+            )
+            for point in points.dropFirst() {
+                overlayView.appendFreehandPoint(point, tool: tool)
+            }
+
+            let completedStroke = overlayView.endFreehandStroke(tool: tool)
+
+            XCTAssertEqual(completedStroke?.points, points)
+            XCTAssertNil(overlayView.currentPath)
+            XCTAssertNil(overlayView.currentHighlight)
+        }
+    }
+
+    func testHighlighterSelectionUsesRenderedStrokeWidth() {
+        overlayView.highlightPaths = [
+            DrawingPath(
+                points: [
+                    TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: 0),
+                    TimedPoint(point: NSPoint(x: 200, y: 100), timestamp: 1),
+                ],
+                color: .systemYellow,
+                lineWidth: 10
+            )
+        ]
+
+        XCTAssertEqual(
+            overlayView.findObjectAt(point: NSPoint(x: 150, y: 120)),
+            .highlight(index: 0)
+        )
+    }
+
+    func testHighlighterEraserHitTestUsesRenderedStrokeWidth() {
+        overlayView.highlightPaths = [
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: 0)],
+                color: .systemYellow,
+                lineWidth: 10
+            )
+        ]
+
+        overlayView.eraseAtPoint(NSPoint(x: 130, y: 100))
+
+        XCTAssertTrue(overlayView.highlightPaths.isEmpty)
+    }
+
     func testToolSwitching() {
         // Test all tool types
         overlayView.currentTool = .pen

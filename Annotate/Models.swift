@@ -27,6 +27,14 @@ enum ToolType: String, CaseIterable {
         case .select: return "Select"
         }
     }
+
+    var strokeWidthMultiplier: CGFloat {
+        self == .highlighter ? 4.67 : 1
+    }
+
+    var laydownAlpha: CGFloat {
+        self == .highlighter ? 0.5 : 1
+    }
 }
 
 /// Which tool becomes active each time the overlay is activated. `.lastUsed` keeps the
