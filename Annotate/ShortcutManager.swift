@@ -19,6 +19,7 @@ enum ShortcutKey: String, CaseIterable {
     case lineWidthPicker = "w"
     case toggleBoard = "b"
     case toggleClickEffects = "k"
+    case clearAll = "x"
 
     var defaultKey: String { rawValue }
 
@@ -38,6 +39,7 @@ enum ShortcutKey: String, CaseIterable {
         case .lineWidthPicker: return "Line Width"
         case .toggleBoard: return "Toggle Board"
         case .toggleClickEffects: return "Toggle Cursor Highlight"
+        case .clearAll: return "Clear All"
         }
     }
 }

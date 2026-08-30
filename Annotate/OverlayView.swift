@@ -98,7 +98,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var currentLineWidth: CGFloat = 3.0
 
     var fadeMode: Bool = true
-    let fadeDuration: CFTimeInterval = 1.25
+    /// Full-opacity hold before the fade-out starts; user-configurable in Settings.
+    var fadeDelay: CFTimeInterval { UserDefaults.standard.fadeDelay }
+    let fadeOutDuration: CFTimeInterval = 0.75
+    var fadeDuration: CFTimeInterval { fadeDelay + fadeOutDuration }
     var isReadOnlyMode: Bool = false
 
     private var cursorTrackingArea: NSTrackingArea?
@@ -833,10 +836,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
-        let fadeDelay = fadeDuration / 2
         if age <= fadeDelay { return 1.0 }
-        let fadeOut = fadeDelay - (age - fadeDelay)
-        return CGFloat(max(0, fadeOut))
+        return CGFloat(max(0, (fadeDuration - age) / fadeOutDuration))
     }
     
     

@@ -10,6 +10,7 @@ extension UserDefaults {
     static let clearDrawingsOnStartKey = "ClearDrawingsOnStart"
     static let hideDockIconKey = "HideDockIcon"
     static let fadeModeKey = "FadeMode"
+    static let fadeDelayKey = "FadeDelay"
     static let enableBoardKey = "EnableBoard"
     static let boardOpacityKey = "BoardOpacity"
     static let alwaysOnModeKey = "AlwaysOnMode"
@@ -36,6 +37,11 @@ let colorPalette: [NSColor] = [
     .magenta, .white, .black,
 ]
 
+/// Seconds an annotation holds at full opacity before the fade-out begins
+/// (fade mode only). The fade-out itself takes `OverlayView.fadeOutDuration`.
+let defaultFadeDelay: Double = 0.5
+let fadeDelayRange: ClosedRange<Double> = 0.25...5
+
 let defaultTextAnnotationFontSize: CGFloat = 18
 let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
 
@@ -45,6 +51,16 @@ let defaultCounterFontSize: CGFloat = 14
 let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
 
 extension UserDefaults {
+    var fadeDelay: TimeInterval {
+        get {
+            let stored = double(forKey: Self.fadeDelayKey)
+            return stored > 0 ? stored : defaultFadeDelay
+        }
+        set {
+            set(newValue, forKey: Self.fadeDelayKey)
+        }
+    }
+
     var textToolFontSize: CGFloat {
         get {
             let stored = double(forKey: Self.defaultTextFontSizeKey)

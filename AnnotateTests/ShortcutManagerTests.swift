@@ -152,6 +152,7 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(ShortcutKey.lineWidthPicker.defaultKey, "w", "Line Width should be 'w'")
         XCTAssertEqual(ShortcutKey.toggleBoard.defaultKey, "b", "Board should be 'b'")
         XCTAssertEqual(ShortcutKey.toggleClickEffects.defaultKey, "k", "Toggle Cursor Highlight should be 'k'")
+        XCTAssertEqual(ShortcutKey.clearAll.defaultKey, "x", "Clear All should be 'x'")
     }
     
     func testNoShortcutConflicts() {

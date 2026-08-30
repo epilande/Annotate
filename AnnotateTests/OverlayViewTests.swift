@@ -21,10 +21,25 @@ final class OverlayViewTests: XCTestCase, Sendable {
     }
 
     func testOverlayViewInitialization() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeDelayKey)
         XCTAssertEqual(overlayView.currentColor, .systemRed)
         XCTAssertEqual(overlayView.currentTool, .pen)
         XCTAssertTrue(overlayView.fadeMode)
         XCTAssertEqual(overlayView.fadeDuration, 1.25)
+    }
+
+    func testFadeDelaySetting() {
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.fadeDelayKey) }
+
+        UserDefaults.standard.removeObject(forKey: UserDefaults.fadeDelayKey)
+        XCTAssertEqual(overlayView.fadeDelay, defaultFadeDelay)
+
+        UserDefaults.standard.fadeDelay = 3.0
+        XCTAssertEqual(overlayView.fadeDelay, 3.0)
+        XCTAssertEqual(overlayView.fadeDuration, 3.0 + overlayView.fadeOutDuration)
+    }
+
+    func testOverlayViewInitialEmptyState() {
 
         // Test empty collections
         XCTAssertTrue(overlayView.paths.isEmpty)
