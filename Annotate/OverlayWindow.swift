@@ -531,8 +531,13 @@ class OverlayWindow: NSPanel {
     }
 
     private func continueFreehandStroke(_ tool: ToolType, to point: NSPoint, timestamp: TimeInterval) {
-        let inFlight = tool == .pen ? overlayView.currentPath : overlayView.currentHighlight
-        let previousPoint = inFlight?.points.last?.point ?? point
+        // Read through, rather than binding the stroke: a live copy of the struct
+        // would keep a second reference to the points buffer and turn the append
+        // below into a full array copy on every event.
+        let previousPoint =
+            (tool == .pen
+                ? overlayView.currentPath?.points.last?.point
+                : overlayView.currentHighlight?.points.last?.point) ?? point
 
         if isShiftConstraintActive {
             if tool == .pen {
@@ -579,6 +584,16 @@ class OverlayWindow: NSPanel {
         }
     }
 
+    // Discards the in-flight stroke. Dropping the latch alone would leave the stroke
+    // painted with no way to commit, fade or clear it: clearAll only nils it when
+    // something is already committed.
+    private func cancelFreehandStroke() {
+        guard let tool = activeFreehandTool else { return }
+        _ = overlayView.endFreehandStroke(tool: tool)
+        activeFreehandTool = nil
+        overlayView.needsDisplay = true
+    }
+
     private func rectSpanning(_ first: NSPoint, _ second: NSPoint, padding: CGFloat) -> NSRect {
         NSRect(
             x: min(first.x, second.x),
@@ -612,6 +627,13 @@ class OverlayWindow: NSPanel {
 
     override func mouseUp(with event: NSEvent) {
         restoreMouseCoalescing()
+
+        // Commit before the selection and text branches below, which return early.
+        if let strokeTool = activeFreehandTool {
+            commitFreehandStroke(strokeTool, timestamp: event.timestamp)
+            activeFreehandTool = nil
+        }
+
         let cursorManager = CursorHighlightManager.shared
         if cursorManager.isActive {
             cursorManager.startReleaseAnimation()
@@ -685,11 +707,6 @@ class OverlayWindow: NSPanel {
             overlayView.dragOffset = nil
         }
 
-        if let strokeTool = activeFreehandTool {
-            commitFreehandStroke(strokeTool, timestamp: event.timestamp)
-            activeFreehandTool = nil
-        }
-
         switch overlayView.currentTool {
         case .pen, .highlighter:
             break
@@ -740,7 +757,7 @@ class OverlayWindow: NSPanel {
         let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
-            activeFreehandTool = nil
+            cancelFreehandStroke()
         }
         
         // Handle single-key shortcuts if no modifiers are pressed
@@ -805,14 +822,14 @@ class OverlayWindow: NSPanel {
         case 51:  // Delete/Backspace key
             if event.modifierFlags.contains(.option) {
                 overlayView.clearAll()
-                activeFreehandTool = nil
+                cancelFreehandStroke()
             } else {
                 overlayView.deleteLastItem()
             }
         case 117:  // Forward Delete key (fn+delete)
             if event.modifierFlags.contains(.option) {
                 overlayView.clearAll()
-                activeFreehandTool = nil
+                cancelFreehandStroke()
             } else {
                 overlayView.deleteLastItem()
             }

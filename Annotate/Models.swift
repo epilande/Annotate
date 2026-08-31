@@ -28,11 +28,15 @@ enum ToolType: String, CaseIterable {
         }
     }
 
-    // Maintains the ratio: 14/3 ≈ 4.67
+    /// Rendered width per nominal point, keeping the highlighter's 14/3 ratio.
+    /// Rendering, dirty-rect padding, selection and eraser hit-testing all read this,
+    /// so the value must not be re-inlined at a call site.
     var strokeWidthMultiplier: CGFloat {
         self == .highlighter ? 4.67 : 1
     }
 
+    /// Alpha ink is laid down at, applied at render time so the stored color is
+    /// whatever the user picked. Same single-authority rule as the multiplier.
     var laydownAlpha: CGFloat {
         self == .highlighter ? 0.5 : 1
     }

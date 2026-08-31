@@ -228,6 +228,78 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.paths.isEmpty)
     }
 
+    func testOptionDeleteMidDragCancelsStrokeOnAnEmptyCanvas() {
+        // Nothing committed, so clearAll leaves the in-flight stroke alone and the
+        // window has to cancel it. Otherwise it stays painted with no way to remove it.
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        XCTAssertNotNil(window.overlayView.currentPath)
+
+        window.keyDown(with: TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 51,
+            modifierFlags: .option
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testEscapeMidDragCancelsStroke() {
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        window.keyDown(with: TestEvents.createKeyEvent(type: .keyDown, keyCode: 53)!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testHighlighterStrokeCommitsOnMouseUp() {
+        window.overlayView.currentTool = .highlighter
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.highlightPaths.count, 1)
+        XCTAssertEqual(window.overlayView.highlightPaths.last?.points.count, 2)
+        XCTAssertNil(window.overlayView.currentHighlight)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
     func testEscapeRestoresMouseCoalescing() {
         beginUncoalescedPenStroke()
 
