@@ -22,9 +22,8 @@ final class QuickPickerView: NSView {
     static let padding: CGFloat = 12
     static let commitAnimationDuration: TimeInterval = 0.16
     static let digitCaptionFontSize: CGFloat = 11
-    static let digitCaptionFontWeight: NSFont.Weight = .bold
-    static let digitCaptionColor = NSColor.white
-    static let digitCaptionBadgeColor = NSColor.black.withAlphaComponent(0.78)
+    static let digitCaptionFontWeight: NSFont.Weight = .semibold
+    static let digitCaptionColor = NSColor.black.withAlphaComponent(0.82)
 
     static var digitCaptionAttributes: [NSAttributedString.Key: Any] {
         [
@@ -322,18 +321,9 @@ final class QuickPickerCellView: NSView {
         let label = NSAttributedString(
             string: String(digit), attributes: QuickPickerView.digitCaptionAttributes)
         let labelSize = label.size()
-        let badgeRect = NSRect(
-            x: bounds.midX - (labelSize.width + 9) / 2,
-            y: 2,
-            width: labelSize.width + 9,
-            height: labelSize.height + 2)
-        QuickPickerView.digitCaptionBadgeColor.setFill()
-        NSBezierPath(
-            roundedRect: badgeRect, xRadius: badgeRect.height / 2, yRadius: badgeRect.height / 2)
-            .fill()
         label.draw(
             at: NSPoint(
-                x: badgeRect.midX - labelSize.width / 2,
-                y: badgeRect.midY - labelSize.height / 2))
+                x: bounds.midX - labelSize.width / 2,
+                y: 2))
     }
 }

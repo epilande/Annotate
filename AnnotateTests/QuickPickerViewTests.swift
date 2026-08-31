@@ -98,22 +98,20 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         XCTAssertEqual(picker.selectedIndex, 1)
     }
 
-    func testDigitCaptionsUseADarkBadgeInsteadOfOutlinedWhiteType() throws {
+    func testDigitCaptionsUseQuietDarkTypeInsteadOfOutlinedWhiteOrBadges() throws {
         let attributes = QuickPickerView.digitCaptionAttributes
         let font = try XCTUnwrap(attributes[.font] as? NSFont)
         let digitColor = try XCTUnwrap(attributes[.foregroundColor] as? NSColor)
-        let badgeColor = QuickPickerView.digitCaptionBadgeColor
 
         XCTAssertEqual(font.pointSize, QuickPickerView.digitCaptionFontSize)
-        XCTAssertGreaterThanOrEqual(QuickPickerView.digitCaptionFontSize, 11)
-        XCTAssertGreaterThanOrEqual(
-            QuickPickerView.digitCaptionFontWeight.rawValue, NSFont.Weight.bold.rawValue)
+        XCTAssertEqual(QuickPickerView.digitCaptionFontSize, 11)
+        XCTAssertEqual(QuickPickerView.digitCaptionFontWeight, .semibold)
         XCTAssertTrue(digitColor.isClose(to: QuickPickerView.digitCaptionColor))
-        XCTAssertEqual(digitColor.contrastingColor(), .black)
-        XCTAssertEqual(badgeColor.contrastingColor(), .white)
-        XCTAssertGreaterThan(badgeColor.alphaComponent, 0.6)
+        XCTAssertEqual(digitColor.contrastingColor(), .white)
+        XCTAssertGreaterThan(digitColor.alphaComponent, 0.7)
         XCTAssertNil(attributes[.strokeWidth])
         XCTAssertNil(attributes[.strokeColor])
+        XCTAssertNil(attributes[.shadow])
     }
 
     func testEveryPickerModeAssignsOneBasedDigitCaptions() {
