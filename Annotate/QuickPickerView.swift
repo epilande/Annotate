@@ -21,16 +21,11 @@ final class QuickPickerView: NSView {
     static let cellSize: CGFloat = 46
     static let padding: CGFloat = 12
     static let commitAnimationDuration: TimeInterval = 0.16
-    static let digitCaptionFontSize: CGFloat = 11
-    static let digitCaptionFontWeight: NSFont.Weight = .semibold
-    static let digitCaptionColor = NSColor.black.withAlphaComponent(0.82)
+    static let digitFontSize: CGFloat = 10
+    static let digitFontWeight: NSFont.Weight = .medium
 
-    static var digitCaptionAttributes: [NSAttributedString.Key: Any] {
-        [
-            .font: NSFont.monospacedDigitSystemFont(
-                ofSize: digitCaptionFontSize, weight: digitCaptionFontWeight),
-            .foregroundColor: digitCaptionColor,
-        ]
+    static var digitFont: NSFont {
+        NSFont.monospacedDigitSystemFont(ofSize: digitFontSize, weight: digitFontWeight)
     }
 
     let mode: Mode
@@ -64,6 +59,7 @@ final class QuickPickerView: NSView {
     private let previewColor: NSColor
     private let previewTool: ToolType
     private var cells: [QuickPickerCellView] = []
+    private var glass: NSVisualEffectView!
 
     private var options: [CGFloat] {
         switch mode {
@@ -121,6 +117,7 @@ final class QuickPickerView: NSView {
         glass.blendingMode = .withinWindow
         glass.state = .active
         addSubview(glass)
+        self.glass = glass
 
         buildCells()
         refreshSelection()
@@ -248,7 +245,7 @@ final class QuickPickerView: NSView {
             cell.value = mode == .color ? 0 : options[index]
             cell.valueRange = mode == .color ? 0...1 : (options.first ?? 0)...(options.last ?? 1)
             cell.laydownAlpha = previewTool.laydownAlpha
-            addSubview(cell)
+            glass.addSubview(cell)
             cells.append(cell)
         }
     }
@@ -261,19 +258,29 @@ final class QuickPickerView: NSView {
 }
 
 final class QuickPickerCellView: NSView {
-    var digit = 0
+    var digit = 0 {
+        didSet { digitView.digit = digit }
+    }
     var mode: QuickPickerView.Mode = .color
     var color: NSColor = .white
     var value: CGFloat = 0
     var valueRange: ClosedRange<CGFloat> = 0...1
     var laydownAlpha: CGFloat = 1
     var isSelected = false {
-        didSet { needsDisplay = true }
+        didSet {
+            digitView.isSelected = isSelected
+            needsDisplay = true
+        }
     }
+
+    private let digitView = QuickPickerDigitView(frame: .zero)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+        digitView.frame = bounds
+        digitView.autoresizingMask = [.width, .height]
+        addSubview(digitView)
     }
 
     required init?(coder: NSCoder) {
@@ -290,11 +297,11 @@ final class QuickPickerCellView: NSView {
 
         let diameter: CGFloat
         if mode == .color {
-            diameter = isSelected ? 31 : 27
+            diameter = isSelected ? 29 : 27
         } else {
             let span = valueRange.upperBound - valueRange.lowerBound
             let fraction = span > 0 ? (value - valueRange.lowerBound) / span : 0
-            diameter = 8 + fraction * 26
+            diameter = 8 + fraction * 20
         }
 
         let dotRect = NSRect(
@@ -313,17 +320,32 @@ final class QuickPickerCellView: NSView {
             ring.lineWidth = 2
             ring.stroke()
         }
+    }
+}
 
-        drawDigitCaption()
+final class QuickPickerDigitView: NSView {
+    var digit = 0 {
+        didSet { needsDisplay = true }
+    }
+    var isSelected = false {
+        didSet { needsDisplay = true }
     }
 
-    private func drawDigitCaption() {
+    override var allowsVibrancy: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
         let label = NSAttributedString(
-            string: String(digit), attributes: QuickPickerView.digitCaptionAttributes)
+            string: String(digit),
+            attributes: [
+                .font: QuickPickerView.digitFont,
+                .foregroundColor: isSelected ? NSColor.labelColor : NSColor.secondaryLabelColor
+            ])
         let labelSize = label.size()
         label.draw(
             at: NSPoint(
-                x: bounds.midX - labelSize.width / 2,
-                y: 2))
+                x: bounds.width - 5 - labelSize.width,
+                y: 3))
     }
 }

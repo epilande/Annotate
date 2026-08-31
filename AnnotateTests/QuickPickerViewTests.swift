@@ -98,32 +98,27 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         XCTAssertEqual(picker.selectedIndex, 1)
     }
 
-    func testDigitCaptionsUseQuietDarkTypeInsteadOfOutlinedWhiteOrBadges() throws {
-        let attributes = QuickPickerView.digitCaptionAttributes
-        let font = try XCTUnwrap(attributes[.font] as? NSFont)
-        let digitColor = try XCTUnwrap(attributes[.foregroundColor] as? NSColor)
-
-        XCTAssertEqual(font.pointSize, QuickPickerView.digitCaptionFontSize)
-        XCTAssertEqual(QuickPickerView.digitCaptionFontSize, 11)
-        XCTAssertEqual(QuickPickerView.digitCaptionFontWeight, .semibold)
-        XCTAssertTrue(digitColor.isClose(to: QuickPickerView.digitCaptionColor))
-        XCTAssertEqual(digitColor.contrastingColor(), .white)
-        XCTAssertGreaterThan(digitColor.alphaComponent, 0.7)
-        XCTAssertNil(attributes[.strokeWidth])
-        XCTAssertNil(attributes[.strokeColor])
-        XCTAssertNil(attributes[.shadow])
+    func testDigitsUseVibrantSemanticLabelColorsInsteadOfFixedDarkCaptions() {
+        XCTAssertEqual(QuickPickerView.digitFont.pointSize, 10)
+        XCTAssertEqual(QuickPickerView.digitFontSize, 10)
+        XCTAssertEqual(QuickPickerView.digitFontWeight, .medium)
+        XCTAssertTrue(QuickPickerDigitView().allowsVibrancy)
     }
 
     func testEveryPickerModeAssignsOneBasedDigitCaptions() {
         let modes: [QuickPickerView.Mode] = [.color, .width, .fontSize, .counterSize]
         for mode in modes {
             let picker = makePicker(mode: mode)
-            let cells = picker.subviews.compactMap { $0 as? QuickPickerCellView }
+            let cells = allSubviews(of: picker).compactMap { $0 as? QuickPickerCellView }
             XCTAssertEqual(cells.count, picker.optionCount, "\(mode) should draw one cell per option")
             XCTAssertEqual(
                 cells.map(\.digit), Array(1...picker.optionCount),
                 "\(mode) should label cells with digit shortcuts")
         }
+    }
+
+    private func allSubviews(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap { allSubviews(of: $0) }
     }
 
     private func makePicker(
