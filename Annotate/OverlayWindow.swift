@@ -22,6 +22,10 @@ class OverlayWindow: NSPanel {
     private var feedbackRemovalTask: DispatchWorkItem?
     private var lastLiveShapeRect: NSRect?
     private var restoresMouseCoalescing = false
+    /// The tool that began the in-flight freehand stroke, latched at `mouseDown`.
+    /// `overlayView.currentTool` can change mid-drag (single-key tool shortcuts stay
+    /// live while the button is held), so the stroke keeps the tool that started it.
+    private var activeFreehandTool: ToolType?
     
     // Create undo manager for this window
     private let _undoManager = UndoManager()
@@ -151,6 +155,7 @@ class OverlayWindow: NSPanel {
         }
 
         lastLiveShapeRect = nil
+        activeFreehandTool = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -317,6 +322,7 @@ class OverlayWindow: NSPanel {
 
         switch overlayView.currentTool {
         case .pen:
+            activeFreehandTool = .pen
             beginUncoalescedFreehandInput()
             overlayView.beginFreehandStroke(
                 DrawingPath(
@@ -333,6 +339,7 @@ class OverlayWindow: NSPanel {
             overlayView.currentLine = Line(
                 startPoint: startPoint, endPoint: startPoint, color: currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .highlighter:
+            activeFreehandTool = .highlighter
             beginUncoalescedFreehandInput()
             overlayView.beginFreehandStroke(
                 DrawingPath(
@@ -424,49 +431,15 @@ class OverlayWindow: NSPanel {
             return
         }
 
+        if let strokeTool = activeFreehandTool {
+            continueFreehandStroke(strokeTool, to: currentPoint, timestamp: event.timestamp)
+            return
+        }
+
         switch overlayView.currentTool {
-        case .pen:
-            let previousPoint = overlayView.currentPath?.points.last?.point ?? currentPoint
-            if isShiftConstraintActive {
-                updatePathWithShiftConstraint(
-                    path: &overlayView.currentPath,
-                    to: currentPoint,
-                    timestamp: event.timestamp
-                )
-                overlayView.rebuildCurrentFreehandStroke(tool: .pen)
-                overlayView.needsDisplay = true
-            } else {
-                overlayView.appendFreehandPoint(
-                    TimedPoint(point: currentPoint, timestamp: event.timestamp),
-                    tool: .pen
-                )
-                invalidateLiveSegment(
-                    from: previousPoint,
-                    to: currentPoint,
-                    tool: .pen
-                )
-            }
-        case .highlighter:
-            let previousPoint = overlayView.currentHighlight?.points.last?.point ?? currentPoint
-            if isShiftConstraintActive {
-                updatePathWithShiftConstraint(
-                    path: &overlayView.currentHighlight,
-                    to: currentPoint,
-                    timestamp: event.timestamp
-                )
-                overlayView.rebuildCurrentFreehandStroke(tool: .highlighter)
-                overlayView.needsDisplay = true
-            } else {
-                overlayView.appendFreehandPoint(
-                    TimedPoint(point: currentPoint, timestamp: event.timestamp),
-                    tool: .highlighter
-                )
-                invalidateLiveSegment(
-                    from: previousPoint,
-                    to: currentPoint,
-                    tool: .highlighter
-                )
-            }
+        case .pen, .highlighter:
+            // The tool was selected after mouseDown, so no stroke is in flight.
+            break
         case .arrow:
             overlayView.currentArrow?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
@@ -556,6 +529,59 @@ class OverlayWindow: NSPanel {
         case .eraser:
             overlayView.eraseAtPoint(currentPoint)
             overlayView.needsDisplay = true
+        }
+    }
+
+    /// Continues the stroke `mouseDown` began. Dispatching on the latched tool rather
+    /// than `overlayView.currentTool` means switching tools mid-drag neither appends to
+    /// a stroke that was never started nor strands the one that was.
+    private func continueFreehandStroke(_ tool: ToolType, to point: NSPoint, timestamp: TimeInterval) {
+        let inFlight = tool == .pen ? overlayView.currentPath : overlayView.currentHighlight
+        let previousPoint = inFlight?.points.last?.point ?? point
+
+        if isShiftConstraintActive {
+            if tool == .pen {
+                updatePathWithShiftConstraint(
+                    path: &overlayView.currentPath,
+                    to: point,
+                    timestamp: timestamp
+                )
+            } else {
+                updatePathWithShiftConstraint(
+                    path: &overlayView.currentHighlight,
+                    to: point,
+                    timestamp: timestamp
+                )
+            }
+            overlayView.rebuildCurrentFreehandStroke(tool: tool)
+            overlayView.needsDisplay = true
+        } else {
+            overlayView.appendFreehandPoint(
+                TimedPoint(point: point, timestamp: timestamp),
+                tool: tool
+            )
+            invalidateLiveSegment(from: previousPoint, to: point, tool: tool)
+        }
+    }
+
+    /// Commits the in-flight stroke, rebasing its timestamps so the fade clock starts at
+    /// mouseUp rather than at the moment each point was sampled.
+    private func commitFreehandStroke(_ tool: ToolType, timestamp: TimeInterval) {
+        guard var stroke = overlayView.endFreehandStroke(tool: tool),
+            let firstTimestamp = stroke.points.first?.timestamp
+        else { return }
+
+        let offset = timestamp - firstTimestamp
+        for index in stroke.points.indices {
+            stroke.points[index].timestamp += offset
+        }
+
+        if tool == .pen {
+            overlayView.registerUndo(action: .addPath(stroke))
+            overlayView.paths.append(stroke)
+        } else {
+            overlayView.registerUndo(action: .addHighlight(stroke))
+            overlayView.highlightPaths.append(stroke)
         }
     }
 
@@ -665,17 +691,14 @@ class OverlayWindow: NSPanel {
             overlayView.dragOffset = nil
         }
 
+        if let strokeTool = activeFreehandTool {
+            commitFreehandStroke(strokeTool, timestamp: event.timestamp)
+            activeFreehandTool = nil
+        }
+
         switch overlayView.currentTool {
-        case .pen:
-            if var currentPath = overlayView.endFreehandStroke(tool: .pen) {
-                guard let firstTimestamp = currentPath.points.first?.timestamp else { return }
-                let offset = event.timestamp - firstTimestamp
-                for index in currentPath.points.indices {
-                    currentPath.points[index].timestamp += offset
-                }
-                overlayView.registerUndo(action: .addPath(currentPath))
-                overlayView.paths.append(currentPath)
-            }
+        case .pen, .highlighter:
+            break
         case .arrow:
             if var currentArrow = overlayView.currentArrow {
                 currentArrow.creationTime = CACurrentMediaTime()
@@ -689,16 +712,6 @@ class OverlayWindow: NSPanel {
                 overlayView.registerUndo(action: .addLine(currentLine))
                 overlayView.lines.append(currentLine)
                 overlayView.currentLine = nil
-            }
-        case .highlighter:
-            if var currentHighlight = overlayView.endFreehandStroke(tool: .highlighter) {
-                guard let firstTimestamp = currentHighlight.points.first?.timestamp else { return }
-                let offset = event.timestamp - firstTimestamp
-                for index in currentHighlight.points.indices {
-                    currentHighlight.points[index].timestamp += offset
-                }
-                overlayView.registerUndo(action: .addHighlight(currentHighlight))
-                overlayView.highlightPaths.append(currentHighlight)
             }
         case .rectangle:
             if var currentRectangle = overlayView.currentRectangle {
@@ -733,6 +746,7 @@ class OverlayWindow: NSPanel {
         let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
+            activeFreehandTool = nil
         }
         
         // Handle single-key shortcuts if no modifiers are pressed
@@ -797,12 +811,14 @@ class OverlayWindow: NSPanel {
         case 51:  // Delete/Backspace key
             if event.modifierFlags.contains(.option) {
                 overlayView.clearAll()
+                activeFreehandTool = nil
             } else {
                 overlayView.deleteLastItem()
             }
         case 117:  // Forward Delete key (fn+delete)
             if event.modifierFlags.contains(.option) {
                 overlayView.clearAll()
+                activeFreehandTool = nil
             } else {
                 overlayView.deleteLastItem()
             }

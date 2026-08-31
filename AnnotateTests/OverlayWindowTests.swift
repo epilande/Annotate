@@ -169,6 +169,72 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
+    func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        // Single-key tool shortcuts stay live while the button is held. The in-flight
+        // stroke must keep going as a pen stroke rather than trapping on the nil
+        // highlighter stroke or being stranded uncommitted.
+        window.overlayView.currentTool = .highlighter
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.currentPath?.points.count, 2)
+        XCTAssertNil(window.overlayView.currentHighlight)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.paths.last?.points.count, 2)
+        XCTAssertTrue(window.overlayView.highlightPaths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
+        // clearAll only cancels the in-flight stroke when something is already
+        // committed (OverlayView.clearAll guards on the stored collections), so the
+        // canvas needs prior content for this to be the real cancel-mid-drag path.
+        window.overlayView.paths = [
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
+                color: .systemRed,
+                lineWidth: 3
+            )
+        ]
+
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        window.overlayView.clearAll()
+        XCTAssertNil(window.overlayView.currentPath)
+
+        // The stroke is gone but the button is still down; further drags must be
+        // dropped rather than trapping, and nothing may be committed on mouseUp.
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
     func testEscapeRestoresMouseCoalescing() {
         beginUncoalescedPenStroke()
 

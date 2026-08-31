@@ -523,14 +523,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
+    /// Appends a point to the in-flight stroke. Drops the point when no stroke is in
+    /// flight: a stroke can be cancelled mid-drag (`clearAll`) while the mouse is still
+    /// down, and losing a point is the correct response to that, not a trap.
     func appendFreehandPoint(_ point: TimedPoint, tool: ToolType) {
         switch tool {
         case .pen:
-            precondition(currentPath != nil && currentPathBezier != nil)
+            guard currentPath != nil, currentPathBezier != nil else { return }
             currentPath?.points.append(point)
             currentPathBezier?.line(to: point.point)
         case .highlighter:
-            precondition(currentHighlight != nil && currentHighlightBezier != nil)
+            guard currentHighlight != nil, currentHighlightBezier != nil else { return }
             currentHighlight?.points.append(point)
             currentHighlightBezier?.line(to: point.point)
         default:
