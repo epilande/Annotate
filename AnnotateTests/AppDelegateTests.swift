@@ -288,6 +288,44 @@ final class AppDelegateTests: XCTestCase, Sendable {
         overlayWindow.stopFadeLoop()
     }
 
+    func testAlwaysOnExitStartsFadeLoopWhenPersistedFadeModeIsOn() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window found")
+            return
+        }
+
+        let now = CACurrentMediaTime()
+        overlayWindow.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+
+        appDelegate.alwaysOnMode = false
+        appDelegate.toggleAlwaysOnMode()
+        XCTAssertFalse(overlayWindow.overlayView.fadeMode)
+        XCTAssertNil(overlayWindow.fadeTimer)
+
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertTrue(overlayWindow.overlayView.fadeMode)
+        XCTAssertEqual(overlayWindow.overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayWindow.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
+        XCTAssertNotNil(overlayWindow.fadeTimer)
+        overlayWindow.stopFadeLoop()
+    }
+
     func testOverlayWindowsRestorePersistedFadeMode() {
         testDefaults.set(false, forKey: UserDefaults.fadeModeKey)
 

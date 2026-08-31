@@ -694,6 +694,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindow.overlayView.fadeMode = persistedFadeMode
+        overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
 
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
