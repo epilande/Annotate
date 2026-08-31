@@ -21,6 +21,18 @@ final class QuickPickerView: NSView {
     static let cellSize: CGFloat = 46
     static let padding: CGFloat = 12
     static let commitAnimationDuration: TimeInterval = 0.16
+    static let digitCaptionFontSize: CGFloat = 11
+    static let digitCaptionFontWeight: NSFont.Weight = .bold
+    static let digitCaptionColor = NSColor.white
+    static let digitCaptionBadgeColor = NSColor.black.withAlphaComponent(0.78)
+
+    static var digitCaptionAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.monospacedDigitSystemFont(
+                ofSize: digitCaptionFontSize, weight: digitCaptionFontWeight),
+            .foregroundColor: digitCaptionColor,
+        ]
+    }
 
     let mode: Mode
     private(set) var selectedIndex: Int
@@ -249,7 +261,7 @@ final class QuickPickerView: NSView {
     }
 }
 
-private final class QuickPickerCellView: NSView {
+final class QuickPickerCellView: NSView {
     var digit = 0
     var mode: QuickPickerView.Mode = .color
     var color: NSColor = .white
@@ -303,14 +315,25 @@ private final class QuickPickerCellView: NSView {
             ring.stroke()
         }
 
-        let digitAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.95),
-            .strokeColor: NSColor.black.withAlphaComponent(0.75),
-            .strokeWidth: -2,
-        ]
-        let label = NSAttributedString(string: String(digit), attributes: digitAttributes)
+        drawDigitCaption()
+    }
+
+    private func drawDigitCaption() {
+        let label = NSAttributedString(
+            string: String(digit), attributes: QuickPickerView.digitCaptionAttributes)
         let labelSize = label.size()
-        label.draw(at: NSPoint(x: bounds.maxX - labelSize.width - 3, y: 2))
+        let badgeRect = NSRect(
+            x: bounds.midX - (labelSize.width + 9) / 2,
+            y: 2,
+            width: labelSize.width + 9,
+            height: labelSize.height + 2)
+        QuickPickerView.digitCaptionBadgeColor.setFill()
+        NSBezierPath(
+            roundedRect: badgeRect, xRadius: badgeRect.height / 2, yRadius: badgeRect.height / 2)
+            .fill()
+        label.draw(
+            at: NSPoint(
+                x: badgeRect.midX - labelSize.width / 2,
+                y: badgeRect.midY - labelSize.height / 2))
     }
 }

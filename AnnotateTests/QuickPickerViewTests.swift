@@ -98,6 +98,36 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         XCTAssertEqual(picker.selectedIndex, 1)
     }
 
+    func testDigitCaptionsUseADarkBadgeInsteadOfOutlinedWhiteType() throws {
+        let attributes = QuickPickerView.digitCaptionAttributes
+        let font = try XCTUnwrap(attributes[.font] as? NSFont)
+        let digitColor = try XCTUnwrap(attributes[.foregroundColor] as? NSColor)
+        let badgeColor = QuickPickerView.digitCaptionBadgeColor
+
+        XCTAssertEqual(font.pointSize, QuickPickerView.digitCaptionFontSize)
+        XCTAssertGreaterThanOrEqual(QuickPickerView.digitCaptionFontSize, 11)
+        XCTAssertGreaterThanOrEqual(
+            QuickPickerView.digitCaptionFontWeight.rawValue, NSFont.Weight.bold.rawValue)
+        XCTAssertTrue(digitColor.isClose(to: QuickPickerView.digitCaptionColor))
+        XCTAssertEqual(digitColor.contrastingColor(), .black)
+        XCTAssertEqual(badgeColor.contrastingColor(), .white)
+        XCTAssertGreaterThan(badgeColor.alphaComponent, 0.6)
+        XCTAssertNil(attributes[.strokeWidth])
+        XCTAssertNil(attributes[.strokeColor])
+    }
+
+    func testEveryPickerModeAssignsOneBasedDigitCaptions() {
+        let modes: [QuickPickerView.Mode] = [.color, .width, .fontSize, .counterSize]
+        for mode in modes {
+            let picker = makePicker(mode: mode)
+            let cells = picker.subviews.compactMap { $0 as? QuickPickerCellView }
+            XCTAssertEqual(cells.count, picker.optionCount, "\(mode) should draw one cell per option")
+            XCTAssertEqual(
+                cells.map(\.digit), Array(1...picker.optionCount),
+                "\(mode) should label cells with digit shortcuts")
+        }
+    }
+
     private func makePicker(
         mode: QuickPickerView.Mode,
         currentColor: NSColor = .systemRed,
