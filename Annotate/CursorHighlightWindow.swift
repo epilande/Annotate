@@ -120,12 +120,15 @@ class CursorHighlightWindow: NSPanel {
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
+        // Apply the current show/hide state immediately. CADisplayLink may not
+        // fire until the next click, so toggling spotlight off cannot wait for a frame.
+        highlightView.updateSpotlightPosition()
+        highlightView.updateHoldRingPosition()
+
         if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {
             orderFront(nil)
             startAnimationLoop()
         } else {
-            // Zero the spotlight layer before ordering out to avoid a stale flash on the next orderFront.
-            highlightView.updateSpotlightPosition()
             orderOut(nil)
             stopAnimationLoop()
         }
