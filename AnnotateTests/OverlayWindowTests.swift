@@ -176,9 +176,6 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             location: NSPoint(x: 100, y: 100)
         )!)
 
-        // Single-key tool shortcuts stay live while the button is held. The in-flight
-        // stroke must keep going as a pen stroke rather than trapping on the nil
-        // highlighter stroke or being stranded uncommitted.
         window.overlayView.currentTool = .highlighter
         window.mouseDragged(with: TestEvents.createMouseEvent(
             type: .leftMouseDragged,
@@ -200,9 +197,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
-        // clearAll only cancels the in-flight stroke when something is already
-        // committed (OverlayView.clearAll guards on the stored collections), so the
-        // canvas needs prior content for this to be the real cancel-mid-drag path.
+        // clearAll only cancels the in-flight stroke when something is already committed
         window.overlayView.paths = [
             DrawingPath(
                 points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
@@ -220,8 +215,6 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.overlayView.clearAll()
         XCTAssertNil(window.overlayView.currentPath)
 
-        // The stroke is gone but the button is still down; further drags must be
-        // dropped rather than trapping, and nothing may be committed on mouseUp.
         window.mouseDragged(with: TestEvents.createMouseEvent(
             type: .leftMouseDragged,
             location: NSPoint(x: 150, y: 150)

@@ -523,9 +523,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
-    /// Appends a point to the in-flight stroke. Drops the point when no stroke is in
-    /// flight: a stroke can be cancelled mid-drag (`clearAll`) while the mouse is still
-    /// down, and losing a point is the correct response to that, not a trap.
+    // Drops the point when the stroke was already cancelled mid-drag.
     func appendFreehandPoint(_ point: TimedPoint, tool: ToolType) {
         switch tool {
         case .pen:

@@ -22,9 +22,7 @@ class OverlayWindow: NSPanel {
     private var feedbackRemovalTask: DispatchWorkItem?
     private var lastLiveShapeRect: NSRect?
     private var restoresMouseCoalescing = false
-    /// The tool that began the in-flight freehand stroke, latched at `mouseDown`.
-    /// `overlayView.currentTool` can change mid-drag (single-key tool shortcuts stay
-    /// live while the button is held), so the stroke keeps the tool that started it.
+    // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     
     // Create undo manager for this window
@@ -532,9 +530,6 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    /// Continues the stroke `mouseDown` began. Dispatching on the latched tool rather
-    /// than `overlayView.currentTool` means switching tools mid-drag neither appends to
-    /// a stroke that was never started nor strands the one that was.
     private func continueFreehandStroke(_ tool: ToolType, to point: NSPoint, timestamp: TimeInterval) {
         let inFlight = tool == .pen ? overlayView.currentPath : overlayView.currentHighlight
         let previousPoint = inFlight?.points.last?.point ?? point
@@ -564,8 +559,7 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    /// Commits the in-flight stroke, rebasing its timestamps so the fade clock starts at
-    /// mouseUp rather than at the moment each point was sampled.
+    // Rebases timestamps so the fade clock starts at mouseUp
     private func commitFreehandStroke(_ tool: ToolType, timestamp: TimeInterval) {
         guard var stroke = overlayView.endFreehandStroke(tool: tool),
             let firstTimestamp = stroke.points.first?.timestamp

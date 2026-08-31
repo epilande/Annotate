@@ -28,20 +28,11 @@ enum ToolType: String, CaseIterable {
         }
     }
 
-    /// Factor applied to a stroke's nominal `lineWidth` to get its rendered width.
-    /// The highlighter keeps the historical 14/3 ratio (14pt rendered per 3pt nominal);
-    /// every other tool draws at its nominal width.
-    ///
-    /// `ToolType` is the single authority for this. Rendering, freehand dirty-rect
-    /// padding, selection tolerance and eraser hit-testing all derive from it, so they
-    /// cannot drift apart - don't re-inline the constant at a call site.
+    // Maintains the ratio: 14/3 ≈ 4.67
     var strokeWidthMultiplier: CGFloat {
         self == .highlighter ? 4.67 : 1
     }
 
-    /// Alpha a tool lays ink down at. The highlighter is translucent so overlapping
-    /// strokes read as highlighting; every other tool is opaque. Applied at render
-    /// time, so a stored annotation keeps the color the user actually picked.
     var laydownAlpha: CGFloat {
         self == .highlighter ? 0.5 : 1
     }
