@@ -3,8 +3,7 @@ import Cocoa
 class CursorHighlightWindow: NSPanel {
     var highlightView: CursorHighlightView!
 
-    private var animationTimer: Timer?
-    private let animationInterval: TimeInterval = 1.0 / 60.0
+    var animationDisplayLink: CADisplayLink?
 
     // Track previous frame state to ensure update functions run one extra frame
     // when transitioning to inactive (needed to set layer opacity to 0)
@@ -66,23 +65,21 @@ class CursorHighlightWindow: NSPanel {
     // MARK: - Animation Loop
 
     func startAnimationLoop() {
-        guard animationTimer == nil else { return }
-        animationTimer = Timer.scheduledTimer(
-            timeInterval: animationInterval,
+        guard animationDisplayLink == nil else { return }
+        let animationDisplayLink = displayLink(
             target: self,
-            selector: #selector(updateAnimation),
-            userInfo: nil,
-            repeats: true
+            selector: #selector(updateAnimation(_:))
         )
-        RunLoop.current.add(animationTimer!, forMode: .common)
+        self.animationDisplayLink = animationDisplayLink
+        animationDisplayLink.add(to: .current, forMode: .common)
     }
 
     func stopAnimationLoop() {
-        animationTimer?.invalidate()
-        animationTimer = nil
+        animationDisplayLink?.invalidate()
+        animationDisplayLink = nil
     }
 
-    @objc private func updateAnimation() {
+    @objc private func updateAnimation(_: CADisplayLink) {
         let manager = CursorHighlightManager.shared
 
         // Only call update functions for active features (or when transitioning to inactive to hide)
@@ -123,12 +120,15 @@ class CursorHighlightWindow: NSPanel {
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
+        // Apply the current show/hide state immediately. CADisplayLink may not
+        // fire until the next click, so toggling spotlight off cannot wait for a frame.
+        highlightView.updateSpotlightPosition()
+        highlightView.updateHoldRingPosition()
+
         if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {
             orderFront(nil)
             startAnimationLoop()
         } else {
-            // Zero the spotlight layer before ordering out to avoid a stale flash on the next orderFront.
-            highlightView.updateSpotlightPosition()
             orderOut(nil)
             stopAnimationLoop()
         }

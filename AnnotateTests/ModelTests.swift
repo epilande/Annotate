@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class ModelTests: XCTestCase {
+    func testToolStrokeWidthMultiplier() {
+        XCTAssertEqual(ToolType.highlighter.strokeWidthMultiplier, 4.67)
+
+        for tool in ToolType.allCases where tool != .highlighter {
+            XCTAssertEqual(tool.strokeWidthMultiplier, 1)
+        }
+    }
+
+    func testToolLaydownAlpha() {
+        XCTAssertEqual(ToolType.highlighter.laydownAlpha, 0.5)
+
+        for tool in ToolType.allCases where tool != .highlighter {
+            XCTAssertEqual(tool.laydownAlpha, 1)
+        }
+    }
 
     func testArrow() {
         let start = NSPoint(x: 0, y: 0)

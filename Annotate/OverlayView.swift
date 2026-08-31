@@ -60,6 +60,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var highlightPaths: [DrawingPath] = []
     var currentHighlight: DrawingPath?
+    private var currentPathBezier: NSBezierPath?
+    private var currentHighlightBezier: NSBezierPath?
 
     var rectangles: [Rectangle] = []
     var currentRectangle: Rectangle?
@@ -188,10 +190,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func undo() {
         undoManager?.undo()
+        startFadeLoopIfNeeded()
     }
 
     func redo() {
         undoManager?.redo()
+        startFadeLoopIfNeeded()
+    }
+
+    func startFadeLoopIfNeeded() {
+        guard fadeMode else { return }
+        compactExpiredAnnotations()
+        guard isAnythingFading() else { return }
+        (window as? OverlayWindow)?.startFadeLoop()
     }
 
     func registerUndo(action: DrawingAction) {
@@ -386,6 +397,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                             target.paths[index].points[i].point.x -= delta.x
                             target.paths[index].points[i].point.y -= delta.y
                         }
+                        target.rebuildPathGeometry(&target.paths[index])
                         target.registerUndo(action: .movePath(index, NSPoint(x: -delta.x, y: -delta.y)))
                         target.needsDisplay = true
                     }
@@ -400,6 +412,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                             target.highlightPaths[index].points[i].point.x -= delta.x
                             target.highlightPaths[index].points[i].point.y -= delta.y
                         }
+                        target.rebuildPathGeometry(&target.highlightPaths[index])
                         target.registerUndo(action: .moveHighlight(index, NSPoint(x: -delta.x, y: -delta.y)))
                         target.needsDisplay = true
                     }
@@ -507,177 +520,194 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
+    func beginFreehandStroke(_ stroke: DrawingPath, tool: ToolType) {
+        var stroke = stroke
+        stroke.bezierPath = makeBezierPath(points: stroke.points)
+        stroke.recacheBounds()
+        switch tool {
+        case .pen:
+            currentPath = stroke
+            currentPathBezier = stroke.bezierPath
+        case .highlighter:
+            currentHighlight = stroke
+            currentHighlightBezier = stroke.bezierPath
+        default:
+            preconditionFailure("Freehand strokes require pen or highlighter")
+        }
+    }
+
+    // Drops the point when the stroke was already cancelled mid-drag.
+    func appendFreehandPoint(_ point: TimedPoint, tool: ToolType) {
+        switch tool {
+        case .pen:
+            guard currentPath != nil, currentPathBezier != nil else { return }
+            currentPath?.points.append(point)
+            currentPath?.expandCachedBounds(with: point.point)
+            currentPathBezier?.line(to: point.point)
+        case .highlighter:
+            guard currentHighlight != nil, currentHighlightBezier != nil else { return }
+            currentHighlight?.points.append(point)
+            currentHighlight?.expandCachedBounds(with: point.point)
+            currentHighlightBezier?.line(to: point.point)
+        default:
+            preconditionFailure("Freehand strokes require pen or highlighter")
+        }
+    }
+
+    func rebuildCurrentFreehandStroke(tool: ToolType) {
+        switch tool {
+        case .pen:
+            guard var path = currentPath else { return }
+            rebuildPathGeometry(&path)
+            currentPath = path
+            currentPathBezier = path.bezierPath
+        case .highlighter:
+            guard var path = currentHighlight else { return }
+            rebuildPathGeometry(&path)
+            currentHighlight = path
+            currentHighlightBezier = path.bezierPath
+        default:
+            preconditionFailure("Freehand strokes require pen or highlighter")
+        }
+    }
+
+    func endFreehandStroke(tool: ToolType) -> DrawingPath? {
+        switch tool {
+        case .pen:
+            guard var stroke = currentPath else { return nil }
+            stroke.bezierPath = currentPathBezier
+            currentPath = nil
+            currentPathBezier = nil
+            return stroke
+        case .highlighter:
+            guard var stroke = currentHighlight else { return nil }
+            stroke.bezierPath = currentHighlightBezier
+            currentHighlight = nil
+            currentHighlightBezier = nil
+            return stroke
+        default:
+            preconditionFailure("Freehand strokes require pen or highlighter")
+        }
+    }
+
+    private func rebuildPathGeometry(_ path: inout DrawingPath) {
+        path.bezierPath = makeBezierPath(points: path.points)
+        path.recacheBounds()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let now = CACurrentMediaTime()
+        let now = fadeMode ? CACurrentMediaTime() : 0
 
-        // Draw arrows
-        var aliveArrows: [Arrow] = []
         for arrow in arrows {
-            if fadeMode, let creationTime = arrow.creationTime {
-                let age = now - creationTime
-                if age < fadeDuration {
-                    let alpha = alphaForAge(age)
-                    drawArrow(
-                        from: arrow.startPoint,
-                        to: arrow.endPoint,
-                        color: arrow.color.withAlphaComponent(alpha),
-                        lineWidth: arrow.lineWidth
-                    )
-                    aliveArrows.append(arrow)
-                }
-            } else {
-                drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color, lineWidth: arrow.lineWidth)
-                aliveArrows.append(arrow)
-            }
-        }
-        arrows = aliveArrows
-
-        // Draw current arrow being drawn
-        if let arrow = currentArrow {
-            drawArrow(from: arrow.startPoint, to: arrow.endPoint, color: arrow.color, lineWidth: arrow.lineWidth)
+            guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect) else { continue }
+            drawArrow(
+                from: arrow.startPoint,
+                to: arrow.endPoint,
+                color: arrow.color.withAlphaComponent(alpha),
+                lineWidth: arrow.lineWidth
+            )
         }
 
-        // Draw lines
-        var aliveLines: [Line] = []
+        if let arrow = currentArrow,
+            intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect)
+        {
+            drawArrow(
+                from: arrow.startPoint,
+                to: arrow.endPoint,
+                color: arrow.color,
+                lineWidth: arrow.lineWidth
+            )
+        }
+
         for line in lines {
-            if fadeMode, let creationTime = line.creationTime {
-                let age = now - creationTime
-                if age < fadeDuration {
-                    let alpha = alphaForAge(age)
-                    drawLine(
-                        from: line.startPoint,
-                        to: line.endPoint,
-                        color: line.color.withAlphaComponent(alpha),
-                        lineWidth: line.lineWidth
-                    )
-                    aliveLines.append(line)
-                }
-            } else {
-                drawLine(from: line.startPoint, to: line.endPoint, color: line.color, lineWidth: line.lineWidth)
-                aliveLines.append(line)
-            }
-        }
-        lines = aliveLines
-
-        // Draw current line being drawn
-        if let line = currentLine {
-            drawLine(from: line.startPoint, to: line.endPoint, color: line.color, lineWidth: line.lineWidth)
+            guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect) else { continue }
+            drawLine(
+                from: line.startPoint,
+                to: line.endPoint,
+                color: line.color.withAlphaComponent(alpha),
+                lineWidth: line.lineWidth
+            )
         }
 
-        // Draw existing paths
-        var alivePaths: [DrawingPath] = []
+        if let line = currentLine,
+            intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawLine(
+                from: line.startPoint,
+                to: line.endPoint,
+                color: line.color,
+                lineWidth: line.lineWidth
+            )
+        }
+
         for path in paths {
-            if fadeMode {
-                let pathRemaining = drawPathWithFading(path, now: now, isHighlighter: false)
-                if !pathRemaining.isEmpty {
-                    var newPath = path
-                    newPath.points = pathRemaining
-                    alivePaths.append(newPath)
-                }
-            } else {
-                drawPath(path, tool: .pen)
-                alivePaths.append(path)
-            }
-        }
-        paths = alivePaths
-
-        if let path = currentPath {
-            drawPath(path, tool: .pen)
+            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
+            drawPath(path, tool: .pen, bezierPath: path.bezierPath)
         }
 
-        // Draw highlighter paths
-        var aliveHighlights: [DrawingPath] = []
+        if let path = currentPath,
+            intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
+        {
+            drawPath(path, tool: .pen, bezierPath: currentPathBezier)
+        }
+
         for path in highlightPaths {
-            if fadeMode {
-                let pathRemaining = drawPathWithFading(path, now: now, isHighlighter: true)
-                if !pathRemaining.isEmpty {
-                    var newHighlight = path
-                    newHighlight.points = pathRemaining
-                    aliveHighlights.append(newHighlight)
-                }
-            } else {
-                drawPath(path, tool: .highlighter)
-                aliveHighlights.append(path)
-            }
-        }
-        highlightPaths = aliveHighlights
-
-        if let highlight = currentHighlight {
-            drawPath(highlight, tool: .highlighter)
+            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
+            drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
         }
 
-        // Draw rectangles
-        var aliveRects: [Rectangle] = []
-        for rect in rectangles {
-            if fadeMode, let creationTime = rect.creationTime {
-                let age = now - creationTime
-                if age < fadeDuration {
-                    let alpha = alphaForAge(age)
-                    drawRectangle(rect, alpha: alpha)
-                    aliveRects.append(rect)
-                }
-            } else {
-                drawRectangle(rect, alpha: 1.0)
-                aliveRects.append(rect)
-            }
-        }
-        rectangles = aliveRects
-
-        if let rectangle = currentRectangle {
-            drawRectangle(rectangle, alpha: 1.0)
+        if let highlight = currentHighlight,
+            intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
+        {
+            drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
         }
 
-        // Draw circles
-        var aliveCircles: [Circle] = []
+        for rectangle in rectangles {
+            guard let alpha = fadeAlphaIfVisible(creationTime: rectangle.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect) else { continue }
+            drawRectangle(rectangle, alpha: alpha)
+        }
+
+        if let rectangle = currentRectangle,
+            intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawRectangle(rectangle, alpha: 1)
+        }
+
         for circle in circles {
-            if fadeMode, let creationTime = circle.creationTime {
-                let age = now - creationTime
-                if age < fadeDuration {
-                    let alpha = alphaForAge(age)
-                    drawCircle(circle, alpha: alpha)
-                    aliveCircles.append(circle)
-                }
-            } else {
-                drawCircle(circle, alpha: 1.0)
-                aliveCircles.append(circle)
-            }
-        }
-        circles = aliveCircles
-
-        if let circle = currentCircle {
-            drawCircle(circle, alpha: 1.0)
+            guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect) else { continue }
+            drawCircle(circle, alpha: alpha)
         }
 
-        // Text annotations persist regardless of fade mode.
+        if let circle = currentCircle,
+            intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawCircle(circle, alpha: 1)
+        }
+
         for (index, annotation) in textAnnotations.enumerated() {
-            if index == editingTextAnnotationIndex { continue }  // skip the one being edited
+            if index == editingTextAnnotationIndex { continue }
+            guard intersectsDirtyRect(getTextRect(for: annotation), dirtyRect) else { continue }
             drawText(annotation)
         }
 
-        var aliveCounters: [CounterAnnotation] = []
         for counter in counterAnnotations {
-            if fadeMode, let creationTime = counter.creationTime {
-                let age = now - creationTime
-                if age < fadeDuration {
-                    let alpha = alphaForAge(age)
-                    drawCounter(counter, alpha: alpha)
-                    aliveCounters.append(counter)
-                }
-            } else {
-                drawCounter(counter, alpha: 1.0)
-                aliveCounters.append(counter)
+            guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
+            drawCounter(counter, alpha: alpha)
+        }
+
+        if !selectedObjects.isEmpty {
+            let box = calculateSelectionBoundingBox()
+            if intersectsDirtyRect(box, dirtyRect) {
+                drawSelectionBoundingBox(box)
             }
         }
-        counterAnnotations = aliveCounters
-        
-        // Draw selection bounding box for all selected objects
-        if !selectedObjects.isEmpty {
-            let boundingBox = calculateSelectionBoundingBox()
-            drawSelectionBoundingBox(boundingBox)
-        }
-        
-        // Draw selection rectangle if being drawn
+
         if isDrawingSelectionRect, let start = selectionRectStart, let end = selectionRectEnd {
             let rect = NSRect(
                 x: min(start.x, end.x),
@@ -686,13 +716,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 height: abs(end.y - start.y)
             )
 
-            let path = NSBezierPath(rect: rect)
-            path.lineWidth = 2.0
-            path.setLineDash([5.0, 3.0], count: 2, phase: 0)
-            NSColor.systemBlue.withAlphaComponent(0.3).setFill()
-            NSColor.systemBlue.setStroke()
-            path.fill()
-            path.stroke()
+            if intersectsDirtyRect(rect, dirtyRect) {
+                let path = NSBezierPath(rect: rect)
+                path.lineWidth = 2
+                path.setLineDash([5, 3], count: 2, phase: 0)
+                NSColor.systemBlue.withAlphaComponent(0.3).setFill()
+                NSColor.systemBlue.setStroke()
+                path.fill()
+                path.stroke()
+            }
         }
     }
     
@@ -832,46 +864,162 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return boundingBox.contains(point)
     }
 
+    private func fadeAlphaIfVisible(creationTime: CFTimeInterval?, now: CFTimeInterval) -> CGFloat? {
+        guard fadeMode else { return 1 }
+        guard let creationTime else { return 1 }
+        let age = now - creationTime
+        guard age < fadeDuration else { return nil }
+        return alphaForAge(age)
+    }
+
+    private func intersectsDirtyRect(_ bounds: NSRect, _ dirtyRect: NSRect) -> Bool {
+        if bounds.isNull { return false }
+        return bounds.intersects(dirtyRect)
+    }
+
+    private func boundsForLine(_ start: NSPoint, _ end: NSPoint, padding: CGFloat) -> NSRect {
+        NSRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(end.x - start.x),
+            height: abs(end.y - start.y)
+        ).insetBy(dx: -padding, dy: -padding)
+    }
+
+    private func boundsForRect(_ start: NSPoint, _ end: NSPoint, padding: CGFloat) -> NSRect {
+        boundsForLine(start, end, padding: padding)
+    }
+
+    private func dirtyBounds(for path: DrawingPath, tool: ToolType) -> NSRect {
+        let padding = path.lineWidth * tool.strokeWidthMultiplier / 2 + 6
+        let bounds = path.cachedBounds.isNull ? DrawingPath.bounds(of: path.points) : path.cachedBounds
+        guard !bounds.isNull else { return .null }
+        return bounds.insetBy(dx: -padding, dy: -padding)
+    }
+
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
         let fadeDelay = fadeDuration / 2
         if age <= fadeDelay { return 1.0 }
         let fadeOut = fadeDelay - (age - fadeDelay)
         return CGFloat(max(0, fadeOut))
     }
-    
-    
-    private func drawPathWithFading(_ path: DrawingPath, now: CFTimeInterval, isHighlighter: Bool)
-        -> [TimedPoint]
-    {
-        guard !path.points.isEmpty else { return [] }
 
-        let validPoints = path.points.filter { (now - $0.timestamp) < (fadeDuration / 4) }
+    func compactExpiredAnnotations() {
+        guard fadeMode else { return }
+        let now = CACurrentMediaTime()
 
-        guard validPoints.count > 1 else {
-            return validPoints
+        compactItems(
+            &arrows,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .arrow(let index) = $0 { return index }; return nil },
+            make: { .arrow(index: $0) }
+        )
+        compactItems(
+            &lines,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .line(let index) = $0 { return index }; return nil },
+            make: { .line(index: $0) }
+        )
+        compactItems(
+            &rectangles,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .rectangle(let index) = $0 { return index }; return nil },
+            make: { .rectangle(index: $0) }
+        )
+        compactItems(
+            &circles,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .circle(let index) = $0 { return index }; return nil },
+            make: { .circle(index: $0) }
+        )
+        compactItems(
+            &counterAnnotations,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
+            make: { .counter(index: $0) }
+        )
+        compactFadedPaths(
+            &paths,
+            now: now,
+            extractIndex: { if case .path(let index) = $0 { return index }; return nil },
+            make: { .path(index: $0) }
+        )
+        compactFadedPaths(
+            &highlightPaths,
+            now: now,
+            extractIndex: { if case .highlight(let index) = $0 { return index }; return nil },
+            make: { .highlight(index: $0) }
+        )
+    }
+
+    private func compactItems<T>(
+        _ items: inout [T],
+        keep: (T) -> Bool,
+        extractIndex: (SelectedObject) -> Int?,
+        make: (Int) -> SelectedObject
+    ) {
+        var newItems: [T] = []
+        var indexMap: [Int: Int] = [:]
+        newItems.reserveCapacity(items.count)
+        for (oldIndex, item) in items.enumerated() {
+            if keep(item) {
+                indexMap[oldIndex] = newItems.count
+                newItems.append(item)
+            }
         }
+        guard newItems.count != items.count else { return }
+        items = newItems
+        remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
+    }
 
-        let line = NSBezierPath()
-        line.move(to: validPoints[0].point)
-
-        for i in 1..<validPoints.count {
-            line.line(to: validPoints[i].point)
+    private func compactFadedPaths(
+        _ paths: inout [DrawingPath],
+        now: CFTimeInterval,
+        extractIndex: (SelectedObject) -> Int?,
+        make: (Int) -> SelectedObject
+    ) {
+        var newPaths: [DrawingPath] = []
+        var indexMap: [Int: Int] = [:]
+        let limit = fadeDuration / 4
+        newPaths.reserveCapacity(paths.count)
+        for (oldIndex, var path) in paths.enumerated() {
+            let remaining = path.points.filter { (now - $0.timestamp) < limit }
+            if remaining.isEmpty { continue }
+            if remaining.count != path.points.count {
+                path.points = remaining
+                rebuildPathGeometry(&path)
+            }
+            indexMap[oldIndex] = newPaths.count
+            newPaths.append(path)
         }
-
-        if validPoints.count > 1 {
-            let strokeColor =
-                isHighlighter
-                ? path.color.withAlphaComponent(0.5)
-                : path.color.withAlphaComponent(1)
-
-            strokeColor.setStroke()
-            line.lineWidth = isHighlighter ? path.lineWidth * 4.67 : path.lineWidth
-            line.lineJoinStyle = .round
-            line.lineCapStyle = .round
-            line.stroke()
+        let countChanged = newPaths.count != paths.count
+        paths = newPaths
+        if countChanged {
+            remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
         }
+    }
 
-        return validPoints
+    private func remapSelection(
+        indexMap: [Int: Int],
+        extractIndex: (SelectedObject) -> Int?,
+        make: (Int) -> SelectedObject
+    ) {
+        selectedObjects = Set(selectedObjects.compactMap { object in
+            guard let oldIndex = extractIndex(object) else { return object }
+            return indexMap[oldIndex].map(make)
+        })
+
+        var remappedOriginal: [SelectedObject: Any] = [:]
+        for (object, data) in selectionOriginalData {
+            if let oldIndex = extractIndex(object) {
+                if let newIndex = indexMap[oldIndex] {
+                    remappedOriginal[make(newIndex)] = data
+                }
+            } else {
+                remappedOriginal[object] = data
+            }
+        }
+        selectionOriginalData = remappedOriginal
     }
 
     private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
@@ -975,29 +1123,32 @@ class OverlayView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
-    private func drawPath(_ path: DrawingPath, tool: ToolType) {
+    private func makeBezierPath(points: [TimedPoint]) -> NSBezierPath {
+        let bezierPath = NSBezierPath()
+        guard let firstPoint = points.first else { return bezierPath }
+
+        bezierPath.move(to: firstPoint.point)
+        for timedPoint in points.dropFirst() {
+            bezierPath.line(to: timedPoint.point)
+        }
+        return bezierPath
+    }
+
+    private func drawPath(
+        _ path: DrawingPath,
+        tool: ToolType,
+        bezierPath: NSBezierPath? = nil
+    ) {
         guard !path.points.isEmpty else { return }
 
         let adaptedColor = adaptColorForBoard(path.color, boardType: currentBoardType)
+        let renderedPath = bezierPath ?? makeBezierPath(points: path.points)
 
-        let bezierPath = NSBezierPath()
-        bezierPath.move(to: path.points[0].point)
-
-        for timedPoint in path.points.dropFirst() {
-            bezierPath.line(to: timedPoint.point)
-        }
-
-        if tool == .highlighter {
-            adaptedColor.withAlphaComponent(0.5).setStroke()
-            bezierPath.lineWidth = path.lineWidth * 4.67  // Maintain the ratio: 14/3 ≈ 4.67
-        } else {
-            adaptedColor.setStroke()
-            bezierPath.lineWidth = path.lineWidth
-        }
-
-        bezierPath.lineJoinStyle = .round
-        bezierPath.lineCapStyle = .round
-        bezierPath.stroke()
+        adaptedColor.withAlphaComponent(tool.laydownAlpha).setStroke()
+        renderedPath.lineWidth = path.lineWidth * tool.strokeWidthMultiplier
+        renderedPath.lineJoinStyle = .round
+        renderedPath.lineCapStyle = .round
+        renderedPath.stroke()
     }
 
     private func drawText(_ annotation: TextAnnotation) {
@@ -1055,6 +1206,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func clearAll() {
         cleanupActiveTextField()
 
+        currentPath = nil
+        currentHighlight = nil
+        currentPathBezier = nil
+        currentHighlightBezier = nil
+
         // Only register undo if there's something to clear
         if !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty
             || !rectangles.isEmpty
@@ -1084,8 +1240,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
             nextCounterNumber = 1
             currentArrow = nil
             currentLine = nil
-            currentPath = nil
-            currentHighlight = nil
             currentRectangle = nil
             currentCircle = nil
             currentTextAnnotation = nil
@@ -1096,9 +1250,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             isDrawingSelectionRect = false
             selectionDragOffset = nil
             selectionOriginalData = [:]
-
-            needsDisplay = true
         }
+
+        needsDisplay = true
     }
 
     func deleteLastItem() {
@@ -1362,6 +1516,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
                     )
                 }
+                rebuildPathGeometry(&path)
                 paths.append(path)
                 registerUndo(action: .addPath(path))
                 pastedObjects.append(.path(index: paths.count - 1))
@@ -1373,6 +1528,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
                     )
                 }
+                rebuildPathGeometry(&highlight)
                 highlightPaths.append(highlight)
                 registerUndo(action: .addHighlight(highlight))
                 pastedObjects.append(.highlight(index: highlightPaths.count - 1))
@@ -1397,6 +1553,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         selectedObjects = Set(pastedObjects)
         currentTool = .select
 
+        startFadeLoopIfNeeded()
         needsDisplay = true
     }
     
@@ -1820,12 +1977,48 @@ class OverlayView: NSView, NSTextFieldDelegate {
     
     // MARK: - Selection and Hit Testing
     
+    private func isFadedOut(_ object: SelectedObject) -> Bool {
+        guard fadeMode else { return false }
+        let now = CACurrentMediaTime()
+        switch object {
+        case .arrow(let index):
+            guard index < arrows.count else { return true }
+            return fadeAlphaIfVisible(creationTime: arrows[index].creationTime, now: now) == nil
+        case .line(let index):
+            guard index < lines.count else { return true }
+            return fadeAlphaIfVisible(creationTime: lines[index].creationTime, now: now) == nil
+        case .rectangle(let index):
+            guard index < rectangles.count else { return true }
+            return fadeAlphaIfVisible(creationTime: rectangles[index].creationTime, now: now) == nil
+        case .circle(let index):
+            guard index < circles.count else { return true }
+            return fadeAlphaIfVisible(creationTime: circles[index].creationTime, now: now) == nil
+        case .counter(let index):
+            guard index < counterAnnotations.count else { return true }
+            return fadeAlphaIfVisible(creationTime: counterAnnotations[index].creationTime, now: now) == nil
+        case .path(let index):
+            guard index < paths.count else { return true }
+            return !isPathVisible(paths[index], now: now)
+        case .highlight(let index):
+            guard index < highlightPaths.count else { return true }
+            return !isPathVisible(highlightPaths[index], now: now)
+        case .text, .none:
+            return false
+        }
+    }
+
+    private func isPathVisible(_ path: DrawingPath, now: CFTimeInterval) -> Bool {
+        let limit = fadeDuration / 4
+        return path.points.contains { (now - $0.timestamp) < limit }
+    }
+
     /// Find object at point, checking in reverse order (topmost/latest first)
     func findObjectAt(point: NSPoint) -> SelectedObject {
         // Check in reverse order - last drawn is on top
         
         // 1. Check counters
         for (index, counter) in counterAnnotations.enumerated().reversed() {
+            if isFadedOut(.counter(index: index)) { continue }
             if hitTestCounter(counter, point: point) {
                 return .counter(index: index)
             }
@@ -1840,6 +2033,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 3. Check circles
         for (index, circle) in circles.enumerated().reversed() {
+            if isFadedOut(.circle(index: index)) { continue }
             if hitTestCircle(circle, point: point) {
                 return .circle(index: index)
             }
@@ -1847,6 +2041,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 4. Check rectangles
         for (index, rect) in rectangles.enumerated().reversed() {
+            if isFadedOut(.rectangle(index: index)) { continue }
             if hitTestRectangle(rect, point: point) {
                 return .rectangle(index: index)
             }
@@ -1854,20 +2049,23 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 5. Check highlight paths
         for (index, path) in highlightPaths.enumerated().reversed() {
-            if hitTestHighlightPath(path, point: point) {
+            if isFadedOut(.highlight(index: index)) { continue }
+            if hitTestPath(path, tool: .highlighter, point: point) {
                 return .highlight(index: index)
             }
         }
         
         // 6. Check regular paths
         for (index, path) in paths.enumerated().reversed() {
-            if hitTestPath(path, point: point) {
+            if isFadedOut(.path(index: index)) { continue }
+            if hitTestPath(path, tool: .pen, point: point) {
                 return .path(index: index)
             }
         }
         
         // 7. Check lines
         for (index, line) in lines.enumerated().reversed() {
+            if isFadedOut(.line(index: index)) { continue }
             if hitTestLine(line, point: point) {
                 return .line(index: index)
             }
@@ -1875,6 +2073,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 8. Check arrows
         for (index, arrow) in arrows.enumerated().reversed() {
+            if isFadedOut(.arrow(index: index)) { continue }
             if hitTestArrow(arrow, point: point) {
                 return .arrow(index: index)
             }
@@ -1900,6 +2099,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         for (count, factory) in objectCollections {
             for i in 0..<count {
                 let selectedObject = factory(i)
+                if isFadedOut(selectedObject) { continue }
                 if objectIntersectsRect(selectedObject, rect: rect) {
                     foundObjects.insert(selectedObject)
                 }
@@ -2069,29 +2269,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return isPointInTriangle(point: point, v1: arrow.endPoint, v2: p1, v3: p2)
     }
     
-    private func hitTestPath(_ path: DrawingPath, point: NSPoint) -> Bool {
+    private func hitTestPath(_ path: DrawingPath, tool: ToolType, point: NSPoint) -> Bool {
+        let baseTolerance = path.lineWidth * tool.strokeWidthMultiplier / 2
+        let tolerance = max(baseTolerance, 5)
+
         guard path.points.count >= 2 else {
-            if path.points.count == 1 {
-                let baseTolerance = path.lineWidth / 2.0
-                let minClickableTolerance: CGFloat = 5.0
-                let tolerance = max(baseTolerance, minClickableTolerance)
-                
-                let dx = point.x - path.points[0].point.x
-                let dy = point.y - path.points[0].point.y
-                return sqrt(dx * dx + dy * dy) <= tolerance
-            }
-            return false
+            guard let pathPoint = path.points.first?.point else { return false }
+            return hypot(point.x - pathPoint.x, point.y - pathPoint.y) <= tolerance
         }
-        
-        let baseTolerance = path.lineWidth / 2.0
-        let minClickableTolerance: CGFloat = 5.0
-        let tolerance = max(baseTolerance, minClickableTolerance)
-        
-        for i in 0..<(path.points.count - 1) {
+
+        for index in 0..<(path.points.count - 1) {
             let distance = distanceFromPointToLineSegment(
                 point: point,
-                lineStart: path.points[i].point,
-                lineEnd: path.points[i + 1].point
+                lineStart: path.points[index].point,
+                lineEnd: path.points[index + 1].point
             )
             if distance <= tolerance {
                 return true
@@ -2100,38 +2291,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return false
     }
     
-    private func hitTestHighlightPath(_ path: DrawingPath, point: NSPoint) -> Bool {
-        guard path.points.count >= 2 else {
-            if path.points.count == 1 {
-                let highlighterWidth = path.lineWidth * 4.67
-                let baseTolerance = highlighterWidth / 2.0
-                let minClickableTolerance: CGFloat = 5.0
-                let tolerance = max(baseTolerance, minClickableTolerance)
-                
-                let dx = point.x - path.points[0].point.x
-                let dy = point.y - path.points[0].point.y
-                return sqrt(dx * dx + dy * dy) <= tolerance
-            }
-            return false
-        }
-        
-        let highlighterWidth = path.lineWidth * 4.67
-        let baseTolerance = highlighterWidth / 2.0
-        let minClickableTolerance: CGFloat = 5.0
-        let tolerance = max(baseTolerance, minClickableTolerance)
-        
-        for i in 0..<(path.points.count - 1) {
-            let distance = distanceFromPointToLineSegment(
-                point: point,
-                lineStart: path.points[i].point,
-                lineEnd: path.points[i + 1].point
-            )
-            if distance <= tolerance {
-                return true
-            }
-        }
-        return false
-    }
     
     private func hitTestRectangle(_ rect: Rectangle, point: NSPoint) -> Bool {
         let bounds = NSRect(
@@ -2260,7 +2419,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Check pen paths
         for (index, path) in paths.enumerated().reversed() {
-            if pathIntersectsPoint(path, point: point, radius: eraserRadius) {
+            if pathIntersectsPoint(path, tool: .pen, point: point, radius: eraserRadius) {
                 deletedPaths.append(path)
                 paths.remove(at: index)
             }
@@ -2268,7 +2427,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Check highlighter paths
         for (index, path) in highlightPaths.enumerated().reversed() {
-            if pathIntersectsPoint(path, point: point, radius: eraserRadius) {
+            if pathIntersectsPoint(path, tool: .highlighter, point: point, radius: eraserRadius) {
                 deletedHighlights.append(path)
                 highlightPaths.remove(at: index)
             }
@@ -2334,10 +2493,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
-    private func pathIntersectsPoint(_ path: DrawingPath, point: NSPoint, radius: CGFloat) -> Bool {
+    private func pathIntersectsPoint(
+        _ path: DrawingPath,
+        tool: ToolType,
+        point: NSPoint,
+        radius: CGFloat
+    ) -> Bool {
+        let hitRadius = radius + path.lineWidth * tool.strokeWidthMultiplier / 2
         for timedPoint in path.points {
             let distance = hypot(timedPoint.point.x - point.x, timedPoint.point.y - point.y)
-            if distance <= radius {
+            if distance <= hitRadius {
                 return true
             }
         }
@@ -2449,6 +2614,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 paths[index].points[i].point.x += delta.x
                 paths[index].points[i].point.y += delta.y
             }
+            rebuildPathGeometry(&paths[index])
             
         case .highlight(let index):
             guard index < highlightPaths.count else { return }
@@ -2456,6 +2622,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 highlightPaths[index].points[i].point.x += delta.x
                 highlightPaths[index].points[i].point.y += delta.y
             }
+            rebuildPathGeometry(&highlightPaths[index])
             
         case .text(let index):
             guard index < textAnnotations.count else { return }

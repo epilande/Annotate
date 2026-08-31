@@ -205,6 +205,39 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertTrue(manager.isActive, "isActive should return true when clickEffectsEnabled is true")
     }
 
+    func testIsActiveReturnsFalseWhenOverlayGateOnAndNoOverlay() {
+        manager.clickEffectsEnabled = true
+        manager.spotlightRequiresOverlay = true
+
+        XCTAssertFalse(
+            manager.isActive,
+            "isActive should return false when Only Show While Annotating is on and no overlay is visible"
+        )
+    }
+
+    func testShouldShowRingReturnsFalseWhenOverlayGateBlocksClickEffects() {
+        manager.clickEffectsEnabled = true
+        manager.spotlightRequiresOverlay = true
+        manager.isMouseDown = true
+
+        XCTAssertFalse(
+            manager.shouldShowRing,
+            "shouldShowRing should return false when the overlay gate blocks click effects"
+        )
+    }
+
+    func testStartReleaseAnimationDoesNothingWhenOverlayGateBlocksClickEffects() {
+        manager.clickEffectsEnabled = true
+        manager.spotlightRequiresOverlay = true
+
+        manager.startReleaseAnimation()
+
+        XCTAssertNil(
+            manager.releaseAnimation,
+            "releaseAnimation should not be created when the overlay gate blocks click effects"
+        )
+    }
+
     // MARK: - shouldShowRing Computed Property Tests
 
     func testShouldShowRingReturnsFalseWhenNotActive() {

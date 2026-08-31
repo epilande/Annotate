@@ -27,6 +27,19 @@ enum ToolType: String, CaseIterable {
         case .select: return "Select"
         }
     }
+
+    /// Rendered width per nominal point, keeping the highlighter's 14/3 ratio.
+    /// Rendering, dirty-rect padding, selection and eraser hit-testing all read this,
+    /// so the value must not be re-inlined at a call site.
+    var strokeWidthMultiplier: CGFloat {
+        self == .highlighter ? 4.67 : 1
+    }
+
+    /// Alpha ink is laid down at, applied at render time so the stored color is
+    /// whatever the user picked. Same single-authority rule as the multiplier.
+    var laydownAlpha: CGFloat {
+        self == .highlighter ? 0.5 : 1
+    }
 }
 
 /// Which tool becomes active each time the overlay is activated. `.lastUsed` keeps the
@@ -92,6 +105,26 @@ struct DrawingPath {
     var points: [TimedPoint]
     var color: NSColor
     var lineWidth: CGFloat
+    var bezierPath: NSBezierPath? = nil
+    var cachedBounds: NSRect = .null
+
+    mutating func recacheBounds() {
+        cachedBounds = DrawingPath.bounds(of: points)
+    }
+
+    mutating func expandCachedBounds(with point: NSPoint) {
+        let pointRect = NSRect(origin: point, size: .zero)
+        cachedBounds = cachedBounds.isNull ? pointRect : cachedBounds.union(pointRect)
+    }
+
+    static func bounds(of points: [TimedPoint]) -> NSRect {
+        guard let first = points.first else { return .null }
+        var bounds = NSRect(origin: first.point, size: .zero)
+        for timedPoint in points.dropFirst() {
+            bounds = bounds.union(NSRect(origin: timedPoint.point, size: .zero))
+        }
+        return bounds
+    }
 }
 
 /// Represents an arrow annotation with start and end points.
