@@ -1408,13 +1408,16 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         let event = TestEvents.createKeyEvent(
             type: type,
             keyCode: keyCode,
-            characters: characters
+            characters: characters,
+            windowNumber: window.windowNumber
         )
         window.sendEvent(event!)
     }
 
     private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
-        window.sendEvent(TestEvents.createMouseEvent(type: type, location: location)!)
+        window.sendEvent(
+            TestEvents.createMouseEvent(
+                type: type, location: location, windowNumber: window.windowNumber)!)
     }
 
     private func tapPickerKey(_ characters: String, keyCode: UInt16) {
@@ -1458,15 +1461,24 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             fontSize: defaultTextAnnotationFontSize
         )
         window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
         window.overlayView.createTextField(
             at: NSPoint(x: 120, y: 120), withText: "", width: 200)
         guard let field = window.overlayView.activeTextField else {
             XCTFail("Expected an annotation text field")
             return nil
         }
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(field)
-        field.selectText(nil)
+        // selectText can end+restart editing and fire controlTextDidEndEditing,
+        // which finalizes and clears activeTextField before sendEvent sees the keys.
+        if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
+            window.makeFirstResponder(field)
+        }
+        if field.currentEditor() == nil {
+            field.becomeFirstResponder()
+        }
+        XCTAssertNotNil(
+            window.overlayView.activeTextField,
+            "Annotation field must stay active so c / [ / ] type instead of opening pickers")
         return field
     }
 }

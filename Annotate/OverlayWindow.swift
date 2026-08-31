@@ -168,46 +168,104 @@ class OverlayWindow: NSPanel {
     var isQuickPickerOpen: Bool { quickPicker != nil }
 
     override func sendEvent(_ event: NSEvent) {
+        if routeOverlayMouseEvent(event) {
+            return
+        }
+
+        switch event.type {
+        case .keyDown:
+            if quickPicker != nil {
+                _ = handleQuickPickerKeyDown(event)
+                return
+            }
+            if handleQuickPickerKeyDown(event) {
+                return
+            }
+            if isEditingAnnotationText {
+                if !deliverKeyToAnnotationField(event) {
+                    super.sendEvent(event)
+                }
+                return
+            }
+        case .keyUp:
+            if quickPicker != nil {
+                _ = handleQuickPickerKeyUp(event)
+                return
+            }
+            if isEditingAnnotationText {
+                super.sendEvent(event)
+                return
+            }
+            if handleQuickPickerKeyUp(event) {
+                return
+            }
+        default:
+            break
+        }
+
+        super.sendEvent(event)
+    }
+
+    /// Canvas mouse goes through OverlayWindow's drawing handlers even when AppKit
+    /// would drop a synthetic or non-key event. Clicks on the annotation field still
+    /// take the normal first-responder path. While a picker is open, leftover mouse-up
+    /// restores coalescing and must not commit geometry.
+    private func routeOverlayMouseEvent(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+            .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
+            break
+        case .scrollWheel:
+            return quickPicker != nil
+        default:
+            return false
+        }
+
         if quickPicker != nil {
             switch event.type {
             case .leftMouseDown:
                 mouseDown(with: event)
-                return
-            case .rightMouseDown, .otherMouseDown:
-                cancelQuickPicker()
-                return
             case .leftMouseDragged:
                 mouseDragged(with: event)
-                return
             case .leftMouseUp:
-                if pickerConsumedMouseDown {
-                    pickerConsumedMouseDown = false
-                    return
-                }
-                mouseUp(with: event)
-                return
-            case .rightMouseUp, .otherMouseUp, .scrollWheel:
-                return
+                pickerConsumedMouseDown = false
+                restoreMouseCoalescing()
+            case .rightMouseDown, .otherMouseDown:
+                cancelQuickPicker()
             default:
                 break
             }
+            return true
+        }
 
-            if event.type == .keyDown {
-                _ = handleQuickPickerKeyDown(event)
-                return
-            }
-            if event.type == .keyUp {
-                _ = handleQuickPickerKeyUp(event)
-                return
-            }
+        if isEventOverAnnotationText(event) {
+            return false
         }
-        if event.type == .keyDown, handleQuickPickerKeyDown(event) {
-            return
+
+        switch event.type {
+        case .leftMouseDown:
+            mouseDown(with: event)
+        case .leftMouseDragged:
+            mouseDragged(with: event)
+        case .leftMouseUp:
+            mouseUp(with: event)
+        case .rightMouseDown:
+            rightMouseDown(with: event)
+        default:
+            return false
         }
-        if event.type == .keyUp, handleQuickPickerKeyUp(event) {
-            return
+        return true
+    }
+
+    private func isEventOverAnnotationText(_ event: NSEvent) -> Bool {
+        if let hit = contentView?.hitTest(event.locationInWindow),
+            hit is NSTextField || hit is NSTextView || hit is NSText
+        {
+            return true
         }
-        super.sendEvent(event)
+        guard let field = overlayView.activeTextField else { return false }
+        let point = overlayView.convert(event.locationInWindow, from: nil)
+        return field.frame.contains(point)
     }
 
     func beginQuickPicker(
@@ -383,7 +441,32 @@ class OverlayWindow: NSPanel {
     }
 
     private var isEditingAnnotationText: Bool {
-        overlayView.activeTextField != nil
+        if overlayView.activeTextField != nil { return true }
+        if firstResponder is NSTextField || firstResponder is NSTextView { return true }
+        return false
+    }
+
+    /// Inserts into the live annotation field so c / [ / ] are not stolen by picker
+    /// shortcuts when AppKit does not deliver sendEvent to the field editor.
+    @discardableResult
+    private func deliverKeyToAnnotationField(_ event: NSEvent) -> Bool {
+        let chars = event.characters ?? ""
+        let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
+        if let editor {
+            editor.interpretKeyEvents([event])
+            if chars.isEmpty || editor.string.contains(chars) {
+                return true
+            }
+        }
+
+        guard let field = overlayView.activeTextField, !chars.isEmpty, event.keyCode != 53 else {
+            return editor != nil
+        }
+
+        field.stringValue += chars
+        overlayView.controlTextDidChange(
+            Notification(name: NSControl.textDidChangeNotification, object: field))
+        return true
     }
 
     private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {

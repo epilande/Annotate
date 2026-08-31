@@ -95,14 +95,15 @@ enum TestEvents {
     static func createMouseEvent(
         type: NSEvent.EventType,
         location: NSPoint,
-        modifierFlags: NSEvent.ModifierFlags = []
+        modifierFlags: NSEvent.ModifierFlags = [],
+        windowNumber: Int = 0
     ) -> NSEvent? {
         return NSEvent.mouseEvent(
             with: type,
             location: location,
             modifierFlags: modifierFlags,
             timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             eventNumber: 0,
             clickCount: 1,
@@ -114,14 +115,15 @@ enum TestEvents {
         type: NSEvent.EventType,
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags = [],
-        characters: String = ""
+        characters: String = "",
+        windowNumber: Int = 0
     ) -> NSEvent? {
         return NSEvent.keyEvent(
             with: type,
             location: .zero,
             modifierFlags: modifierFlags,
             timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             characters: characters,
             charactersIgnoringModifiers: characters,
