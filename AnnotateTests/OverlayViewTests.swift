@@ -73,11 +73,12 @@ final class OverlayViewTests: XCTestCase, Sendable {
     }
 
     func testHighlighterSelectionUsesRenderedStrokeWidth() {
+        let now = CACurrentMediaTime()
         overlayView.highlightPaths = [
             DrawingPath(
                 points: [
-                    TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: 0),
-                    TimedPoint(point: NSPoint(x: 200, y: 100), timestamp: 1),
+                    TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: now),
+                    TimedPoint(point: NSPoint(x: 200, y: 100), timestamp: now),
                 ],
                 color: .systemYellow,
                 lineWidth: 10
