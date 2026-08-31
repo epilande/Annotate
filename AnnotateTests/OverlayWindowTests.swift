@@ -23,6 +23,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            window.cancelQuickPicker()
             window.stopFadeLoop()
             window = nil
             NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
@@ -1177,6 +1178,296 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertEqual(window.overlayView.nextCounterNumber, 1)
         XCTAssertEqual(window.overlayView.counterAnnotations.count, 2, "Existing counters should remain")
+    }
+
+    // MARK: - Quick picker sendEvent
+
+    func testSendEventTapKeepsPickerOpen() {
+        sendKey("c", type: .keyDown, keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        sendKey("c", type: .keyUp, keyCode: 8)
+
+        XCTAssertTrue(window.isQuickPickerOpen, "A tap should leave the picker open")
+        XCTAssertEqual(quickPickerView?.mode, .color)
+    }
+
+    func testSendEventHoldCommitsOnKeyUp() {
+        let originalColor = window.overlayView.currentColor
+        sendKey("c", type: .keyDown, keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        wait(for: OverlayWindowTests.quickPickerHoldWait)
+        sendKey("c", type: .keyUp, keyCode: 8)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "A hold should commit and dismiss on key-up")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventDigitCommitsPicker() {
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("2", keyCode: 19)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: colorPalette[1]))
+    }
+
+    func testSendEventEscapeCancelsPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("", keyCode: 53)
+        XCTAssertFalse(window.isQuickPickerOpen, "Escape should dismiss without committing")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventSameKeyCancelsPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("c", keyCode: 8)
+        XCTAssertFalse(window.isQuickPickerOpen, "Pressing the same key again should dismiss without committing")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventClickCellCommitsPicker() {
+        window.overlayView.currentLineWidth = 3
+        tapPickerKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertEqual(quickPickerView?.mode, .width)
+
+        let cellPoint = pointInPickerCell(index: QuickPickerView.widthOptions.count - 1)
+        sendMouse(.leftMouseDown, at: cellPoint)
+        sendMouse(.leftMouseUp, at: cellPoint)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(
+            window.overlayView.currentLineWidth, 24,
+            "Clicking the last width cell should apply 24 without clamping to 20")
+    }
+
+    func testSendEventClickOutsideCancelsPicker() {
+        let originalWidth = window.overlayView.currentLineWidth
+        tapPickerKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        let outside = pointOutsidePicker()
+        sendMouse(.leftMouseDown, at: outside)
+        sendMouse(.leftMouseUp, at: outside)
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+    }
+
+    func testSendEventMouseUpWhilePickerOpenDoesNotCommitGeometry() {
+        window.overlayView.currentTool = .arrow
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 180, y: 160))
+        XCTAssertNotNil(window.overlayView.currentArrow)
+
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertNil(window.overlayView.currentArrow)
+
+        sendMouse(.leftMouseUp, at: NSPoint(x: 180, y: 160))
+
+        XCTAssertTrue(window.overlayView.arrows.isEmpty, "Mouse-up while the picker is open must not commit leftover geometry")
+        XCTAssertNil(window.overlayView.currentArrow)
+        XCTAssertTrue(window.isQuickPickerOpen)
+    }
+
+    func testSendEventBeginQuickPickerMidStrokeLeavesEmptyCanvasAndRestoresCoalescing() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 130))
+        XCTAssertNotNil(window.overlayView.currentPath)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled, "Discarding a stroke on picker open should restore coalescing")
+
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 130))
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testSendEventPickerEscapeRestoresCoalescing() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("", keyCode: 53)
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testSendEventTypesCAndOpensSizePickerWhileEditingText() {
+        guard let field = startEditingAnnotationText() else { return }
+
+        sendKey("c", keyCode: 8)
+        XCTAssertFalse(window.isQuickPickerOpen, "c must not open the color picker while editing")
+        let typedC =
+            field.stringValue.lowercased().contains("c")
+            || field.currentEditor()?.string.lowercased().contains("c") == true
+        XCTAssertTrue(typedC, "c should type into the annotation field")
+
+        sendKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen, "w should still open the size picker while editing")
+        XCTAssertEqual(quickPickerView?.mode, .fontSize)
+    }
+
+    func testSendEventBracketsTypeWhileEditingText() {
+        guard let field = startEditingAnnotationText() else { return }
+        let originalFontSize = UserDefaults.standard.textToolFontSize
+        let originalWidth = window.overlayView.currentLineWidth
+        defer { UserDefaults.standard.textToolFontSize = originalFontSize }
+
+        sendKey("[", keyCode: 33)
+        sendKey("]", keyCode: 30)
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, originalFontSize, "[ ] must not step size while editing")
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+        let typedBrackets =
+            field.stringValue.contains("[")
+            || field.stringValue.contains("]")
+            || field.currentEditor()?.string.contains("[") == true
+            || field.currentEditor()?.string.contains("]") == true
+        XCTAssertTrue(typedBrackets, "[ and ] should type into the annotation field")
+    }
+
+    func testSendEventRemappedToolTakesPrecedenceOverBracketStep() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 3
+        sendKey("[", keyCode: 33)
+        XCTAssertEqual(window.overlayView.currentLineWidth, 2, "[ should step the width ladder when it is not a tool shortcut")
+
+        window.overlayView.currentLineWidth = 3
+        ShortcutManager.shared.setShortcut("]", for: .eraser)
+        defer { ShortcutManager.shared.resetToDefault(tool: .eraser) }
+
+        sendKey("]", keyCode: 30)
+        XCTAssertEqual(
+            window.overlayView.currentLineWidth, 3,
+            "A remapped tool shortcut on ] should win over ladder stepping")
+    }
+
+    func testScrollWheelLineWidthUpperBoundMatchesPickerLadder() {
+        let original = window.overlayView.currentLineWidth
+        defer { window.overlayView.currentLineWidth = original }
+
+        window.overlayView.currentLineWidth = 20
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertGreaterThan(
+            window.overlayView.currentLineWidth, 20,
+            "Cmd-scroll must be able to move past the old 20 px cap toward the picker ladder")
+
+        window.overlayView.currentLineWidth = lineWidthRange.upperBound
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertEqual(window.overlayView.currentLineWidth, lineWidthRange.upperBound)
+    }
+
+    func testApplyLineWidthAcceptsPickerMaximum() {
+        window.applyLineWidth(24, showsFeedback: false)
+        XCTAssertEqual(window.overlayView.currentLineWidth, 24)
+        window.applyLineWidth(3, showsFeedback: false)
+    }
+
+    private static let quickPickerHoldWait: TimeInterval = 0.3
+
+    private var quickPickerView: QuickPickerView? {
+        window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
+    }
+
+    private func sendKey(
+        _ characters: String,
+        type: NSEvent.EventType = .keyDown,
+        keyCode: UInt16
+    ) {
+        let event = TestEvents.createKeyEvent(
+            type: type,
+            keyCode: keyCode,
+            characters: characters
+        )
+        window.sendEvent(event!)
+    }
+
+    private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
+        window.sendEvent(TestEvents.createMouseEvent(type: type, location: location)!)
+    }
+
+    private func tapPickerKey(_ characters: String, keyCode: UInt16) {
+        sendKey(characters, type: .keyDown, keyCode: keyCode)
+        sendKey(characters, type: .keyUp, keyCode: keyCode)
+    }
+
+    private func waitForPickerToDismiss() {
+        wait(for: QuickPickerView.commitAnimationDuration + 0.05)
+    }
+
+    private func pointInPickerCell(index: Int) -> NSPoint {
+        guard let picker = quickPickerView else {
+            XCTFail("Expected an open quick picker")
+            return .zero
+        }
+        return NSPoint(
+            x: picker.frame.minX + QuickPickerView.padding + QuickPickerView.cellSize * (CGFloat(index) + 0.5),
+            y: picker.frame.minY + QuickPickerView.padding + QuickPickerView.cellSize / 2
+        )
+    }
+
+    private func pointOutsidePicker() -> NSPoint {
+        guard let picker = quickPickerView else { return NSPoint(x: 5, y: 5) }
+        let candidates = [
+            NSPoint(x: 8, y: 8),
+            NSPoint(x: window.overlayView.bounds.maxX - 8, y: 8),
+            NSPoint(x: 8, y: window.overlayView.bounds.maxY - 8),
+            NSPoint(x: window.overlayView.bounds.maxX - 8, y: window.overlayView.bounds.maxY - 8)
+        ]
+        return candidates.first { !picker.frame.insetBy(dx: -4, dy: -4).contains($0) }
+            ?? NSPoint(x: -20, y: -20)
+    }
+
+    private func startEditingAnnotationText() -> NSTextField? {
+        window.overlayView.currentTool = .text
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: NSPoint(x: 120, y: 120),
+            color: .black,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        window.orderFrontRegardless()
+        window.overlayView.createTextField(
+            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+        guard let field = window.overlayView.activeTextField else {
+            XCTFail("Expected an annotation text field")
+            return nil
+        }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(field)
+        field.selectText(nil)
+        return field
     }
 }
 

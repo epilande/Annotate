@@ -33,6 +33,8 @@ class OverlayWindow: NSPanel {
     private var quickPickerInitialMouseLocation: NSPoint?
     private var acceptedMouseMovedBeforePicker = false
     private var pickerCommitInFlight = false
+    /// True when the picker consumed this mouse-down, so the matching up must not commit geometry.
+    private var pickerConsumedMouseDown = false
     private var lastLiveShapeRect: NSRect?
     private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
@@ -177,10 +179,26 @@ class OverlayWindow: NSPanel {
             case .leftMouseDragged:
                 mouseDragged(with: event)
                 return
-            case .leftMouseUp, .rightMouseUp, .otherMouseUp, .scrollWheel:
+            case .leftMouseUp:
+                if pickerConsumedMouseDown {
+                    pickerConsumedMouseDown = false
+                    return
+                }
+                mouseUp(with: event)
+                return
+            case .rightMouseUp, .otherMouseUp, .scrollWheel:
                 return
             default:
                 break
+            }
+
+            if event.type == .keyDown {
+                _ = handleQuickPickerKeyDown(event)
+                return
+            }
+            if event.type == .keyUp {
+                _ = handleQuickPickerKeyUp(event)
+                return
             }
         }
         if event.type == .keyDown, handleQuickPickerKeyDown(event) {
@@ -198,6 +216,8 @@ class OverlayWindow: NSPanel {
         activationKey: String? = nil
     ) {
         guard quickPicker == nil else { return }
+
+        discardLiveDrawing()
 
         let mode = contextualPickerMode(for: requestedMode)
         let defaults = pickerUserDefaults
@@ -270,6 +290,7 @@ class OverlayWindow: NSPanel {
 
     func cancelQuickPicker() {
         guard quickPicker != nil else { return }
+        restoreMouseCoalescing()
         dismissQuickPicker()
     }
 
@@ -361,6 +382,10 @@ class OverlayWindow: NSPanel {
         picker.updateSelection(mouseInSuperview: overlayView.convert(windowPoint, from: nil))
     }
 
+    private var isEditingAnnotationText: Bool {
+        overlayView.activeTextField != nil
+    }
+
     private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
@@ -390,6 +415,9 @@ class OverlayWindow: NSPanel {
         else { return false }
 
         if key == "[" || key == "]" {
+            if isEditingAnnotationText {
+                return false
+            }
             if performToolShortcut(mappedTo: key) {
                 return true
             }
@@ -403,6 +431,9 @@ class OverlayWindow: NSPanel {
 
         let colorKey = ShortcutManager.shared.getShortcut(for: .colorPicker)
         if key == colorKey {
+            if isEditingAnnotationText {
+                return false
+            }
             beginQuickPicker(.color, activationKey: colorKey)
             return true
         }
@@ -511,11 +542,13 @@ class OverlayWindow: NSPanel {
         quickPickerInitialMouseLocation = nil
         pickerCommitInFlight = false
         acceptsMouseMovedEvents = acceptedMouseMovedBeforePicker
+        restoreMouseCoalescing()
     }
 
 
     override func mouseDown(with event: NSEvent) {
         if let picker = quickPicker {
+            pickerConsumedMouseDown = true
             if pickerCommitInFlight {
                 return
             }
@@ -985,6 +1018,19 @@ class OverlayWindow: NSPanel {
         overlayView.needsDisplay = true
     }
 
+    /// Drops live freehand and shape previews without committing them.
+    private func discardLiveDrawing() {
+        cancelFreehandStroke()
+        _ = overlayView.endFreehandStroke(tool: .pen)
+        _ = overlayView.endFreehandStroke(tool: .highlighter)
+        overlayView.currentArrow = nil
+        overlayView.currentLine = nil
+        overlayView.currentRectangle = nil
+        overlayView.currentCircle = nil
+        lastLiveShapeRect = nil
+        overlayView.needsDisplay = true
+    }
+
     func prepareForAlwaysOnMode() {
         restoreMouseCoalescing()
         cancelFreehandStroke()
@@ -1023,7 +1069,13 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if pickerConsumedMouseDown {
+            pickerConsumedMouseDown = false
+            restoreMouseCoalescing()
+            return
+        }
         if quickPicker != nil {
+            restoreMouseCoalescing()
             return
         }
 
@@ -1201,6 +1253,7 @@ class OverlayWindow: NSPanel {
                 AppDelegate.shared?.enableEraserMode(NSMenuItem())
                 return
             case ShortcutManager.shared.getShortcut(for: .colorPicker):
+                if isEditingAnnotationText { break }
                 AppDelegate.shared?.showColorPicker(nil)
                 return
             case ShortcutManager.shared.getShortcut(for: .lineWidthPicker):
@@ -1435,7 +1488,7 @@ class OverlayWindow: NSPanel {
         let increment: CGFloat = scrollDelta > 0 ? ratio : -ratio
         let newWidth =
             (round((overlayView.currentLineWidth + increment) / ratio) * ratio)
-            .clamped(to: 0.5...20)
+            .clamped(to: lineWidthRange)
         applyLineWidth(newWidth)
     }
 
