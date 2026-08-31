@@ -65,6 +65,8 @@ final class OverlayViewTests: XCTestCase, Sendable {
             let completedStroke = overlayView.endFreehandStroke(tool: tool)
 
             XCTAssertEqual(completedStroke?.points, points)
+            XCTAssertEqual(completedStroke?.bezierPath?.elementCount, points.count)
+            XCTAssertFalse(completedStroke?.cachedBounds.isNull ?? true)
             XCTAssertNil(overlayView.currentPath)
             XCTAssertNil(overlayView.currentHighlight)
         }
@@ -150,6 +152,22 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertTrue(overlayView.circles.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
     }
+
+    func testClearAllEndsInFlightStrokeWhenCollectionsAreEmpty() {
+        overlayView.beginFreehandStroke(
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
+                color: .systemRed,
+                lineWidth: 3
+            ),
+            tool: .pen
+        )
+        XCTAssertNotNil(overlayView.currentPath)
+
+        overlayView.clearAll()
+
+        XCTAssertNil(overlayView.currentPath)
+    }
     
     func testDrawLine() {
         // Create a new line
@@ -201,9 +219,84 @@ final class OverlayViewTests: XCTestCase, Sendable {
         
         overlayView.lines.append(oldLine)
         XCTAssertEqual(overlayView.lines.count, 2)
-        
-        // Note: We can't directly test the drawing behavior since it's done
-        // in the draw method that interacts with the graphics context
+
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(overlayView.lines.count, 1)
+        XCTAssertEqual(overlayView.lines.first?.startPoint, NSPoint(x: 100, y: 100))
+    }
+
+    func testDrawDoesNotCompactExpiredAnnotations() {
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime() - 10
+            )
+        ]
+
+        let image = NSImage(size: overlayView.bounds.size)
+        image.lockFocus()
+        overlayView.draw(overlayView.bounds)
+        image.unlockFocus()
+
+        XCTAssertEqual(overlayView.arrows.count, 1)
+    }
+
+    func testFadeCompactionRemapsIndexBasedSelection() {
+        let now = CACurrentMediaTime()
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: .zero,
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+        overlayView.selectedObjects = [.arrow(index: 1)]
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayView.selectedObjects, [.arrow(index: 0)])
+    }
+
+    func testFadeCompactionTrimsExpiredPathPointsAndRebuildsBezier() {
+        overlayView.fadeMode = true
+        let now = CACurrentMediaTime()
+        var path = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now - 10),
+                TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now - 10),
+                TimedPoint(point: NSPoint(x: 20, y: 0), timestamp: now)
+            ],
+            color: .systemRed,
+            lineWidth: 3
+        )
+        path.bezierPath = NSBezierPath()
+        path.bezierPath?.move(to: NSPoint(x: 0, y: 0))
+        path.bezierPath?.line(to: NSPoint(x: 10, y: 0))
+        path.bezierPath?.line(to: NSPoint(x: 20, y: 0))
+        overlayView.paths = [path]
+        overlayView.selectedObjects = [.path(index: 0)]
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.paths.count, 1)
+        XCTAssertEqual(overlayView.paths.first?.points.count, 1)
+        XCTAssertEqual(overlayView.paths.first?.bezierPath?.elementCount, 1)
+        XCTAssertEqual(overlayView.selectedObjects, [.path(index: 0)])
     }
 
     func testCounterAnnotations() {

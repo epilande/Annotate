@@ -23,8 +23,9 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
-            NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
+            window.stopFadeLoop()
             window = nil
+            NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
         }
         super.tearDown()
     }
@@ -38,7 +39,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertNotNil(window.contentView)
         XCTAssertNotNil(window.overlayView)
-        XCTAssertEqual(window.overlayView.layer?.opacity, 1)
+        XCTAssertFalse(window.overlayView.wantsLayer)
     }
 
     func testWindowLevelConfiguration() {
@@ -140,6 +141,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
         XCTAssertEqual(window.overlayView.paths.last?.points.count, 257)
+        XCTAssertEqual(window.overlayView.paths.last?.bezierPath?.elementCount, 257)
+        XCTAssertFalse(window.overlayView.paths.last?.cachedBounds.isNull ?? true)
     }
 
     func testMouseCoalescingIsDisabledOnlyForFreehandTools() {
@@ -197,7 +200,6 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
-        // clearAll only cancels the in-flight stroke when something is already committed
         window.overlayView.paths = [
             DrawingPath(
                 points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
@@ -228,9 +230,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.paths.isEmpty)
     }
 
-    func testOptionDeleteMidDragCancelsStrokeOnAnEmptyCanvas() {
-        // Nothing committed, so clearAll leaves the in-flight stroke alone and the
-        // window has to cancel it. Otherwise it stays painted with no way to remove it.
+    func testClearAllOnEmptyCanvasEndsInFlightStroke() {
         window.overlayView.currentTool = .pen
         window.mouseDown(with: TestEvents.createMouseEvent(
             type: .leftMouseDown,
@@ -238,11 +238,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         )!)
         XCTAssertNotNil(window.overlayView.currentPath)
 
-        window.keyDown(with: TestEvents.createKeyEvent(
-            type: .keyDown,
-            keyCode: 51,
-            modifierFlags: .option
-        )!)
+        window.overlayView.clearAll()
 
         XCTAssertNil(window.overlayView.currentPath)
 
@@ -257,6 +253,39 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertNil(window.overlayView.currentPath)
         XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testOptionDeleteMidDragCancelsStrokeOnAnEmptyCanvas() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        XCTAssertNotNil(window.overlayView.currentPath)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        window.keyDown(with: TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 51,
+            modifierFlags: .option
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
     func testEscapeMidDragCancelsStroke() {
@@ -281,6 +310,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     func testHighlighterStrokeCommitsOnMouseUp() {
         window.overlayView.currentTool = .highlighter
+        window.overlayView.fadeMode = true
         window.mouseDown(with: TestEvents.createMouseEvent(
             type: .leftMouseDown,
             location: NSPoint(x: 100, y: 100)
@@ -289,6 +319,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             type: .leftMouseDragged,
             location: NSPoint(x: 140, y: 130)
         )!)
+        window.overlayView.currentTool = .select
+        window.overlayView.selectedObjects = [.arrow(index: 0)]
         window.mouseUp(with: TestEvents.createMouseEvent(
             type: .leftMouseUp,
             location: NSPoint(x: 140, y: 130)
@@ -298,6 +330,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.highlightPaths.last?.points.count, 2)
         XCTAssertNil(window.overlayView.currentHighlight)
         XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNotNil(window.fadeTimer)
+        window.stopFadeLoop()
     }
 
     func testEscapeRestoresMouseCoalescing() {
@@ -322,6 +356,71 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.resignKey()
 
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testBeginUncoalescedInputTakesOwnershipWhenCoalescingAlreadyOff() {
+        NSEvent.isMouseCoalescingEnabled = false
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+    }
+
+    func testAlwaysOnEntryRestoresCoalescingAndCancelsInFlightStroke() {
+        beginUncoalescedPenStroke()
+        XCTAssertNotNil(window.overlayView.currentPath)
+
+        window.prepareForAlwaysOnMode()
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testFadeTimerCompactsExpiredAnnotationsAndRemapsSelection() {
+        let now = CACurrentMediaTime()
+        window.overlayView.fadeMode = true
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+        window.overlayView.selectedObjects = [.arrow(index: 1)]
+
+        window.updateFade()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
+        XCTAssertEqual(window.overlayView.selectedObjects, [.arrow(index: 0)])
     }
 
     func testHighlighterDragInvalidatesOnlyPaddedSegment() {

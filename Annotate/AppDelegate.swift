@@ -697,6 +697,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
+        overlayWindow.prepareForAlwaysOnMode()
         overlayWindow.ignoresMouseEvents = true
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true

@@ -21,7 +21,7 @@ class OverlayWindow: NSPanel {
     private var currentFeedbackView: NSView?
     private var feedbackRemovalTask: DispatchWorkItem?
     private var lastLiveShapeRect: NSRect?
-    private var restoresMouseCoalescing = false
+    private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     
@@ -81,10 +81,18 @@ class OverlayWindow: NSPanel {
         containerView.addSubview(boardView)
 
         overlayView = OverlayView(frame: containerView.bounds)
-        overlayView.wantsLayer = true
+        // Layer-backed views ignore setNeedsDisplay(_ dirtyRect:). Keep this view un-layered
+        // so native-rate freehand can invalidate a padded segment instead of the full overlay.
+        overlayView.wantsLayer = false
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
+    }
+
+    deinit {
+        if let snapshot = mouseCoalescingSnapshot {
+            NSEvent.isMouseCoalescingEnabled = snapshot
+        }
     }
 
     override func orderOut(_ sender: Any?) {
@@ -127,6 +135,7 @@ class OverlayWindow: NSPanel {
     }
 
     @objc func updateFade() {
+        overlayView.compactExpiredAnnotations()
         overlayView.needsDisplay = true
 
         // Stop the loop if nothing is actively fading
@@ -584,14 +593,19 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    // Discards the in-flight stroke. Dropping the latch alone would leave the stroke
-    // painted with no way to commit, fade or clear it: clearAll only nils it when
-    // something is already committed.
+    // Discards the in-flight stroke and restores mouse coalescing. Dropping the
+    // latch alone would freeze the stroke on screen with no commit, fade, or clear path.
     private func cancelFreehandStroke() {
+        restoreMouseCoalescing()
         guard let tool = activeFreehandTool else { return }
         _ = overlayView.endFreehandStroke(tool: tool)
         activeFreehandTool = nil
         overlayView.needsDisplay = true
+    }
+
+    func prepareForAlwaysOnMode() {
+        restoreMouseCoalescing()
+        cancelFreehandStroke()
     }
 
     private func rectSpanning(_ first: NSPoint, _ second: NSPoint, padding: CGFloat) -> NSRect {
@@ -614,15 +628,16 @@ class OverlayWindow: NSPanel {
     }
 
     private func beginUncoalescedFreehandInput() {
-        guard !restoresMouseCoalescing, NSEvent.isMouseCoalescingEnabled else { return }
+        if mouseCoalescingSnapshot == nil {
+            mouseCoalescingSnapshot = NSEvent.isMouseCoalescingEnabled
+        }
         NSEvent.isMouseCoalescingEnabled = false
-        restoresMouseCoalescing = true
     }
 
     private func restoreMouseCoalescing() {
-        guard restoresMouseCoalescing else { return }
-        NSEvent.isMouseCoalescingEnabled = true
-        restoresMouseCoalescing = false
+        guard let snapshot = mouseCoalescingSnapshot else { return }
+        NSEvent.isMouseCoalescingEnabled = snapshot
+        mouseCoalescingSnapshot = nil
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -632,6 +647,10 @@ class OverlayWindow: NSPanel {
         if let strokeTool = activeFreehandTool {
             commitFreehandStroke(strokeTool, timestamp: event.timestamp)
             activeFreehandTool = nil
+        }
+
+        if overlayView.fadeMode {
+            startFadeLoop()
         }
 
         let cursorManager = CursorHighlightManager.shared
@@ -746,10 +765,6 @@ class OverlayWindow: NSPanel {
         isCenterModeActive = false
         wasShiftPressedOnMouseDown = false
         isShiftConstraintActive = false
-
-        if overlayView.fadeMode {
-            startFadeLoop()
-        }
     }
 
     override func keyDown(with event: NSEvent) {
