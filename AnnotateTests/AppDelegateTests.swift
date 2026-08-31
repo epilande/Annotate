@@ -263,6 +263,31 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
     }
 
+    func testToggleFadeModeStartsFadeLoop() {
+        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
+            XCTFail("No overlay window found")
+            return
+        }
+
+        overlayWindow.overlayView.fadeMode = false
+        overlayWindow.stopFadeLoop()
+        overlayWindow.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime()
+            )
+        ]
+
+        appDelegate.toggleFadeMode(NSMenuItem())
+
+        XCTAssertTrue(overlayWindow.overlayView.fadeMode)
+        XCTAssertNotNil(overlayWindow.fadeTimer)
+        overlayWindow.stopFadeLoop()
+    }
+
     func testOverlayWindowsRestorePersistedFadeMode() {
         testDefaults.set(false, forKey: UserDefaults.fadeModeKey)
 

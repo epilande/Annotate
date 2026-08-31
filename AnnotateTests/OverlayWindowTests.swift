@@ -423,6 +423,77 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.selectedObjects, [.arrow(index: 0)])
     }
 
+    func testPersistingToFadeCompactsExpiredAndStartsLoop() {
+        let now = CACurrentMediaTime()
+        window.overlayView.fadeMode = false
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+
+        window.overlayView.fadeMode = true
+        window.overlayView.startFadeLoopIfNeeded()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
+    func testRedoOfTimedStrokeStartsFadeLoop() {
+        window.overlayView.fadeMode = true
+        let now = CACurrentMediaTime()
+        let path = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now),
+                TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now)
+            ],
+            color: .systemRed,
+            lineWidth: 3
+        )
+        window.overlayView.paths.append(path)
+        window.overlayView.registerUndo(action: .addPath(path))
+        window.overlayView.undo()
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+
+        window.stopFadeLoop()
+        window.overlayView.redo()
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
+    func testDuplicateStartsFadeLoopWhenFadeModeIsOn() {
+        window.overlayView.fadeMode = true
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 40, y: 40),
+                endPoint: NSPoint(x: 80, y: 80),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime()
+            )
+        ]
+        window.overlayView.selectedObjects = [.arrow(index: 0)]
+        window.stopFadeLoop()
+
+        window.overlayView.duplicateSelectedObjects()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 2)
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
     func testHighlighterDragInvalidatesOnlyPaddedSegment() {
         let trackingView = installTrackingOverlayView()
         trackingView.currentTool = .highlighter

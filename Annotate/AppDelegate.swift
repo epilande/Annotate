@@ -840,6 +840,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         for window in overlayWindows.values {
             window.overlayView.fadeMode.toggle()
+            if window.overlayView.fadeMode {
+                window.overlayView.startFadeLoopIfNeeded()
+            } else {
+                window.stopFadeLoop()
+            }
         }
 
         userDefaults.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)

@@ -190,10 +190,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func undo() {
         undoManager?.undo()
+        startFadeLoopIfNeeded()
     }
 
     func redo() {
         undoManager?.redo()
+        startFadeLoopIfNeeded()
+    }
+
+    func startFadeLoopIfNeeded() {
+        guard fadeMode else { return }
+        compactExpiredAnnotations()
+        guard isAnythingFading() else { return }
+        (window as? OverlayWindow)?.startFadeLoop()
     }
 
     func registerUndo(action: DrawingAction) {
@@ -1544,6 +1553,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         selectedObjects = Set(pastedObjects)
         currentTool = .select
 
+        startFadeLoopIfNeeded()
         needsDisplay = true
     }
     
@@ -1967,12 +1977,48 @@ class OverlayView: NSView, NSTextFieldDelegate {
     
     // MARK: - Selection and Hit Testing
     
+    private func isFadedOut(_ object: SelectedObject) -> Bool {
+        guard fadeMode else { return false }
+        let now = CACurrentMediaTime()
+        switch object {
+        case .arrow(let index):
+            guard index < arrows.count else { return true }
+            return fadeAlphaIfVisible(creationTime: arrows[index].creationTime, now: now) == nil
+        case .line(let index):
+            guard index < lines.count else { return true }
+            return fadeAlphaIfVisible(creationTime: lines[index].creationTime, now: now) == nil
+        case .rectangle(let index):
+            guard index < rectangles.count else { return true }
+            return fadeAlphaIfVisible(creationTime: rectangles[index].creationTime, now: now) == nil
+        case .circle(let index):
+            guard index < circles.count else { return true }
+            return fadeAlphaIfVisible(creationTime: circles[index].creationTime, now: now) == nil
+        case .counter(let index):
+            guard index < counterAnnotations.count else { return true }
+            return fadeAlphaIfVisible(creationTime: counterAnnotations[index].creationTime, now: now) == nil
+        case .path(let index):
+            guard index < paths.count else { return true }
+            return !isPathVisible(paths[index], now: now)
+        case .highlight(let index):
+            guard index < highlightPaths.count else { return true }
+            return !isPathVisible(highlightPaths[index], now: now)
+        case .text, .none:
+            return false
+        }
+    }
+
+    private func isPathVisible(_ path: DrawingPath, now: CFTimeInterval) -> Bool {
+        let limit = fadeDuration / 4
+        return path.points.contains { (now - $0.timestamp) < limit }
+    }
+
     /// Find object at point, checking in reverse order (topmost/latest first)
     func findObjectAt(point: NSPoint) -> SelectedObject {
         // Check in reverse order - last drawn is on top
         
         // 1. Check counters
         for (index, counter) in counterAnnotations.enumerated().reversed() {
+            if isFadedOut(.counter(index: index)) { continue }
             if hitTestCounter(counter, point: point) {
                 return .counter(index: index)
             }
@@ -1987,6 +2033,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 3. Check circles
         for (index, circle) in circles.enumerated().reversed() {
+            if isFadedOut(.circle(index: index)) { continue }
             if hitTestCircle(circle, point: point) {
                 return .circle(index: index)
             }
@@ -1994,6 +2041,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 4. Check rectangles
         for (index, rect) in rectangles.enumerated().reversed() {
+            if isFadedOut(.rectangle(index: index)) { continue }
             if hitTestRectangle(rect, point: point) {
                 return .rectangle(index: index)
             }
@@ -2001,6 +2049,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 5. Check highlight paths
         for (index, path) in highlightPaths.enumerated().reversed() {
+            if isFadedOut(.highlight(index: index)) { continue }
             if hitTestPath(path, tool: .highlighter, point: point) {
                 return .highlight(index: index)
             }
@@ -2008,6 +2057,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 6. Check regular paths
         for (index, path) in paths.enumerated().reversed() {
+            if isFadedOut(.path(index: index)) { continue }
             if hitTestPath(path, tool: .pen, point: point) {
                 return .path(index: index)
             }
@@ -2015,6 +2065,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 7. Check lines
         for (index, line) in lines.enumerated().reversed() {
+            if isFadedOut(.line(index: index)) { continue }
             if hitTestLine(line, point: point) {
                 return .line(index: index)
             }
@@ -2022,6 +2073,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 8. Check arrows
         for (index, arrow) in arrows.enumerated().reversed() {
+            if isFadedOut(.arrow(index: index)) { continue }
             if hitTestArrow(arrow, point: point) {
                 return .arrow(index: index)
             }
@@ -2047,6 +2099,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         for (count, factory) in objectCollections {
             for i in 0..<count {
                 let selectedObject = factory(i)
+                if isFadedOut(selectedObject) { continue }
                 if objectIntersectsRect(selectedObject, rect: rect) {
                     foundObjects.insert(selectedObject)
                 }

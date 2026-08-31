@@ -299,6 +299,24 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.selectedObjects, [.path(index: 0)])
     }
 
+    func testFindObjectAtSkipsExpiredAnnotations() {
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime() - 10
+            )
+        ]
+
+        XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 5, y: 5)), .none)
+        XCTAssertTrue(
+            overlayView.findObjectsInRect(NSRect(x: 0, y: 0, width: 20, height: 20)).isEmpty
+        )
+    }
+
     func testCounterAnnotations() {
         XCTAssertTrue(overlayView.counterAnnotations.isEmpty)
         XCTAssertEqual(overlayView.nextCounterNumber, 1)
