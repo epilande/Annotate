@@ -31,7 +31,7 @@ final class SoundPlayerTests: XCTestCase {
         XCTAssertEqual(loadCounts.count, 3)
         XCTAssertTrue(loadCounts.values.allSatisfy { $0 == 1 })
         XCTAssertTrue(players.values.allSatisfy { $0.prepareCount == 1 })
-        XCTAssertTrue(players.values.allSatisfy { $0.volume == 0.2 })
+        XCTAssertTrue(players.values.allSatisfy { $0.volume == soundEffectVolume })
 
         soundPlayer.playOverlayOn()
         soundPlayer.playOverlayOff()

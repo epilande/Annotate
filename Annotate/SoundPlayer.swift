@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 
 protocol SoundPlaying: AnyObject {
     var currentTime: TimeInterval { get set }
@@ -15,7 +16,7 @@ extension AVAudioPlayer: SoundPlaying {}
 
 @MainActor
 final class SoundPlayer {
-    static let shared = SoundPlayer()
+    static var shared = SoundPlayer()
 
     static func preload() {
         _ = shared
@@ -56,7 +57,7 @@ final class SoundPlayer {
             guard let player = makePlayer(sound) else {
                 continue
             }
-            player.volume = 0.2
+            player.volume = soundEffectVolume
             player.prepareToPlay()
             loadedPlayers[sound] = player
         }
@@ -113,8 +114,12 @@ final class SoundPlayer {
         #endif
     }
 
+    private static let log = Logger(subsystem: "com.epilande.Annotate", category: "SoundPlayer")
+
+    /// Logs rather than traps: a missing clip degrades to silence, and a bundling regression should
+    /// surface as a failing test or a Console line, never as a crash at launch.
     private static func reportLoadFailure(for sound: Sound, reason: String) {
-        assertionFailure("Failed to load \(sound.resourceName).caf: \(reason)")
+        log.error("Failed to load \(sound.resourceName, privacy: .public).caf: \(reason, privacy: .public)")
     }
 
     private func play(_ sound: Sound) {

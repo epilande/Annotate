@@ -43,6 +43,8 @@ let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
 
 /// 14 pt reproduces counters' original 15 pt radius / 2.5 pt stroke; the badge
 /// scales from here (see `CounterAnnotation.radius`).
+let soundEffectVolume: Float = 0.2
+
 let defaultCounterFontSize: CGFloat = 14
 let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
 

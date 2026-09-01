@@ -837,7 +837,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let overlayWindow = overlayWindows[currentScreen],
             overlayWindow.isVisible
         {
-            overlayWindow.overlayView.clearAll()
+            if overlayWindow.overlayView.clearAll() {
+                SoundPlayer.shared.playClearAll()
+            }
         }
     }
 

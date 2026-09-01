@@ -1203,7 +1203,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         nextCounterNumber = 1
     }
 
-    func clearAll() {
+    /// Clears every annotation on the canvas. Returns whether anything was actually cleared, so
+    /// user-initiated call sites can give feedback while programmatic ones stay silent.
+    @discardableResult
+    func clearAll() -> Bool {
         cleanupActiveTextField()
 
         currentPath = nil
@@ -1212,11 +1215,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
         currentHighlightBezier = nil
 
         // Only register undo if there's something to clear
-        if !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty
+        let hasContent =
+            !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty
             || !rectangles.isEmpty
             || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
-        {
-            SoundPlayer.shared.playClearAll()
+        if hasContent {
             let oldPaths = paths
             let oldArrows = arrows
             let oldLines = lines
@@ -1254,6 +1257,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         needsDisplay = true
+        return hasContent
     }
 
     func deleteLastItem() {

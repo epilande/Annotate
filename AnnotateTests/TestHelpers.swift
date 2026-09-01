@@ -166,9 +166,10 @@ class MockOverlayView: OverlayView {
         super.draw(dirtyRect)
     }
 
-    override func clearAll() {
+    @discardableResult
+    override func clearAll() -> Bool {
         clearAllCalled = true
-        super.clearAll()
+        return super.clearAll()
     }
 
     override func undo() {
