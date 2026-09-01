@@ -89,6 +89,17 @@ final class SoundPlayerTests: XCTestCase {
         XCTAssertEqual(players[.overlayOn]?.currentTime, 0)
     }
 
+    func testBundledOverlaySoundAssetsLoad() {
+        for sound in SoundPlayer.Sound.allCases {
+            let url = SoundPlayer.resourceURL(for: sound)
+            XCTAssertNotNil(url, "Missing \(sound.resourceName).caf in the app bundle")
+            XCTAssertNotNil(
+                SoundPlayer.makePlayer(for: sound),
+                "Failed to load \(sound.resourceName).caf from \(url?.path ?? "nil")"
+            )
+        }
+    }
+
     private func makePlayers() -> [SoundPlayer.Sound: SoundPlayingSpy] {
         Dictionary(
             uniqueKeysWithValues: SoundPlayer.Sound.allCases.map { ($0, SoundPlayingSpy()) }

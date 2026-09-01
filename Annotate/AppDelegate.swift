@@ -40,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        SoundPlayer.preload()
         updateDockIconVisibility()
 
         if let colorData = userDefaults.data(forKey: "SelectedColor"),

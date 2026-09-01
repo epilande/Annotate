@@ -17,6 +17,10 @@ extension AVAudioPlayer: SoundPlaying {}
 final class SoundPlayer {
     static let shared = SoundPlayer()
 
+    static func preload() {
+        _ = shared
+    }
+
     enum Sound: CaseIterable, Hashable {
         case overlayOn
         case overlayOff
@@ -71,14 +75,46 @@ final class SoundPlayer {
         play(.clearAll)
     }
 
-    private static func makePlayer(for sound: Sound) -> SoundPlaying? {
-        guard let url = Bundle.main.url(forResource: sound.resourceName, withExtension: "caf"),
-            let player = try? AVAudioPlayer(contentsOf: url)
-        else {
+    static func resourceURL(for sound: Sound) -> URL? {
+        for bundle in resourceBundles {
+            if let url = bundle.url(forResource: sound.resourceName, withExtension: "caf") {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: sound.resourceName,
+                withExtension: "caf",
+                subdirectory: "Sounds"
+            ) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    static func makePlayer(for sound: Sound) -> SoundPlaying? {
+        guard let url = resourceURL(for: sound) else {
+            reportLoadFailure(for: sound, reason: "resource not found in bundle")
             return nil
         }
 
-        return player
+        do {
+            return try AVAudioPlayer(contentsOf: url)
+        } catch {
+            reportLoadFailure(for: sound, reason: error.localizedDescription)
+            return nil
+        }
+    }
+
+    private static var resourceBundles: [Bundle] {
+        #if SWIFT_PACKAGE
+        [Bundle.module, Bundle(for: SoundPlayer.self), Bundle.main]
+        #else
+        [Bundle(for: SoundPlayer.self), Bundle.main]
+        #endif
+    }
+
+    private static func reportLoadFailure(for sound: Sound, reason: String) {
+        assertionFailure("Failed to load \(sound.resourceName).caf: \(reason)")
     }
 
     private func play(_ sound: Sound) {
