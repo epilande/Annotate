@@ -1224,6 +1224,28 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
     }
 
+    func testResignKeyCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.resignKey()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Cmd+Tab / resignKey should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testAlwaysOnEntryCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.prepareForAlwaysOnMode()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Always-On entry should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
     func testSendEventSameKeyCancelsPicker() {
         let originalColor = window.overlayView.currentColor
         tapPickerKey("c", keyCode: 8)
@@ -1318,7 +1340,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertNil(window.overlayView.currentPath)
     }
 
-    func testSendEventTypesCAndOpensSizePickerWhileEditingText() {
+    func testSendEventTypesCAndDoesNotOpenSizePickerWhileEditingText() {
         guard let field = startEditingAnnotationText() else { return }
 
         sendKey("c", keyCode: 8)
@@ -1329,8 +1351,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(typedC, "c should type into the annotation field")
 
         sendKey("w", keyCode: 13)
-        XCTAssertTrue(window.isQuickPickerOpen, "w should still open the size picker while editing")
-        XCTAssertEqual(quickPickerView?.mode, .fontSize)
+        XCTAssertFalse(window.isQuickPickerOpen, "w must not open the size picker while editing")
     }
 
     func testSendEventBracketsTypeWhileEditingText() {
@@ -1351,6 +1372,44 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             || field.currentEditor()?.string.contains("[") == true
             || field.currentEditor()?.string.contains("]") == true
         XCTAssertTrue(typedBrackets, "[ and ] should type into the annotation field")
+    }
+
+    func testSendEventEditingControlKeysDoNotAppendViaFallback() {
+        guard startEditingAnnotationText() != nil else { return }
+
+        seedAnnotationField("Hi")
+        sendKey("\r", keyCode: 36, modifierFlags: .shift)
+        let afterReturn = annotationFieldText()
+        XCTAssertNotEqual(
+            afterReturn, "Hi\r",
+            "Shift+Return must not append CR via stringValue += fallback")
+        XCTAssertFalse(
+            afterReturn.contains("\r"),
+            "Shift+Return must not append a carriage return through the annotation-field path")
+
+        seedAnnotationField("Hi")
+        sendKey("a", keyCode: 0, modifierFlags: .command)
+        sendKey("c", keyCode: 8, modifierFlags: .command)
+        sendKey("v", keyCode: 9, modifierFlags: .command)
+        sendKey("z", keyCode: 6, modifierFlags: .command)
+        let afterShortcuts = annotationFieldText()
+        XCTAssertNotEqual(
+            afterShortcuts, "Hiacvz",
+            "Cmd+A/C/V/Z must not append their characters via stringValue += fallback")
+        XCTAssertFalse(
+            afterShortcuts.contains("a") || afterShortcuts.contains("c")
+                || afterShortcuts.contains("v") || afterShortcuts.contains("z"),
+            "Cmd+A/C/V/Z must not be routed through the annotation-field += fallback")
+
+        seedAnnotationField("Hi")
+        sendKey("\u{7f}", keyCode: 51)
+        let afterDelete = annotationFieldText()
+        XCTAssertFalse(
+            afterDelete.contains("\u{7f}"),
+            "Delete must not append DEL via stringValue += fallback")
+        XCTAssertNotEqual(
+            afterDelete, "Hi\u{7f}",
+            "Delete must not be routed through the annotation-field += fallback")
     }
 
     func testSendEventRemappedToolTakesPrecedenceOverBracketStep() {
@@ -1403,11 +1462,13 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     private func sendKey(
         _ characters: String,
         type: NSEvent.EventType = .keyDown,
-        keyCode: UInt16
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags = []
     ) {
         let event = TestEvents.createKeyEvent(
             type: type,
             keyCode: keyCode,
+            modifierFlags: modifierFlags,
             characters: characters,
             windowNumber: window.windowNumber
         )
@@ -1426,7 +1487,10 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     private func waitForPickerToDismiss() {
-        wait(for: QuickPickerView.commitAnimationDuration + 0.05)
+        let deadline = Date().addingTimeInterval(TestConstants.defaultTimeout)
+        while window.isQuickPickerOpen && Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
+        }
     }
 
     private func pointInPickerCell(index: Int) -> NSPoint {
@@ -1450,6 +1514,17 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         ]
         return candidates.first { !picker.frame.insetBy(dx: -4, dy: -4).contains($0) }
             ?? NSPoint(x: -20, y: -20)
+    }
+
+    private func seedAnnotationField(_ text: String) {
+        guard let field = window.overlayView.activeTextField else { return }
+        field.stringValue = text
+        field.currentEditor()?.string = text
+    }
+
+    private func annotationFieldText() -> String {
+        let field = window.overlayView.activeTextField
+        return field?.currentEditor()?.string ?? field?.stringValue ?? ""
     }
 
     private func startEditingAnnotationText() -> NSTextField? {

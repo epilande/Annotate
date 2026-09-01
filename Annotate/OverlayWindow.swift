@@ -117,6 +117,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func resignKey() {
+        cancelQuickPicker()
         restoreMouseCoalescing()
         super.resignKey()
     }
@@ -181,10 +182,7 @@ class OverlayWindow: NSPanel {
             if handleQuickPickerKeyDown(event) {
                 return
             }
-            if isEditingAnnotationText {
-                if !deliverKeyToAnnotationField(event) {
-                    super.sendEvent(event)
-                }
+            if isEditingAnnotationText, deliverKeyToAnnotationField(event) {
                 return
             }
         case .keyUp:
@@ -446,26 +444,25 @@ class OverlayWindow: NSPanel {
         return false
     }
 
-    /// Inserts into the live annotation field so c / [ / ] are not stolen by picker
-    /// shortcuts when AppKit does not deliver sendEvent to the field editor.
+    /// Types c / [ / ] into the live annotation field so those picker keys are not
+    /// stolen. Other keys, including Shift+Return, Cmd shortcuts, and Delete, take
+    /// the normal sendEvent path and are never appended via stringValue.
     @discardableResult
     private func deliverKeyToAnnotationField(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        else { return false }
         let chars = event.characters ?? ""
-        let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
-        if let editor {
-            editor.interpretKeyEvents([event])
-            if chars.isEmpty || editor.string.contains(chars) {
-                return true
-            }
-        }
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        guard key == "c" || key == "[" || key == "]" else { return false }
+        guard !chars.isEmpty else { return false }
+        guard let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
+        else { return false }
 
-        guard let field = overlayView.activeTextField, !chars.isEmpty, event.keyCode != 53 else {
-            return editor != nil
+        editor.insertText(chars)
+        if let field = overlayView.activeTextField {
+            overlayView.controlTextDidChange(
+                Notification(name: NSControl.textDidChangeNotification, object: field))
         }
-
-        field.stringValue += chars
-        overlayView.controlTextDidChange(
-            Notification(name: NSControl.textDidChangeNotification, object: field))
         return true
     }
 
@@ -523,6 +520,9 @@ class OverlayWindow: NSPanel {
 
         let sizeKey = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
         if key == sizeKey {
+            if isEditingAnnotationText {
+                return false
+            }
             beginQuickPicker(.width, activationKey: sizeKey)
             return true
         }
@@ -1115,6 +1115,7 @@ class OverlayWindow: NSPanel {
     }
 
     func prepareForAlwaysOnMode() {
+        cancelQuickPicker()
         restoreMouseCoalescing()
         cancelFreehandStroke()
     }

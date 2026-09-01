@@ -187,11 +187,12 @@ class MockOverlayView: OverlayView {
 // MARK: - XCTestCase Extensions
 extension XCTestCase {
     func wait(for duration: TimeInterval) {
-        let expectation = expectation(description: "Wait for \(duration) seconds")
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: duration + 1)
+        // Nested default-mode run loop so GCD asyncAfter (hold/dismiss) can run.
+        // Do not wait on XCTestExpectation: that stalls @MainActor tests on CI.
+        // Do not run in .common — that is a mode set, not a runnable mode, so
+        // the wait elapsed wall-clock without ever draining the main queue.
+        guard duration > 0 else { return }
+        _ = CFRunLoopRunInMode(.defaultMode, duration, false)
     }
 
     nonisolated func assertEventually(
