@@ -95,14 +95,15 @@ enum TestEvents {
     static func createMouseEvent(
         type: NSEvent.EventType,
         location: NSPoint,
-        modifierFlags: NSEvent.ModifierFlags = []
+        modifierFlags: NSEvent.ModifierFlags = [],
+        windowNumber: Int = 0
     ) -> NSEvent? {
         return NSEvent.mouseEvent(
             with: type,
             location: location,
             modifierFlags: modifierFlags,
             timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             eventNumber: 0,
             clickCount: 1,
@@ -114,14 +115,15 @@ enum TestEvents {
         type: NSEvent.EventType,
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags = [],
-        characters: String = ""
+        characters: String = "",
+        windowNumber: Int = 0
     ) -> NSEvent? {
         return NSEvent.keyEvent(
             with: type,
             location: .zero,
             modifierFlags: modifierFlags,
             timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             characters: characters,
             charactersIgnoringModifiers: characters,
@@ -185,11 +187,12 @@ class MockOverlayView: OverlayView {
 // MARK: - XCTestCase Extensions
 extension XCTestCase {
     func wait(for duration: TimeInterval) {
-        let expectation = expectation(description: "Wait for \(duration) seconds")
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: duration + 1)
+        // Nested default-mode run loop so GCD asyncAfter (hold/dismiss) can run.
+        // Do not wait on XCTestExpectation: that stalls @MainActor tests on CI.
+        // Do not run in .common — that is a mode set, not a runnable mode, so
+        // the wait elapsed wall-clock without ever draining the main queue.
+        guard duration > 0 else { return }
+        _ = CFRunLoopRunInMode(.defaultMode, duration, false)
     }
 
     nonisolated func assertEventually(
