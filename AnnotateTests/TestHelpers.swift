@@ -187,13 +187,12 @@ class MockOverlayView: OverlayView {
 // MARK: - XCTestCase Extensions
 extension XCTestCase {
     func wait(for duration: TimeInterval) {
-        // Pump .common so GCD can run. XCTestExpectation + main asyncAfter
-        // deadlocks @MainActor tests under xcodebuild (CI abort, signal 6).
+        // Nested default-mode run loop so GCD asyncAfter (hold/dismiss) can run.
+        // Do not wait on XCTestExpectation: that stalls @MainActor tests on CI.
+        // Do not run in .common — that is a mode set, not a runnable mode, so
+        // the wait elapsed wall-clock without ever draining the main queue.
         guard duration > 0 else { return }
-        let end = Date().addingTimeInterval(duration)
-        while Date() < end {
-            RunLoop.current.run(mode: .common, before: end)
-        }
+        _ = CFRunLoopRunInMode(.defaultMode, duration, false)
     }
 
     nonisolated func assertEventually(

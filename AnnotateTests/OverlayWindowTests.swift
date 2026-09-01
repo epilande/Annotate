@@ -1466,10 +1466,9 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     private func waitForPickerToDismiss() {
-        // Poll until dismiss; do not wait on the commit animation via expectations.
-        let end = Date().addingTimeInterval(QuickPickerView.commitAnimationDuration + 0.05)
-        while window.isQuickPickerOpen && Date() < end {
-            RunLoop.current.run(mode: .common, before: Date().addingTimeInterval(0.01))
+        let deadline = Date().addingTimeInterval(TestConstants.defaultTimeout)
+        while window.isQuickPickerOpen && Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
         }
     }
 
