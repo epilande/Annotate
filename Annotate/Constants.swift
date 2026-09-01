@@ -15,6 +15,8 @@ extension UserDefaults {
     static let alwaysOnModeKey = "AlwaysOnMode"
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
+    static let soundsEnabledKey = "SoundsEnabled"
+    static let soundsEnabledDefault = true
     static let clickRippleEnabledKey = "ClickRippleEnabled"
     static let clickRippleColorKey = "ClickRippleColor"
     static let clickRippleSizeKey = "ClickRippleSize"
@@ -44,10 +46,24 @@ let lineWidthRange: ClosedRange<CGFloat> = 0.5...24
 
 /// 14 pt reproduces counters' original 15 pt radius / 2.5 pt stroke; the badge
 /// scales from here (see `CounterAnnotation.radius`).
+let soundEffectVolume: Float = 0.2
+
 let defaultCounterFontSize: CGFloat = 14
 let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
 
 extension UserDefaults {
+    var soundsEnabled: Bool {
+        get {
+            guard object(forKey: Self.soundsEnabledKey) != nil else {
+                return Self.soundsEnabledDefault
+            }
+            return bool(forKey: Self.soundsEnabledKey)
+        }
+        set {
+            set(newValue, forKey: Self.soundsEnabledKey)
+        }
+    }
+
     var textToolFontSize: CGFloat {
         get {
             let stored = double(forKey: Self.defaultTextFontSizeKey)

@@ -1363,14 +1363,18 @@ class OverlayWindow: NSPanel {
             }
         case 51:  // Delete/Backspace key
             if event.modifierFlags.contains(.option) {
-                overlayView.clearAll()
+                if overlayView.clearAll() {
+                    SoundPlayer.shared.playClearAll()
+                }
                 cancelFreehandStroke()
             } else {
                 overlayView.deleteLastItem()
             }
         case 117:  // Forward Delete key (fn+delete)
             if event.modifierFlags.contains(.option) {
-                overlayView.clearAll()
+                if overlayView.clearAll() {
+                    SoundPlayer.shared.playClearAll()
+                }
                 cancelFreehandStroke()
             } else {
                 overlayView.deleteLastItem()

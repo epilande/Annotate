@@ -321,6 +321,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
+- **Play sounds**: Play feedback sounds for overlay and clear actions.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).

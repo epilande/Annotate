@@ -38,6 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        SoundPlayer.preload()
         updateDockIconVisibility()
 
         if let colorData = userDefaults.data(forKey: "SelectedColor"),
@@ -456,6 +457,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         } else {
@@ -466,6 +468,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             }
 
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
@@ -509,6 +512,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         }
@@ -527,6 +531,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         {
             configureWindowForNormalMode(overlayWindow)
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
@@ -819,7 +824,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let overlayWindow = overlayWindows[currentScreen],
             overlayWindow.isVisible
         {
-            overlayWindow.overlayView.clearAll()
+            if overlayWindow.overlayView.clearAll() {
+                SoundPlayer.shared.playClearAll()
+            }
         }
     }
 
