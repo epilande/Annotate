@@ -1224,6 +1224,28 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
     }
 
+    func testResignKeyCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.resignKey()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Cmd+Tab / resignKey should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testAlwaysOnEntryCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.prepareForAlwaysOnMode()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Always-On entry should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
     func testSendEventSameKeyCancelsPicker() {
         let originalColor = window.overlayView.currentColor
         tapPickerKey("c", keyCode: 8)
@@ -1318,7 +1340,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertNil(window.overlayView.currentPath)
     }
 
-    func testSendEventTypesCAndOpensSizePickerWhileEditingText() {
+    func testSendEventTypesCAndDoesNotOpenSizePickerWhileEditingText() {
         guard let field = startEditingAnnotationText() else { return }
 
         sendKey("c", keyCode: 8)
@@ -1329,8 +1351,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(typedC, "c should type into the annotation field")
 
         sendKey("w", keyCode: 13)
-        XCTAssertTrue(window.isQuickPickerOpen, "w should still open the size picker while editing")
-        XCTAssertEqual(quickPickerView?.mode, .fontSize)
+        XCTAssertFalse(window.isQuickPickerOpen, "w must not open the size picker while editing")
     }
 
     func testSendEventBracketsTypeWhileEditingText() {

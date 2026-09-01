@@ -24,12 +24,31 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
             3)
         XCTAssertEqual(
             QuickPickerView.steppedValue(
-                in: QuickPickerView.widthOptions, current: -20, direction: -1),
+                in: QuickPickerView.widthOptions, current: 1, direction: -1),
             1)
         XCTAssertEqual(
             QuickPickerView.steppedValue(
-                in: QuickPickerView.widthOptions, current: 100, direction: 1),
+                in: QuickPickerView.widthOptions, current: 24, direction: 1),
             24)
+    }
+
+    func testSteppedValueDoesNotInvertOutsideLadder() {
+        XCTAssertEqual(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.widthOptions, current: 0.5, direction: -1),
+            0.5)
+        XCTAssertEqual(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.fontSizeOptions, current: 12, direction: -1),
+            12)
+        XCTAssertEqual(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.widthOptions, current: 100, direction: 1),
+            100)
+        XCTAssertEqual(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.fontSizeOptions, current: 200, direction: 1),
+            200)
     }
 
     func testCurrentValuesSelectNearestCellsWithoutMutatingThem() {

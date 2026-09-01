@@ -117,6 +117,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func resignKey() {
+        cancelQuickPicker()
         restoreMouseCoalescing()
         super.resignKey()
     }
@@ -519,6 +520,9 @@ class OverlayWindow: NSPanel {
 
         let sizeKey = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
         if key == sizeKey {
+            if isEditingAnnotationText {
+                return false
+            }
             beginQuickPicker(.width, activationKey: sizeKey)
             return true
         }
@@ -1111,6 +1115,7 @@ class OverlayWindow: NSPanel {
     }
 
     func prepareForAlwaysOnMode() {
+        cancelQuickPicker()
         restoreMouseCoalescing()
         cancelFreehandStroke()
     }

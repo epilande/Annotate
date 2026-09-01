@@ -136,6 +136,12 @@ final class QuickPickerView: NSView {
 
     static func steppedValue(in options: [CGFloat], current: CGFloat, direction: Int) -> CGFloat {
         guard !options.isEmpty else { return current }
+        if let first = options.first, current < first, direction < 0 {
+            return current
+        }
+        if let last = options.last, current > last, direction > 0 {
+            return current
+        }
         let currentIndex = nearestIndex(in: options, to: current)
         let steppedIndex = max(0, min(options.count - 1, currentIndex + direction))
         return options[steppedIndex]
