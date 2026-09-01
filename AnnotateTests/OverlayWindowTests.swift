@@ -1466,7 +1466,11 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     private func waitForPickerToDismiss() {
-        wait(for: QuickPickerView.commitAnimationDuration + 0.05)
+        // Poll until dismiss; do not wait on the commit animation via expectations.
+        let end = Date().addingTimeInterval(QuickPickerView.commitAnimationDuration + 0.05)
+        while window.isQuickPickerOpen && Date() < end {
+            RunLoop.current.run(mode: .common, before: Date().addingTimeInterval(0.01))
+        }
     }
 
     private func pointInPickerCell(index: Int) -> NSPoint {

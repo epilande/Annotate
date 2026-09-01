@@ -187,11 +187,13 @@ class MockOverlayView: OverlayView {
 // MARK: - XCTestCase Extensions
 extension XCTestCase {
     func wait(for duration: TimeInterval) {
-        let expectation = expectation(description: "Wait for \(duration) seconds")
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            expectation.fulfill()
+        // Pump .common so GCD can run. XCTestExpectation + main asyncAfter
+        // deadlocks @MainActor tests under xcodebuild (CI abort, signal 6).
+        guard duration > 0 else { return }
+        let end = Date().addingTimeInterval(duration)
+        while Date() < end {
+            RunLoop.current.run(mode: .common, before: end)
         }
-        wait(for: [expectation], timeout: duration + 1)
     }
 
     nonisolated func assertEventually(
