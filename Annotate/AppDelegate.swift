@@ -667,7 +667,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     func updateAlwaysOnMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentOverlayModeItem = menu.items.first { 
             $0.title.hasPrefix("Overlay Mode:")
@@ -683,7 +683,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
     
     func updateCurrentToolMenuItem(to toolName: String) {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentToolItem = menu.items.first { $0.title.hasPrefix("Current Tool:") }
         currentToolItem?.title = "Current Tool: \(toolName)"
@@ -937,7 +937,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         compositeImage.isTemplate = false
 
         // Set the composite image to the status bar button
-        statusItem.button?.image = compositeImage
+        statusItem?.button?.image = compositeImage
     }
     
     func setupApplicationMenu() {

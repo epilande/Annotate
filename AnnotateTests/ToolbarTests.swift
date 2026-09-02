@@ -254,6 +254,43 @@ final class ToolbarTests: XCTestCase {
         XCTAssertTrue(toolbarHit === host || toolbarHit?.isDescendant(of: host) == true)
     }
 
+    func testAlwaysOnClickThroughStillHitsQuickPicker() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        appDelegate.overlayWindows[screen] = window
+        appDelegate.alwaysOnMode = false
+        appDelegate.toggleAlwaysOnMode()
+        defer {
+            window.cancelQuickPicker()
+            if appDelegate.alwaysOnMode {
+                appDelegate.toggleAlwaysOnMode()
+            }
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        window.beginQuickPicker(.color, anchor: NSPoint(x: 600, y: 400))
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        XCTAssertTrue(window.isQuickPickerOpen)
+        let picker = try XCTUnwrap(
+            window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
+        )
+
+        let canvasPoint = NSPoint(x: 100, y: 300)
+        XCTAssertFalse(
+            picker.frame.contains(window.overlayView.convert(canvasPoint, from: window.contentView)))
+        XCTAssertNil(
+            window.contentView?.hitTest(canvasPoint),
+            "Canvas clicks in Always-On must still pass through while the picker is open")
+
+        let pickerPoint = window.overlayView.convert(
+            NSPoint(x: picker.frame.midX, y: picker.frame.midY),
+            to: window.contentView
+        )
+        let pickerHit = window.contentView?.hitTest(pickerPoint)
+        XCTAssertNotNil(pickerHit, "Quick picker must receive clicks in Always-On")
+        XCTAssertTrue(pickerHit === picker || pickerHit?.isDescendant(of: picker) == true)
+    }
+
     func testToolbarActionFinalizesActiveTextAnnotation() throws {
         let field = try XCTUnwrap(startEditingAnnotationText())
         field.stringValue = "Keep me"

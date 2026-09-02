@@ -2215,10 +2215,24 @@ private final class OverlayContainerView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
         guard overlayWindow?.overlayView.isReadOnlyMode == true else { return hit }
-        guard let host = overlayWindow?.toolbarHost, !host.isHidden else { return nil }
-        if let hit, hit === host || hit.isDescendant(of: host) {
+        if isAlwaysOnInteractive(hit) {
             return hit
         }
         return nil
+    }
+
+    private func isAlwaysOnInteractive(_ hit: NSView?) -> Bool {
+        guard let hit else { return false }
+        if let host = overlayWindow?.toolbarHost, !host.isHidden,
+            hit === host || hit.isDescendant(of: host)
+        {
+            return true
+        }
+        var view: NSView? = hit
+        while let current = view {
+            if current is QuickPickerView { return true }
+            view = current.superview
+        }
+        return false
     }
 }
