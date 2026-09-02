@@ -188,16 +188,100 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testQuestionMarkTogglesPersistedVisibility() throws {
-        let event = try XCTUnwrap(TestEvents.createKeyEvent(
-            type: .keyDown,
-            keyCode: 44,
-            modifierFlags: [.shift],
-            characters: "?"
-        ))
+        let event = try XCTUnwrap(questionMarkEvent())
 
         window.keyDown(with: event)
 
         XCTAssertFalse(appDelegate.toolbarVisible)
+    }
+
+    func testQuestionMarkTypesWhileEditingAnnotationText() throws {
+        guard startEditingAnnotationText() != nil else { return }
+
+        XCTAssertTrue(appDelegate.toolbarVisible)
+
+        window.keyDown(with: try XCTUnwrap(questionMarkEvent()))
+        XCTAssertTrue(
+            appDelegate.toolbarVisible,
+            "? must not toggle the toolbar from keyDown while editing")
+
+        window.sendEvent(try XCTUnwrap(questionMarkEvent()))
+        XCTAssertTrue(
+            appDelegate.toolbarVisible,
+            "? must not toggle the toolbar from sendEvent while editing")
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        let typed =
+            field.stringValue.contains("?")
+            || field.currentEditor()?.string.contains("?") == true
+        XCTAssertTrue(typed, "? should insert into the annotation field while editing")
+    }
+
+    func testToolbarHostAcceptsFirstMouse() {
+        XCTAssertTrue(
+            window.toolbarHost?.acceptsFirstMouse(for: nil) ?? false,
+            "Chips live in a nonactivating panel; the host must take the first click")
+    }
+
+    func testAlwaysOnClickThroughStillHitsToolbar() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        appDelegate.overlayWindows[screen] = window
+        appDelegate.alwaysOnMode = false
+        appDelegate.toggleAlwaysOnMode()
+        defer {
+            if appDelegate.alwaysOnMode {
+                appDelegate.toggleAlwaysOnMode()
+            }
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        XCTAssertFalse(
+            window.ignoresMouseEvents,
+            "Always-On must not ignore all mouse events or toolbar chips never fire")
+        XCTAssertTrue(window.overlayView.isReadOnlyMode)
+
+        let canvasPoint = NSPoint(x: 100, y: 300)
+        XCTAssertFalse(window.isPointInToolbar(canvasPoint))
+        XCTAssertNil(
+            window.contentView?.hitTest(canvasPoint),
+            "Canvas clicks in Always-On must pass through")
+
+        let toolbarPoint = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
+        XCTAssertTrue(window.isPointInToolbar(toolbarPoint))
+        let toolbarHit = window.contentView?.hitTest(toolbarPoint)
+        XCTAssertNotNil(toolbarHit, "Toolbar chips must receive clicks in Always-On")
+        let host = try XCTUnwrap(window.toolbarHost)
+        XCTAssertTrue(toolbarHit === host || toolbarHit?.isDescendant(of: host) == true)
+    }
+
+    func testToolbarActionFinalizesActiveTextAnnotation() throws {
+        let field = try XCTUnwrap(startEditingAnnotationText())
+        field.stringValue = "Keep me"
+        field.currentEditor()?.string = "Keep me"
+
+        window.performToolbarAction(.tool(.pen))
+
+        XCTAssertNil(window.overlayView.activeTextField)
+        XCTAssertEqual(window.overlayView.textAnnotations.last?.text, "Keep me")
+    }
+
+    func testCanvasStrokeCrossingToolbarIsNotCaptured() throws {
+        window.overlayView.currentTool = .pen
+        let canvasStart = NSPoint(x: 100, y: 300)
+        let overBar = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
+        XCTAssertTrue(window.isPointInToolbar(overBar))
+        XCTAssertFalse(window.isPointInToolbar(canvasStart))
+
+        sendMouse(.leftMouseDown, at: canvasStart)
+        XCTAssertEqual(window.anchorPoint, canvasStart)
+
+        sendMouse(.leftMouseDragged, at: overBar)
+        sendMouse(.leftMouseUp, at: overBar)
+
+        XCTAssertFalse(
+            window.overlayView.paths.isEmpty,
+            "A canvas-origin stroke must finish even if drag/up cross the toolbar")
+        XCTAssertEqual(window.anchorPoint, canvasStart)
     }
 
     func testToolbarViewBuildsForWideAndNarrowProposals() {
@@ -211,6 +295,48 @@ final class ToolbarTests: XCTestCase {
         host.frame = NSRect(x: 0, y: 0, width: 700, height: 200)
         host.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(host.fittingSize.height, 0)
+    }
+
+    private func questionMarkEvent() -> NSEvent? {
+        TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 44,
+            modifierFlags: [.shift],
+            characters: "?",
+            windowNumber: window.windowNumber
+        )
+    }
+
+    private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
+        window.sendEvent(
+            TestEvents.createMouseEvent(
+                type: type, location: location, windowNumber: window.windowNumber)!)
+    }
+
+    private func startEditingAnnotationText() -> NSTextField? {
+        window.overlayView.currentTool = .text
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: NSPoint(x: 120, y: 120),
+            color: .black,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+        window.overlayView.createTextField(
+            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+        guard let field = window.overlayView.activeTextField else {
+            XCTFail("Expected an annotation text field")
+            return nil
+        }
+        if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
+            window.makeFirstResponder(field)
+        }
+        if field.currentEditor() == nil {
+            field.becomeFirstResponder()
+        }
+        XCTAssertNotNil(window.overlayView.activeTextField)
+        return field
     }
 }
 

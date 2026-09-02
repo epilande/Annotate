@@ -700,7 +700,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.prepareForAlwaysOnMode()
-        overlayWindow.ignoresMouseEvents = true
+        // Canvas stays click-through via OverlayContainerView.hitTest; the
+        // toolbar must still receive clicks, so the window cannot ignore all events.
+        overlayWindow.ignoresMouseEvents = false
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true
 

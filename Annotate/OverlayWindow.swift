@@ -88,7 +88,7 @@ class OverlayWindow: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .transient]
         self.setFrame(windowRect, display: true)
 
-        let containerView = NSView(frame: NSRect(origin: .zero, size: windowRect.size))
+        let containerView = OverlayContainerView(frame: NSRect(origin: .zero, size: windowRect.size))
 
         let boardFrame = NSRect(
             x: 0,
@@ -107,11 +107,12 @@ class OverlayWindow: NSPanel {
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
+        containerView.overlayWindow = self
         installToolbar(in: containerView)
     }
 
     private func installToolbar(in container: NSView) {
-        let host = NSHostingView(
+        let host = ToolbarHostingView(
             rootView: ToolbarView(model: toolbarModel) { [weak self] action in
                 self?.performToolbarAction(action)
             }
@@ -189,6 +190,9 @@ class OverlayWindow: NSPanel {
     }
 
     func performToolbarAction(_ action: ToolbarAction) {
+        if let activeField = overlayView.activeTextField {
+            overlayView.finalizeTextAnnotation(activeField)
+        }
         switch action {
         case .tool(let tool):
             AppDelegate.shared?.switchTool(to: tool)
@@ -276,11 +280,10 @@ class OverlayWindow: NSPanel {
 
     override var canBecomeMain: Bool { false }
 
-    func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     var isQuickPickerOpen: Bool { quickPicker != nil }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, isToolbarToggleEvent(event) {
+        if event.type == .keyDown, !isEditingAnnotationText, isToolbarToggleEvent(event) {
             AppDelegate.shared?.toggleToolbar()
             return
         }
@@ -323,8 +326,9 @@ class OverlayWindow: NSPanel {
     /// Canvas mouse goes through OverlayWindow's drawing handlers even when AppKit
     /// would drop a synthetic or non-key event. Clicks on the annotation field still
     /// take the normal first-responder path. While a picker is open, leftover mouse-up
-    /// restores coalescing and must not commit geometry. Toolbar hits also take the
-    /// view path so the SwiftUI host can receive clicks.
+    /// restores coalescing and must not commit geometry. A mouse-down on the toolbar
+    /// takes the view path so chips receive the click; a canvas-origin stroke that
+    /// later crosses the bar stays on the canvas.
     private func routeOverlayMouseEvent(_ event: NSEvent) -> Bool {
         switch event.type {
         case .leftMouseDown, .leftMouseDragged, .leftMouseUp,
@@ -354,19 +358,24 @@ class OverlayWindow: NSPanel {
         }
 
         let overToolbar = isPointInToolbar(event.locationInWindow)
-        if overToolbar {
-            if event.type == .leftMouseDown {
-                isToolbarGestureActive = true
-            } else if event.type == .leftMouseUp {
-                isToolbarGestureActive = false
-            }
-            return false
-        }
         if isToolbarGestureActive {
             if event.type == .leftMouseUp {
                 isToolbarGestureActive = false
             }
-            return true
+            // Stay on the bar: let the host keep the gesture. Leave the bar:
+            // swallow so a toolbar-origin drag cannot start a canvas stroke.
+            return overToolbar ? false : true
+        }
+        if overToolbar {
+            switch event.type {
+            case .leftMouseDown:
+                isToolbarGestureActive = true
+                return false
+            case .rightMouseDown, .otherMouseDown:
+                return false
+            default:
+                break
+            }
         }
 
         if isEventOverAnnotationText(event) {
@@ -1440,7 +1449,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
-        if isToolbarToggleEvent(event) {
+        if !isEditingAnnotationText, isToolbarToggleEvent(event) {
             AppDelegate.shared?.toggleToolbar()
             return
         }
@@ -2193,5 +2202,23 @@ private extension OverlayWindow {
         return disallowedModifiers.isEmpty
             && (event.characters == "?"
                 || (event.keyCode == 44 && event.modifierFlags.contains(.shift)))
+    }
+}
+
+private final class ToolbarHostingView: NSHostingView<ToolbarView> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+private final class OverlayContainerView: NSView {
+    weak var overlayWindow: OverlayWindow?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        guard overlayWindow?.overlayView.isReadOnlyMode == true else { return hit }
+        guard let host = overlayWindow?.toolbarHost, !host.isHidden else { return nil }
+        if let hit, hit === host || hit.isDescendant(of: host) {
+            return hit
+        }
+        return nil
     }
 }
