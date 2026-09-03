@@ -75,7 +75,7 @@ struct GeneralSettingsView: View {
                     }
                 } label: {
                     Text("Sound Theme")
-                    Text("Chalk taps and an eraser swipe, or paper flips and a tear")
+                    Text("Chalk, paper, marker, pencil, or typewriter cues")
                 }
                 .disabled(!soundsEnabled)
                 .onChange(of: soundTheme) { _, _ in

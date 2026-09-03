@@ -19,6 +19,9 @@ extension AVAudioPlayer: SoundPlaying {}
 enum SoundTheme: String, CaseIterable, Identifiable {
     case chalk
     case paper
+    case marker
+    case pencil
+    case typewriter
 
     var id: String { rawValue }
 
@@ -28,6 +31,12 @@ enum SoundTheme: String, CaseIterable, Identifiable {
             return "Chalk"
         case .paper:
             return "Paper"
+        case .marker:
+            return "Marker"
+        case .pencil:
+            return "Pencil"
+        case .typewriter:
+            return "Typewriter"
         }
     }
 }

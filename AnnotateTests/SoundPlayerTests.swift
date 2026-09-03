@@ -33,8 +33,9 @@ final class SoundPlayerTests: XCTestCase {
                 SoundPlayer.Sound.allCases.map { $0.resourceName(for: theme) }
             }
         )
-        XCTAssertEqual(distinctResourceNames.count, 6)
-        XCTAssertEqual(loadCounts.count, 6)
+        let expectedCount = SoundTheme.allCases.count * SoundPlayer.Sound.allCases.count
+        XCTAssertEqual(distinctResourceNames.count, expectedCount)
+        XCTAssertEqual(loadCounts.count, expectedCount)
         XCTAssertTrue(loadCounts.values.allSatisfy { $0 == 1 })
         XCTAssertTrue(players.values.allSatisfy { $0.prepareCount == 1 })
         XCTAssertTrue(players.values.allSatisfy { $0.volume == soundEffectVolume })
