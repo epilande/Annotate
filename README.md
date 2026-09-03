@@ -322,6 +322,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
 - **Play sounds**: Play feedback sounds for overlay and clear actions.
+- **Sound Theme**: Choose between Chalk (default), Paper, Marker, Pencil, and Typewriter feedback sounds.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
