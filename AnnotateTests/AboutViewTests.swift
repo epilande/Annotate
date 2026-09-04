@@ -84,8 +84,14 @@ final class AboutViewTests: XCTestCase {
             return
         }
 
-        // Verify we can start the updater (it shouldn't already be started)
-        XCTAssertNoThrow(try controller.startUpdater(), "Should be able to start updater since it wasn't started automatically")
+        // Never call `startUpdater()` here. Under xctest there is no app bundle with a feed
+        // URL or EdDSA key, so the start fails and Sparkle schedules a modal "Unable to Check
+        // For Updates" alert on the main queue four seconds later. On CI nobody can dismiss
+        // it, which wedged `swift test` for the full job limit. An unstarted updater reports
+        // that it cannot check for updates, which is the property this test cares about.
+        XCTAssertFalse(
+            controller.updater.canCheckForUpdates,
+            "Updater should not be started until startUpdater() is called explicitly")
     }
 
     // MARK: - View Body Tests

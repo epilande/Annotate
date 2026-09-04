@@ -70,6 +70,26 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertTrue(testDefaults.soundsEnabled)
     }
 
+    func testSoundThemeDefaultsToChalkWhenAbsent() {
+        testDefaults.removeObject(forKey: UserDefaults.soundThemeKey)
+
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
+    func testSoundThemePersistsExplicitValue() {
+        testDefaults.soundTheme = .paper
+        XCTAssertEqual(testDefaults.soundTheme, .paper)
+
+        testDefaults.soundTheme = .chalk
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
+    func testSoundThemeFallsBackToChalkForUnknownValue() {
+        testDefaults.set("granite", forKey: UserDefaults.soundThemeKey)
+
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
     func testEnableBoardBinding() {
         let initialValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertFalse(initialValue, "enableBoard should default to false")

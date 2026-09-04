@@ -12,6 +12,8 @@ struct GeneralSettingsView: View {
     private var toolbarVisible = UserDefaults.toolbarVisibleDefault
     @AppStorage(UserDefaults.soundsEnabledKey)
     private var soundsEnabled = UserDefaults.soundsEnabledDefault
+    @AppStorage(UserDefaults.soundThemeKey)
+    private var soundTheme: SoundTheme = UserDefaults.soundThemeDefault
     @AppStorage(UserDefaults.persistTextModeKey)
     private var persistTextMode = false
     @AppStorage(UserDefaults.defaultToolKey)
@@ -76,6 +78,19 @@ struct GeneralSettingsView: View {
                 Toggle(isOn: $soundsEnabled) {
                     Text("Play sounds")
                     Text("Play feedback sounds for overlay and clear actions")
+                }
+
+                Picker(selection: $soundTheme) {
+                    ForEach(SoundTheme.allCases) { theme in
+                        Text(theme.displayName).tag(theme)
+                    }
+                } label: {
+                    Text("Sound Theme")
+                    Text("Chalk, paper, marker, pencil, or typewriter cues")
+                }
+                .disabled(!soundsEnabled)
+                .onChange(of: soundTheme) { _, _ in
+                    SoundPlayer.shared.playOverlayOn()
                 }
 
                 Toggle(
