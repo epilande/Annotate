@@ -16,6 +16,7 @@ extension UserDefaults {
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
     static let toolbarVisibleKey = "ToolbarVisible"
+    static let toolbarVisibleDefault = true
     static let soundsEnabledKey = "SoundsEnabled"
     static let soundsEnabledDefault = true
     static let clickRippleEnabledKey = "ClickRippleEnabled"

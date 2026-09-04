@@ -144,7 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     func setupStatusBarItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-        if statusItem.button != nil {
+        if statusItem?.button != nil {
             updateStatusBarIcon(with: .gray)
 
             let menu = NSMenu()
@@ -301,15 +301,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             )
             menu.addItem(toggleAlwaysOnModeItem)
 
-
             let toolbarItem = NSMenuItem(
-                title: "Toolbar",
+                title: toolbarVisible ? "Hide Toolbar" : "Show Toolbar",
                 action: #selector(toggleToolbar),
                 keyEquivalent: "/"
             )
             toolbarItem.keyEquivalentModifierMask = [.shift]
-            toolbarItem.state = toolbarVisible ? .on : .off
             menu.addItem(toolbarItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let clearAllItem = NSMenuItem(
@@ -360,7 +359,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                     title: "Quit", action: #selector(NSApplication.terminate(_:)),
                     keyEquivalent: "q"))
 
-            statusItem.menu = menu
+            statusItem?.menu = menu
         }
     }
 
@@ -633,7 +632,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     func updateBoardMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
 
         let boardType = BoardManager.shared.displayName
         let boardEnabled = BoardManager.shared.isEnabled
@@ -659,7 +658,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     func updateClickEffectsMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         if let item = menu.items.first(where: { $0.action == #selector(toggleClickEffects(_:)) }) {
             let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
             item.title = isEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight"
@@ -692,6 +691,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     private func configureWindowForNormalMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.ignoresMouseEvents = false
         overlayWindow.overlayView.isReadOnlyMode = false
+        overlayWindow.updateToolbarVisibility()
 
         let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindow.overlayView.fadeMode = persistedFadeMode
@@ -700,11 +700,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.prepareForAlwaysOnMode()
-        // Canvas stays click-through via OverlayContainerView.hitTest; the
-        // toolbar must still receive clicks, so the window cannot ignore all events.
-        overlayWindow.ignoresMouseEvents = false
+        overlayWindow.ignoresMouseEvents = true
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true
+        overlayWindow.updateToolbarVisibility()
 
         let screenFrame = overlayWindow.screen?.frame ?? NSScreen.main?.frame ?? .zero
         overlayWindow.setFrame(screenFrame, display: true)
@@ -713,7 +712,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
     
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentDrawingModeItem = menu.items.first { 
             $0.title.hasPrefix("Drawing Mode:") 
@@ -770,12 +769,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func shortcutsDidChange() {
-        refreshAllToolbars()
         refreshMenuKeyEquivalents()
     }
 
     func refreshMenuKeyEquivalents() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
 
         for item in menu.items {
             switch item.action {
@@ -866,7 +864,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     var toolbarVisible: Bool {
-        userDefaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool ?? true
+        userDefaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
+            ?? UserDefaults.toolbarVisibleDefault
     }
 
     @objc func toggleToolbar() {
@@ -877,12 +876,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         userDefaults.set(visible, forKey: UserDefaults.toolbarVisibleKey)
         overlayWindows.values.forEach { $0.updateToolbarVisibility() }
         if let item = statusItem?.menu?.items.first(where: { $0.action == #selector(toggleToolbar) }) {
-            item.state = visible ? .on : .off
+            item.title = visible ? "Hide Toolbar" : "Show Toolbar"
         }
-    }
-
-    func refreshAllToolbars() {
-        overlayWindows.values.forEach { $0.refreshToolbar() }
     }
 
     @objc func showSettings() {

@@ -18,7 +18,8 @@ final class ToolbarModel: ObservableObject {
     @Published var currentColor: NSColor = .systemRed
     @Published var currentWidth: CGFloat = 3
     @Published var fadeMode = true
-    @Published var shortcutsVersion = 0
+    /// Snapshot of the user's tool shortcuts, refreshed by the window on `.shortcutsDidChange`.
+    @Published var shortcuts: [ShortcutKey: String] = [:]
 
     var widthDotDiameter: CGFloat {
         let index = QuickPickerView.nearestIndex(in: QuickPickerView.widthOptions, to: currentWidth)
@@ -32,18 +33,7 @@ struct ToolbarView: View {
     @ObservedObject var model: ToolbarModel
     let perform: (ToolbarAction) -> Void
 
-    private static let tools: [(ToolType, ShortcutKey, String)] = [
-        (.pen, .pen, "pencil"),
-        (.highlighter, .highlighter, "highlighter"),
-        (.arrow, .arrow, "arrow.up.right"),
-        (.line, .line, "line.diagonal"),
-        (.rectangle, .rectangle, "rectangle"),
-        (.circle, .circle, "circle"),
-        (.counter, .counter, "number"),
-        (.text, .text, "textformat"),
-        (.select, .select, "cursorarrow"),
-        (.eraser, .eraser, "eraser"),
-    ]
+    private static let chipCornerRadius: CGFloat = 11
 
     private let spring = Animation.spring(response: 0.24, dampingFraction: 0.72)
 
@@ -62,7 +52,6 @@ struct ToolbarView: View {
                 }
             }
         }
-        .id(model.shortcutsVersion)
         .animation(spring, value: model.activeTool)
         .animation(spring, value: model.currentColor)
         .animation(spring, value: model.currentWidth)
@@ -71,15 +60,15 @@ struct ToolbarView: View {
 
     private var toolsSegment: some View {
         segment {
-            ForEach(Self.tools, id: \.0) { tool, key, symbol in
+            ForEach(ToolType.allCases, id: \.self) { tool in
                 toolbarButton(identifier: "toolbar.tool.\(tool.rawValue)", action: {
                     perform(.tool(tool))
                 }) {
                     let active = model.activeTool == tool
-                    chip(symbol: symbol, keycap: shortcut(for: key), active: active)
+                    chip(symbol: tool.symbolName, keycap: shortcut(for: tool.shortcutKey), active: active)
                         .background {
                             if active {
-                                RoundedRectangle(cornerRadius: 11)
+                                RoundedRectangle(cornerRadius: Self.chipCornerRadius)
                                     .fill(Color(nsColor: model.currentColor))
                             }
                         }
@@ -115,7 +104,7 @@ struct ToolbarView: View {
                 chip(symbol: "circle.lefthalf.filled", keycap: "␣", active: model.fadeMode)
                     .background {
                         if model.fadeMode {
-                            RoundedRectangle(cornerRadius: 11)
+                            RoundedRectangle(cornerRadius: Self.chipCornerRadius)
                                 .fill(Color.primary.opacity(0.14))
                         }
                     }
@@ -182,7 +171,7 @@ struct ToolbarView: View {
     }
 
     private func shortcut(for key: ShortcutKey) -> String {
-        ShortcutManager.shared.getShortcut(for: key)
+        model.shortcuts[key] ?? key.defaultKey
     }
 }
 

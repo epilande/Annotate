@@ -88,7 +88,7 @@ class OverlayWindow: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .transient]
         self.setFrame(windowRect, display: true)
 
-        let containerView = OverlayContainerView(frame: NSRect(origin: .zero, size: windowRect.size))
+        let containerView = NSView(frame: NSRect(origin: .zero, size: windowRect.size))
 
         let boardFrame = NSRect(
             x: 0,
@@ -107,7 +107,6 @@ class OverlayWindow: NSPanel {
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
-        containerView.overlayWindow = self
         installToolbar(in: containerView)
     }
 
@@ -128,6 +127,7 @@ class OverlayWindow: NSPanel {
         toolbarHost = host
         updateToolbarVisibility()
         refreshToolbar()
+        refreshToolbarShortcuts()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(toolbarShortcutsDidChange),
@@ -137,21 +137,37 @@ class OverlayWindow: NSPanel {
     }
 
     @objc private func toolbarShortcutsDidChange() {
-        toolbarModel.shortcutsVersion += 1
+        refreshToolbarShortcuts()
+    }
+
+    func refreshToolbarShortcuts() {
+        toolbarModel.shortcuts = ShortcutManager.shared.allShortcuts
     }
 
     func refreshToolbar() {
         guard overlayView != nil else { return }
-        toolbarModel.activeTool = overlayView.currentTool
-        toolbarModel.currentColor = overlayView.currentColor
-        toolbarModel.currentWidth = overlayView.currentLineWidth
-        toolbarModel.fadeMode = overlayView.fadeMode
+        if toolbarModel.activeTool != overlayView.currentTool {
+            toolbarModel.activeTool = overlayView.currentTool
+        }
+        if toolbarModel.currentColor != overlayView.currentColor {
+            toolbarModel.currentColor = overlayView.currentColor
+        }
+        if toolbarModel.currentWidth != overlayView.currentLineWidth {
+            toolbarModel.currentWidth = overlayView.currentLineWidth
+        }
+        if toolbarModel.fadeMode != overlayView.fadeMode {
+            toolbarModel.fadeMode = overlayView.fadeMode
+        }
     }
 
     func updateToolbarVisibility() {
         let oldFeedbackPadding = feedbackBottomPadding
         let defaults = AppDelegate.shared?.userDefaults ?? .standard
-        let visible = defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool ?? true
+        let persisted =
+            defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
+            ?? UserDefaults.toolbarVisibleDefault
+        // Always-On is a read-only, click-through overlay, so it carries no toolbar.
+        let visible = persisted && overlayView?.isReadOnlyMode != true
         let changed = toolbarHost?.isHidden != !visible
         toolbarHost?.isHidden = !visible
         isToolbarGestureActive = false
@@ -205,11 +221,16 @@ class OverlayWindow: NSPanel {
         case .deleteLast:
             overlayView.deleteLastItem()
         case .clearAll:
-            if overlayView.clearAll() {
-                SoundPlayer.shared.playClearAll()
-            }
+            performClearAll()
         case .undo:
             overlayView.undo()
+        }
+    }
+
+    func performClearAll() {
+        cancelFreehandStroke()
+        if overlayView.clearAll() {
+            SoundPlayer.shared.playClearAll()
         }
     }
 
@@ -232,6 +253,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func resignKey() {
+        isToolbarGestureActive = false
         cancelQuickPicker()
         restoreMouseCoalescing()
         super.resignKey()
@@ -283,7 +305,9 @@ class OverlayWindow: NSPanel {
     var isQuickPickerOpen: Bool { quickPicker != nil }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, !isEditingAnnotationText, isToolbarToggleEvent(event) {
+        if event.type == .keyDown, quickPicker == nil, !isEditingAnnotationText,
+            !overlayView.isReadOnlyMode, isToolbarToggleEvent(event)
+        {
             AppDelegate.shared?.toggleToolbar()
             return
         }
@@ -340,6 +364,12 @@ class OverlayWindow: NSPanel {
             return false
         }
 
+        // Read-only (Always-On) mode owns no mouse input: swallow so a synthetic or
+        // stray event can never reach the drawing handlers.
+        if overlayView.isReadOnlyMode {
+            return true
+        }
+
         if quickPicker != nil {
             switch event.type {
             case .leftMouseDown:
@@ -357,25 +387,29 @@ class OverlayWindow: NSPanel {
             return true
         }
 
-        let overToolbar = isPointInToolbar(event.locationInWindow)
         if isToolbarGestureActive {
-            if event.type == .leftMouseUp {
+            // A fresh press supersedes a gesture stranded by a lost mouse-up.
+            if event.type == .leftMouseDown {
                 isToolbarGestureActive = false
+            } else {
+                if event.type == .leftMouseUp {
+                    isToolbarGestureActive = false
+                }
+                // Stay on the bar: let the host keep the gesture. Leave the bar:
+                // swallow so a toolbar-origin drag cannot start a canvas stroke.
+                return isPointInToolbar(event.locationInWindow) ? false : true
             }
-            // Stay on the bar: let the host keep the gesture. Leave the bar:
-            // swallow so a toolbar-origin drag cannot start a canvas stroke.
-            return overToolbar ? false : true
         }
-        if overToolbar {
-            switch event.type {
-            case .leftMouseDown:
-                isToolbarGestureActive = true
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            if isPointInToolbar(event.locationInWindow) {
+                if event.type == .leftMouseDown {
+                    isToolbarGestureActive = true
+                }
                 return false
-            case .rightMouseDown, .otherMouseDown:
-                return false
-            default:
-                break
             }
+        default:
+            break
         }
 
         if isEventOverAnnotationText(event) {
@@ -793,7 +827,7 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        isToolbarGestureActive = isPointInToolbar(event.locationInWindow)
+        // Set by routeOverlayMouseEvent before it hands a toolbar press to the host.
         if isToolbarGestureActive {
             return
         }
@@ -1313,10 +1347,6 @@ class OverlayWindow: NSPanel {
             restoreMouseCoalescing()
             return
         }
-        if isToolbarGestureActive {
-            isToolbarGestureActive = false
-            return
-        }
         if quickPicker != nil {
             restoreMouseCoalescing()
             return
@@ -1449,11 +1479,6 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
-        if !isEditingAnnotationText, isToolbarToggleEvent(event) {
-            AppDelegate.shared?.toggleToolbar()
-            return
-        }
-
         if handleQuickPickerKeyDown(event) {
             return
         }
@@ -1527,19 +1552,13 @@ class OverlayWindow: NSPanel {
             }
         case 51:  // Delete/Backspace key
             if event.modifierFlags.contains(.option) {
-                if overlayView.clearAll() {
-                    SoundPlayer.shared.playClearAll()
-                }
-                cancelFreehandStroke()
+                performClearAll()
             } else {
                 overlayView.deleteLastItem()
             }
         case 117:  // Forward Delete key (fn+delete)
             if event.modifierFlags.contains(.option) {
-                if overlayView.clearAll() {
-                    SoundPlayer.shared.playClearAll()
-                }
-                cancelFreehandStroke()
+                performClearAll()
             } else {
                 overlayView.deleteLastItem()
             }
@@ -2199,40 +2218,10 @@ class LinePreviewView: NSView {
 private extension OverlayWindow {
     func isToolbarToggleEvent(_ event: NSEvent) -> Bool {
         let disallowedModifiers = event.modifierFlags.intersection([.command, .option, .control])
-        return disallowedModifiers.isEmpty
-            && (event.characters == "?"
-                || (event.keyCode == 44 && event.modifierFlags.contains(.shift)))
+        return disallowedModifiers.isEmpty && event.characters == "?"
     }
 }
 
 private final class ToolbarHostingView: NSHostingView<ToolbarView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-}
-
-private final class OverlayContainerView: NSView {
-    weak var overlayWindow: OverlayWindow?
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        guard overlayWindow?.overlayView.isReadOnlyMode == true else { return hit }
-        if isAlwaysOnInteractive(hit) {
-            return hit
-        }
-        return nil
-    }
-
-    private func isAlwaysOnInteractive(_ hit: NSView?) -> Bool {
-        guard let hit else { return false }
-        if let host = overlayWindow?.toolbarHost, !host.isHidden,
-            hit === host || hit.isDescendant(of: host)
-        {
-            return true
-        }
-        var view: NSView? = hit
-        while let current = view {
-            if current is QuickPickerView { return true }
-            view = current.superview
-        }
-        return false
-    }
 }

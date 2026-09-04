@@ -15,6 +15,7 @@ final class ToolbarTests: XCTestCase {
         defaults = TestUserDefaults.create()
         appDelegate = AppDelegate(userDefaults: defaults)
         AppDelegate.shared = appDelegate
+        ShortcutManager.shared = ShortcutManager(userDefaults: defaults)
         window = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
             styleMask: .borderless,
@@ -32,6 +33,7 @@ final class ToolbarTests: XCTestCase {
         window = nil
         AppDelegate.shared = nil
         appDelegate = nil
+        ShortcutManager.shared = ShortcutManager()
         TestUserDefaults.removeSuite()
         defaults = nil
         super.tearDown()
@@ -63,7 +65,7 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.feedbackBottomPadding, window.toolbarClearance + 8)
     }
 
-    func testStatusMenuExposesCheckedQuestionMarkToolbarToggle() throws {
+    func testStatusMenuToolbarToggleFlipsItsTitle() throws {
         appDelegate.setupStatusBarItem()
         installedStatusItem = true
 
@@ -72,16 +74,18 @@ final class ToolbarTests: XCTestCase {
                 $0.action == #selector(AppDelegate.toggleToolbar)
             }
         )
-        XCTAssertEqual(item.title, "Toolbar")
+        XCTAssertEqual(item.title, "Hide Toolbar")
         XCTAssertEqual(item.keyEquivalent, "/")
         XCTAssertEqual(item.keyEquivalentModifierMask, [.shift])
-        XCTAssertEqual(item.state, .on)
 
         appDelegate.setToolbarVisible(false)
-        XCTAssertEqual(item.state, .off)
+        XCTAssertEqual(item.title, "Show Toolbar")
+
+        appDelegate.setToolbarVisible(true)
+        XCTAssertEqual(item.title, "Hide Toolbar")
     }
 
-    func testToolbarModelTracksLiveOverlayStateAndShortcutChanges() {
+    func testToolbarModelTracksLiveOverlayStateAndShortcutChanges() throws {
         window.overlayView.currentTool = .highlighter
         window.overlayView.currentColor = .systemBlue
         window.overlayView.currentLineWidth = 16
@@ -92,9 +96,12 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.toolbarModel.currentWidth, 16)
         XCTAssertFalse(window.toolbarModel.fadeMode)
 
-        let version = window.toolbarModel.shortcutsVersion
-        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
-        XCTAssertEqual(window.toolbarModel.shortcutsVersion, version + 1)
+        XCTAssertEqual(window.toolbarModel.shortcuts[.pen], ShortcutKey.pen.defaultKey)
+
+        ShortcutManager.shared.setShortcut("x", for: .pen)
+        XCTAssertEqual(
+            window.toolbarModel.shortcuts[.pen], "x",
+            "The toolbar snapshot must refresh on .shortcutsDidChange")
     }
 
     func testWidthChipSizeFollowsCanonicalWidthLadder() {
@@ -107,7 +114,6 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(largest, 14)
         XCTAssertGreaterThan(largest, smallest)
     }
-
 
     func testToolbarActionsUseExistingToolFadePickerAndCanvasAuthorities() {
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
@@ -146,31 +152,21 @@ final class ToolbarTests: XCTestCase {
 
         AppDelegate.shared = appDelegate
     }
-    func testToolbarMouseGestureNeverStartsOrCompletesCanvasGesture() throws {
+
+    func testToolbarMouseGestureNeverStartsOrCompletesCanvasGesture() {
         let toolbarPoint = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
         XCTAssertTrue(window.isPointInToolbar(toolbarPoint))
+        let draggedPoint = NSPoint(x: toolbarPoint.x + 30, y: toolbarPoint.y + 30)
 
-        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
-            type: .leftMouseDown,
-            location: toolbarPoint
-        )))
-        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
-            type: .leftMouseDragged,
-            location: NSPoint(x: toolbarPoint.x + 30, y: toolbarPoint.y + 30)
-        )))
-        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
-            type: .leftMouseUp,
-            location: NSPoint(x: toolbarPoint.x + 30, y: toolbarPoint.y + 30)
-        )))
+        sendMouse(.leftMouseDown, at: toolbarPoint)
+        sendMouse(.leftMouseDragged, at: draggedPoint)
+        sendMouse(.leftMouseUp, at: draggedPoint)
 
         XCTAssertEqual(window.anchorPoint, .zero)
         XCTAssertTrue(window.overlayView.paths.isEmpty)
 
         let canvasPoint = NSPoint(x: 100, y: 300)
-        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
-            type: .leftMouseDown,
-            location: canvasPoint
-        )))
+        sendMouse(.leftMouseDown, at: canvasPoint)
         XCTAssertEqual(window.anchorPoint, canvasPoint)
     }
 
@@ -188,29 +184,24 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testQuestionMarkTogglesPersistedVisibility() throws {
-        let event = try XCTUnwrap(questionMarkEvent())
-
-        window.keyDown(with: event)
+        window.sendEvent(try XCTUnwrap(questionMarkEvent()))
 
         XCTAssertFalse(appDelegate.toolbarVisible)
     }
 
     func testQuestionMarkTypesWhileEditingAnnotationText() throws {
-        guard startEditingAnnotationText() != nil else { return }
+        let field = try XCTUnwrap(startEditingAnnotationText())
 
         XCTAssertTrue(appDelegate.toolbarVisible)
-
-        window.keyDown(with: try XCTUnwrap(questionMarkEvent()))
-        XCTAssertTrue(
-            appDelegate.toolbarVisible,
-            "? must not toggle the toolbar from keyDown while editing")
 
         window.sendEvent(try XCTUnwrap(questionMarkEvent()))
         XCTAssertTrue(
             appDelegate.toolbarVisible,
             "? must not toggle the toolbar from sendEvent while editing")
 
-        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        try XCTSkipUnless(
+            field.currentEditor() != nil,
+            "Typing needs a live field editor, which headless runs do not provide")
         let typed =
             field.stringValue.contains("?")
             || field.currentEditor()?.string.contains("?") == true
@@ -223,10 +214,11 @@ final class ToolbarTests: XCTestCase {
             "Chips live in a nonactivating panel; the host must take the first click")
     }
 
-    func testAlwaysOnClickThroughStillHitsToolbar() throws {
+    func testAlwaysOnModePassesClicksThroughAndHidesToolbar() throws {
         let screen = try XCTUnwrap(NSScreen.main)
         appDelegate.overlayWindows[screen] = window
         appDelegate.alwaysOnMode = false
+        window.overlayView.currentTool = .pen
         appDelegate.toggleAlwaysOnMode()
         defer {
             if appDelegate.alwaysOnMode {
@@ -235,60 +227,30 @@ final class ToolbarTests: XCTestCase {
         }
         window.contentView?.layoutSubtreeIfNeeded()
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             window.ignoresMouseEvents,
-            "Always-On must not ignore all mouse events or toolbar chips never fire")
+            "Always-On is a read-only overlay; every click belongs to the app underneath")
         XCTAssertTrue(window.overlayView.isReadOnlyMode)
+        XCTAssertTrue(
+            window.toolbarHost?.isHidden ?? false,
+            "Always-On carries no toolbar, so nothing on the overlay is clickable")
 
-        let canvasPoint = NSPoint(x: 100, y: 300)
-        XCTAssertFalse(window.isPointInToolbar(canvasPoint))
-        XCTAssertNil(
-            window.contentView?.hitTest(canvasPoint),
-            "Canvas clicks in Always-On must pass through")
+        let canvasStart = NSPoint(x: 100, y: 300)
+        let canvasEnd = NSPoint(x: 180, y: 360)
+        sendMouse(.leftMouseDown, at: canvasStart)
+        sendMouse(.leftMouseDragged, at: canvasEnd)
+        sendMouse(.leftMouseUp, at: canvasEnd)
 
-        let toolbarPoint = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
-        XCTAssertTrue(window.isPointInToolbar(toolbarPoint))
-        let toolbarHit = window.contentView?.hitTest(toolbarPoint)
-        XCTAssertNotNil(toolbarHit, "Toolbar chips must receive clicks in Always-On")
-        let host = try XCTUnwrap(window.toolbarHost)
-        XCTAssertTrue(toolbarHit === host || toolbarHit?.isDescendant(of: host) == true)
-    }
+        XCTAssertTrue(window.overlayView.paths.isEmpty, "Always-On must never draw")
+        XCTAssertEqual(window.anchorPoint, .zero)
 
-    func testAlwaysOnClickThroughStillHitsQuickPicker() throws {
-        let screen = try XCTUnwrap(NSScreen.main)
-        appDelegate.overlayWindows[screen] = window
-        appDelegate.alwaysOnMode = false
         appDelegate.toggleAlwaysOnMode()
-        defer {
-            window.cancelQuickPicker()
-            if appDelegate.alwaysOnMode {
-                appDelegate.toggleAlwaysOnMode()
-            }
-        }
-        window.contentView?.layoutSubtreeIfNeeded()
 
-        window.beginQuickPicker(.color, anchor: NSPoint(x: 600, y: 400))
-        window.contentView?.layoutSubtreeIfNeeded()
-
-        XCTAssertTrue(window.isQuickPickerOpen)
-        let picker = try XCTUnwrap(
-            window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
-        )
-
-        let canvasPoint = NSPoint(x: 100, y: 300)
+        XCTAssertFalse(window.ignoresMouseEvents)
+        XCTAssertFalse(window.overlayView.isReadOnlyMode)
         XCTAssertFalse(
-            picker.frame.contains(window.overlayView.convert(canvasPoint, from: window.contentView)))
-        XCTAssertNil(
-            window.contentView?.hitTest(canvasPoint),
-            "Canvas clicks in Always-On must still pass through while the picker is open")
-
-        let pickerPoint = window.overlayView.convert(
-            NSPoint(x: picker.frame.midX, y: picker.frame.midY),
-            to: window.contentView
-        )
-        let pickerHit = window.contentView?.hitTest(pickerPoint)
-        XCTAssertNotNil(pickerHit, "Quick picker must receive clicks in Always-On")
-        XCTAssertTrue(pickerHit === picker || pickerHit?.isDescendant(of: picker) == true)
+            window.toolbarHost?.isHidden ?? true,
+            "Leaving Always-On restores the toolbar")
     }
 
     func testToolbarActionFinalizesActiveTextAnnotation() throws {
@@ -321,17 +283,15 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.anchorPoint, canvasStart)
     }
 
-    func testToolbarViewBuildsForWideAndNarrowProposals() {
-        let view = ToolbarView(model: window.toolbarModel) { _ in }
-        let host = NSHostingView(rootView: view)
+    func testToolbarViewWrapsToASecondRowWhenWidthIsTight() {
+        let wide = NSHostingController(rootView: ToolbarView(model: window.toolbarModel) { _ in })
+            .sizeThatFits(in: CGSize(width: 1_200, height: 200))
+        let narrow = NSHostingController(rootView: ToolbarView(model: window.toolbarModel) { _ in })
+            .sizeThatFits(in: CGSize(width: 700, height: 200))
 
-        host.frame = NSRect(x: 0, y: 0, width: 1_200, height: 200)
-        host.layoutSubtreeIfNeeded()
-        XCTAssertGreaterThan(host.fittingSize.height, 0)
-
-        host.frame = NSRect(x: 0, y: 0, width: 700, height: 200)
-        host.layoutSubtreeIfNeeded()
-        XCTAssertGreaterThan(host.fittingSize.height, 0)
+        XCTAssertGreaterThan(
+            narrow.height, wide.height,
+            "A narrow proposal must take the stacked ViewThatFits layout")
     }
 
     private func questionMarkEvent() -> NSEvent? {
@@ -350,7 +310,7 @@ final class ToolbarTests: XCTestCase {
                 type: type, location: location, windowNumber: window.windowNumber)!)
     }
 
-    private func startEditingAnnotationText() -> NSTextField? {
+    private func startEditingAnnotationText() throws -> NSTextField? {
         window.overlayView.currentTool = .text
         window.overlayView.currentTextAnnotation = TextAnnotation(
             text: "",
@@ -362,17 +322,14 @@ final class ToolbarTests: XCTestCase {
         window.makeKeyAndOrderFront(nil)
         window.overlayView.createTextField(
             at: NSPoint(x: 120, y: 120), withText: "", width: 200)
-        guard let field = window.overlayView.activeTextField else {
-            XCTFail("Expected an annotation text field")
-            return nil
-        }
+        let field = try XCTUnwrap(
+            window.overlayView.activeTextField, "Expected an annotation text field")
         if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
             window.makeFirstResponder(field)
         }
         if field.currentEditor() == nil {
             field.becomeFirstResponder()
         }
-        XCTAssertNotNil(window.overlayView.activeTextField)
         return field
     }
 }

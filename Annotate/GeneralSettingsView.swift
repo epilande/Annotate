@@ -9,7 +9,7 @@ struct GeneralSettingsView: View {
     @AppStorage(UserDefaults.hideToolFeedbackKey)
     private var hideToolFeedback = false
     @AppStorage(UserDefaults.toolbarVisibleKey)
-    private var toolbarVisible = true
+    private var toolbarVisible = UserDefaults.toolbarVisibleDefault
     @AppStorage(UserDefaults.soundsEnabledKey)
     private var soundsEnabled = UserDefaults.soundsEnabledDefault
     @AppStorage(UserDefaults.persistTextModeKey)
