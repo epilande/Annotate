@@ -33,6 +33,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
+- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with the ? key.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -146,6 +147,7 @@ brew install --cask annotate
 | Shortcut                                             | Action               | Description                                                                |
 | ---------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
 | <kbd>Space</kbd>                                     | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
+| <kbd>?</kbd>                                         | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
 | <kbd>Delete</kbd>                                    | **Delete**           | Remove selected objects or most recent annotation                          |
 | <kbd>Option</kbd> + <kbd>Delete</kbd>                | **Clear All**        | Remove all annotations                                                     |
 | <kbd>Command</kbd> + <kbd>Z</kbd>                    | **Undo**             | Undo the last action                                                       |
@@ -321,6 +323,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
+- **Show toolbar**: Display the floating shortcut toolbar on annotation overlays.
 - **Play sounds**: Play feedback sounds for overlay and clear actions.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
