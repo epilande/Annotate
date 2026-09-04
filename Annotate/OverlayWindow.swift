@@ -481,7 +481,7 @@ class OverlayWindow: NSPanel {
 
         overlayView.addSubview(picker)
         CIDebug.log(
-            "beginQuickPicker clearance=\(clearance) toolbarFrame=\(toolbarFrame) "
+            "beginQuickPicker overlayLayer=\(overlayView.layer != nil) overlayWantsLayer=\(overlayView.wantsLayer) containerLayer=\(contentView?.layer != nil) cellLayer=\(picker.subviews.first?.layer != nil) clearance=\(clearance) toolbarFrame=\(toolbarFrame) "
                 + "toolbarHidden=\(String(describing: toolbarHost?.isHidden)) "
                 + "placement=\(placementBounds) anchor=\(anchor) pickerFrame=\(picker.frame)")
         quickPicker = picker
