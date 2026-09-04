@@ -364,9 +364,15 @@ class OverlayWindow: NSPanel {
             return false
         }
 
+        CIDebug.log(
+            "route type=\(event.type.rawValue) loc=\(event.locationInWindow) "
+                + "readOnly=\(overlayView.isReadOnlyMode) picker=\(quickPicker != nil) "
+                + "gesture=\(isToolbarGestureActive) commitInFlight=\(pickerCommitInFlight)")
+
         // Read-only (Always-On) mode owns no mouse input: swallow so a synthetic or
         // stray event can never reach the drawing handlers.
         if overlayView.isReadOnlyMode {
+            CIDebug.log("route SWALLOWED by isReadOnlyMode")
             return true
         }
 
@@ -474,6 +480,10 @@ class OverlayWindow: NSPanel {
             previewTool: overlayView.currentTool)
 
         overlayView.addSubview(picker)
+        CIDebug.log(
+            "beginQuickPicker clearance=\(clearance) toolbarFrame=\(toolbarFrame) "
+                + "toolbarHidden=\(String(describing: toolbarHost?.isHidden)) "
+                + "placement=\(placementBounds) anchor=\(anchor) pickerFrame=\(picker.frame)")
         quickPicker = picker
         acceptedMouseMovedBeforePicker = acceptsMouseMovedEvents
         acceptsMouseMovedEvents = true
@@ -497,6 +507,7 @@ class OverlayWindow: NSPanel {
     }
 
     func commitQuickPicker() {
+        CIDebug.log("commitQuickPicker enter picker=\(quickPicker != nil) inFlight=\(pickerCommitInFlight)")
         guard let picker = quickPicker, !pickerCommitInFlight else { return }
         pickerCommitInFlight = true
         quickPickerHoldTask?.cancel()
@@ -521,8 +532,13 @@ class OverlayWindow: NSPanel {
             }
         }
 
+        CIDebug.log("commitQuickPicker scheduling animation completion")
         picker.animateCommittedSelection { [weak self, weak picker] in
-            guard let self, self.quickPicker === picker else { return }
+            CIDebug.log("animateCommittedSelection completion fired")
+            guard let self, self.quickPicker === picker else {
+                CIDebug.log("completion guard FAILED (self or picker identity)")
+                return
+            }
             self.dismissQuickPicker()
         }
     }
@@ -796,6 +812,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func dismissQuickPicker() {
+        CIDebug.log("dismissQuickPicker")
         quickPickerHoldTask?.cancel()
         quickPickerHoldTask = nil
         if let monitor = quickPickerMoveMonitor {
@@ -819,7 +836,11 @@ class OverlayWindow: NSPanel {
                 return
             }
             let point = overlayView.convert(event.locationInWindow, from: nil)
-            if picker.select(at: point) {
+            let hit = picker.select(at: point)
+            CIDebug.log(
+                "mouseDown picker point=\(point) hit=\(hit) pickerFrame=\(picker.frame) "
+                    + "overlayBounds=\(overlayView.bounds)")
+            if hit {
                 commitQuickPicker()
             } else {
                 cancelQuickPicker()

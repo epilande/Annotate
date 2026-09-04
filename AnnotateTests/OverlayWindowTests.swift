@@ -1263,9 +1263,14 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(quickPickerView?.mode, .width)
 
         let cellPoint = pointInPickerCell(index: QuickPickerView.widthOptions.count - 1)
+        CIDebug.log(
+            "TEST cellPoint=\(cellPoint) pickerFrame=\(String(describing: quickPickerView?.frame)) "
+                + "windowFrame=\(window.frame) overlayBounds=\(window.overlayView.bounds) "
+                + "screens=\(NSScreen.screens.count) key=\(window.isKeyWindow)")
         sendMouse(.leftMouseDown, at: cellPoint)
         sendMouse(.leftMouseUp, at: cellPoint)
         waitForPickerToDismiss()
+        CIDebug.log("TEST after wait open=\(window.isQuickPickerOpen) width=\(window.overlayView.currentLineWidth)")
 
         XCTAssertFalse(window.isQuickPickerOpen)
         XCTAssertEqual(
