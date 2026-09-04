@@ -252,6 +252,23 @@ class OverlayWindow: NSPanel {
         super.orderOut(sender)
     }
 
+    override func becomeKey() {
+        super.becomeKey()
+        clearToolbarKeyboardFocus()
+    }
+
+    /// The toolbar chips are SwiftUI buttons, so with Keyboard navigation on they join the key
+    /// view loop and AppKit parks focus on the first chip when the panel becomes key. A focused
+    /// chip draws a focus ring and swallows Space and Return, which belong to the canvas. This
+    /// only drops that automatic pick: tabbing into the bar on purpose still works.
+    private func clearToolbarKeyboardFocus() {
+        guard let host = toolbarHost,
+            let focused = firstResponder as? NSView,
+            focused.isDescendant(of: host)
+        else { return }
+        makeFirstResponder(nil)
+    }
+
     override func resignKey() {
         isToolbarGestureActive = false
         cancelQuickPicker()

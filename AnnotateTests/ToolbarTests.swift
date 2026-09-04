@@ -208,6 +208,21 @@ final class ToolbarTests: XCTestCase {
             "Option+Command+T must not toggle the toolbar from sendEvent while editing")
     }
 
+    func testBecomingKeyKeepsKeyboardFocusOffTheToolbar() throws {
+        let host = try XCTUnwrap(window.toolbarHost)
+        try XCTSkipUnless(
+            window.makeFirstResponder(host),
+            "This run cannot park focus on the toolbar host, so there is nothing to assert")
+
+        window.becomeKey()
+
+        let focused = window.firstResponder as? NSView
+        XCTAssertFalse(
+            focused?.isDescendant(of: host) ?? false,
+            "Becoming key must not leave focus on a toolbar chip: a focused chip draws a ring "
+                + "and swallows Space and Return")
+    }
+
     func testToolbarHostAcceptsFirstMouse() {
         XCTAssertTrue(
             window.toolbarHost?.acceptsFirstMouse(for: nil) ?? false,
@@ -262,6 +277,12 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertNil(window.overlayView.activeTextField)
         XCTAssertEqual(window.overlayView.textAnnotations.last?.text, "Keep me")
+
+        let host = try XCTUnwrap(window.toolbarHost)
+        let focused = window.firstResponder as? NSView
+        XCTAssertFalse(
+            focused?.isDescendant(of: host) ?? false,
+            "Ending text editing must not hand keyboard focus to a toolbar chip")
     }
 
     func testCanvasStrokeCrossingToolbarIsNotCaptured() throws {
