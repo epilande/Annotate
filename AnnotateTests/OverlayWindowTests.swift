@@ -1489,7 +1489,11 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     private func waitForPickerToDismiss() {
         let deadline = Date().addingTimeInterval(TestConstants.defaultTimeout)
         while window.isQuickPickerOpen && Date() < deadline {
-            _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
+            // Run the whole slice instead of returning after the first source. The
+            // toolbar's hosting view installs run-loop sources of its own, and
+            // bailing out early can starve the main-queue drain that delivers the
+            // picker's dismissal block.
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
         }
     }
 
