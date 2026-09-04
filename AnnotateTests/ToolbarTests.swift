@@ -75,8 +75,8 @@ final class ToolbarTests: XCTestCase {
             }
         )
         XCTAssertEqual(item.title, "Hide Toolbar")
-        XCTAssertEqual(item.keyEquivalent, "/")
-        XCTAssertEqual(item.keyEquivalentModifierMask, [.shift])
+        XCTAssertEqual(item.keyEquivalent, "t")
+        XCTAssertEqual(item.keyEquivalentModifierMask, [.command, .option])
 
         appDelegate.setToolbarVisible(false)
         XCTAssertEqual(item.title, "Show Toolbar")
@@ -183,29 +183,29 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.feedbackBottomPadding, clearance + 8)
     }
 
-    func testQuestionMarkTogglesPersistedVisibility() throws {
-        window.sendEvent(try XCTUnwrap(questionMarkEvent()))
+    func testOptionCommandTTogglesPersistedVisibility() throws {
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent()))
 
         XCTAssertFalse(appDelegate.toolbarVisible)
     }
 
-    func testQuestionMarkTypesWhileEditingAnnotationText() throws {
-        let field = try XCTUnwrap(startEditingAnnotationText())
+    func testCommandTAloneLeavesTheToolbarAlone() throws {
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent(modifierFlags: [.command])))
+
+        XCTAssertTrue(
+            appDelegate.toolbarVisible,
+            "The toggle is Option+Command+T; Command+T alone must not claim it")
+    }
+
+    func testToolbarToggleDoesNotFireWhileEditingAnnotationText() throws {
+        _ = try XCTUnwrap(startEditingAnnotationText())
 
         XCTAssertTrue(appDelegate.toolbarVisible)
 
-        window.sendEvent(try XCTUnwrap(questionMarkEvent()))
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent()))
         XCTAssertTrue(
             appDelegate.toolbarVisible,
-            "? must not toggle the toolbar from sendEvent while editing")
-
-        try XCTSkipUnless(
-            field.currentEditor() != nil,
-            "Typing needs a live field editor, which headless runs do not provide")
-        let typed =
-            field.stringValue.contains("?")
-            || field.currentEditor()?.string.contains("?") == true
-        XCTAssertTrue(typed, "? should insert into the annotation field while editing")
+            "Option+Command+T must not toggle the toolbar from sendEvent while editing")
     }
 
     func testToolbarHostAcceptsFirstMouse() {
@@ -294,12 +294,15 @@ final class ToolbarTests: XCTestCase {
             "A narrow proposal must take the stacked ViewThatFits layout")
     }
 
-    private func questionMarkEvent() -> NSEvent? {
+    private func toolbarToggleEvent(
+        modifierFlags: NSEvent.ModifierFlags = [.command, .option]
+    ) -> NSEvent? {
         TestEvents.createKeyEvent(
             type: .keyDown,
-            keyCode: 44,
-            modifierFlags: [.shift],
-            characters: "?",
+            keyCode: 17,
+            modifierFlags: modifierFlags,
+            characters: modifierFlags.contains(.option) ? "\u{2020}" : "t",
+            charactersIgnoringModifiers: "t",
             windowNumber: window.windowNumber
         )
     }

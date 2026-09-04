@@ -116,6 +116,7 @@ enum TestEvents {
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags = [],
         characters: String = "",
+        charactersIgnoringModifiers: String? = nil,
         windowNumber: Int = 0
     ) -> NSEvent? {
         return NSEvent.keyEvent(
@@ -126,7 +127,7 @@ enum TestEvents {
             windowNumber: windowNumber,
             context: nil,
             characters: characters,
-            charactersIgnoringModifiers: characters,
+            charactersIgnoringModifiers: charactersIgnoringModifiers ?? characters,
             isARepeat: false,
             keyCode: keyCode
         )

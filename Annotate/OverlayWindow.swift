@@ -2216,9 +2216,12 @@ class LinePreviewView: NSView {
 }
 
 private extension OverlayWindow {
+    /// Option+Command+T, matched on the character rather than the key code so it resolves
+    /// the way AppKit resolves the menu key equivalent and still works on non-QWERTY layouts.
     func isToolbarToggleEvent(_ event: NSEvent) -> Bool {
-        let disallowedModifiers = event.modifierFlags.intersection([.command, .option, .control])
-        return disallowedModifiers.isEmpty && event.characters == "?"
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        return modifiers == [.command, .option]
+            && event.charactersIgnoringModifiers?.lowercased() == "t"
     }
 }
 

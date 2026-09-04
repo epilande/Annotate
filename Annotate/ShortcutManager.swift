@@ -46,10 +46,6 @@ enum ShortcutKey: String, CaseIterable {
 class ShortcutManager: @unchecked Sendable {
     static var shared = ShortcutManager()
 
-    /// Fixed overlay keys handled outside the shortcut table, so no tool may claim them.
-    /// Space, Delete, and Cmd+Z are keyCode-matched and cannot be typed into a field.
-    static let reservedKeys: Set<String> = ["?"]
-
     private let defaults: UserDefaults
     private let shortcutPrefix = "shortcut."
 
@@ -85,10 +81,10 @@ class ShortcutManager: @unchecked Sendable {
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
+    /// Only tool shortcuts need checking. The fixed overlay keys handled outside the shortcut
+    /// table (Space, Delete, Cmd+Z, Option+Command+T) are key-code or chord matched and cannot
+    /// be typed into a shortcut field, so none of them needs reserving here.
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {
-        if Self.reservedKeys.contains(key) {
-            return true
-        }
         for otherTool in ShortcutKey.allCases where otherTool != tool {
             if getShortcut(for: otherTool) == key {
                 return true

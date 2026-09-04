@@ -304,9 +304,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let toolbarItem = NSMenuItem(
                 title: toolbarVisible ? "Hide Toolbar" : "Show Toolbar",
                 action: #selector(toggleToolbar),
-                keyEquivalent: "/"
+                keyEquivalent: "t"
             )
-            toolbarItem.keyEquivalentModifierMask = [.shift]
+            toolbarItem.keyEquivalentModifierMask = [.command, .option]
             menu.addItem(toolbarItem)
 
             menu.addItem(NSMenuItem.separator())

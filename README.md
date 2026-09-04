@@ -33,7 +33,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
-- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with the ? key.
+- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with Option + Command + T.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -144,19 +144,19 @@ brew install --cask annotate
 
 #### ⚡ Quick Actions
 
-| Shortcut                                             | Action               | Description                                                                |
-| ---------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
-| <kbd>Space</kbd>                                     | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
-| <kbd>?</kbd>                                         | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
-| <kbd>Delete</kbd>                                    | **Delete**           | Remove selected objects or most recent annotation                          |
-| <kbd>Option</kbd> + <kbd>Delete</kbd>                | **Clear All**        | Remove all annotations                                                     |
-| <kbd>Command</kbd> + <kbd>Z</kbd>                    | **Undo**             | Undo the last action                                                       |
-| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | **Redo**             | Redo the last undone action                                                |
-| Mouse Backward Button                                | **Undo**             | Undo the last action (mouse button 3)                                      |
-| Mouse Forward Button                                 | **Redo**             | Redo the last undone action (mouse button 4)                               |
-| <kbd>Command</kbd> + <kbd>Scroll</kbd>               | **Adjust Width**     | Quickly change line width                                                  |
-| <kbd>Shift</kbd> (while drawing)                     | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
-| <kbd>Command</kbd> + <kbd>R</kbd>                    | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
+| Shortcut                                              | Action               | Description                                                                |
+| ----------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
+| <kbd>Space</kbd>                                      | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
+| <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
+| <kbd>Delete</kbd>                                     | **Delete**           | Remove selected objects or most recent annotation                          |
+| <kbd>Option</kbd> + <kbd>Delete</kbd>                 | **Clear All**        | Remove all annotations                                                     |
+| <kbd>Command</kbd> + <kbd>Z</kbd>                     | **Undo**             | Undo the last action                                                       |
+| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | **Redo**             | Redo the last undone action                                                |
+| Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
+| Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
+| <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
+| <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
+| <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
 #### 📋 Copy/Paste (Select Mode Only)
 
