@@ -94,12 +94,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var clipboard: [ClipboardItem] = []
     var lastMousePosition: NSPoint = .zero
 
-    var currentColor: NSColor = .systemRed
-    var currentTool: ToolType = .pen
+    var currentColor: NSColor = .systemRed {
+        didSet { notifyToolbarChanged() }
+    }
+    var currentTool: ToolType = .pen {
+        didSet { notifyToolbarChanged() }
+    }
     var previousTool: ToolType = .pen
-    var currentLineWidth: CGFloat = 3.0
+    var currentLineWidth: CGFloat = 3.0 {
+        didSet { notifyToolbarChanged() }
+    }
 
-    var fadeMode: Bool = true
+    var fadeMode: Bool = true {
+        didSet { notifyToolbarChanged() }
+    }
     let fadeDuration: CFTimeInterval = 1.25
     var isReadOnlyMode: Bool = false
 
@@ -113,6 +121,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         updateCursorTrackingArea()
+    }
+
+    /// Keeps the overlay toolbar in step with the tool, color, width and fade state.
+    private func notifyToolbarChanged() {
+        (window as? OverlayWindow)?.refreshToolbar()
     }
 
     // MARK: - Cursor Management

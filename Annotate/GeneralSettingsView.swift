@@ -8,6 +8,8 @@ struct GeneralSettingsView: View {
     private var hideDockIcon = false
     @AppStorage(UserDefaults.hideToolFeedbackKey)
     private var hideToolFeedback = false
+    @AppStorage(UserDefaults.toolbarVisibleKey)
+    private var toolbarVisible = UserDefaults.toolbarVisibleDefault
     @AppStorage(UserDefaults.soundsEnabledKey)
     private var soundsEnabled = UserDefaults.soundsEnabledDefault
     @AppStorage(UserDefaults.soundThemeKey)
@@ -64,6 +66,15 @@ struct GeneralSettingsView: View {
                     Text("Hide Tool Feedback")
                     Text("Disable visual feedback when switching tools")
                 }
+
+                Toggle(isOn: $toolbarVisible) {
+                    Text("Show toolbar")
+                    Text("Display the floating shortcut toolbar on annotation overlays")
+                }
+                .onChange(of: toolbarVisible) { _, visible in
+                    AppDelegate.shared?.setToolbarVisible(visible)
+                }
+
                 Toggle(isOn: $soundsEnabled) {
                     Text("Play sounds")
                     Text("Play feedback sounds for overlay and clear actions")

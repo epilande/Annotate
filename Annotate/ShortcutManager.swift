@@ -81,6 +81,9 @@ class ShortcutManager: @unchecked Sendable {
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
+    /// Only tool shortcuts need checking. The fixed overlay keys handled outside the shortcut
+    /// table (Space, Delete, Cmd+Z, Option+Command+T) are key-code or chord matched and cannot
+    /// be typed into a shortcut field, so none of them needs reserving here.
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {
         for otherTool in ShortcutKey.allCases where otherTool != tool {
             if getShortcut(for: otherTool) == key {
