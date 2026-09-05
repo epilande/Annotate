@@ -16,15 +16,23 @@ extension UserDefaults {
     static let alwaysOnModeKey = "AlwaysOnMode"
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
+    static let toolbarVisibleKey = "ToolbarVisible"
+    static let toolbarVisibleDefault = true
+    static let soundsEnabledKey = "SoundsEnabled"
+    static let soundsEnabledDefault = true
+    static let soundThemeKey = "SoundTheme"
+    static let soundThemeDefault = SoundTheme.chalk
     static let clickRippleEnabledKey = "ClickRippleEnabled"
     static let clickRippleColorKey = "ClickRippleColor"
     static let clickRippleSizeKey = "ClickRippleSize"
     static let cursorHighlightEnabledKey = "CursorHighlightEnabled"
     static let spotlightSizeKey = "SpotlightSize"
+    static let spotlightRequiresOverlayKey = "SpotlightRequiresOverlay"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let persistTextModeKey = "PersistTextMode"
     static let defaultTextFontSizeKey = "TextFontSize"
+    static let textBackgroundKey = "TextBackgroundOn"
     static let defaultCounterFontSizeKey = "CounterFontSize"
     static let defaultToolKey = "DefaultTool"
     static let lastUsedToolKey = "LastUsedTool"
@@ -42,14 +50,43 @@ let defaultFadeDelay: Double = 0.5
 let fadeDelayRange: ClosedRange<Double> = 0.25...5
 
 let defaultTextAnnotationFontSize: CGFloat = 18
-let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...48
+let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...120
+
+/// Matches the quick-picker stroke ladder (`QuickPickerView.widthOptions` max 24).
+let lineWidthRange: ClosedRange<CGFloat> = 0.5...24
 
 /// 14 pt reproduces counters' original 15 pt radius / 2.5 pt stroke; the badge
 /// scales from here (see `CounterAnnotation.radius`).
+let soundEffectVolume: Float = 0.2
+
 let defaultCounterFontSize: CGFloat = 14
 let counterFontSizeRange: ClosedRange<CGFloat> = 12...60
 
 extension UserDefaults {
+    var soundsEnabled: Bool {
+        get {
+            guard object(forKey: Self.soundsEnabledKey) != nil else {
+                return Self.soundsEnabledDefault
+            }
+            return bool(forKey: Self.soundsEnabledKey)
+        }
+        set {
+            set(newValue, forKey: Self.soundsEnabledKey)
+        }
+    }
+
+    /// The palette of feedback clips to play. Defaults to `.chalk` when the key is absent or holds
+    /// a theme the app no longer ships.
+    var soundTheme: SoundTheme {
+        get {
+            let stored = string(forKey: Self.soundThemeKey) ?? ""
+            return SoundTheme(rawValue: stored) ?? Self.soundThemeDefault
+        }
+        set {
+            set(newValue.rawValue, forKey: Self.soundThemeKey)
+        }
+    }
+
     var fadeDelay: TimeInterval {
         get {
             let stored = double(forKey: Self.fadeDelayKey)
@@ -68,6 +105,11 @@ extension UserDefaults {
         set {
             set(Double(newValue), forKey: Self.defaultTextFontSizeKey)
         }
+    }
+
+    var textBackgroundEnabled: Bool {
+        get { bool(forKey: Self.textBackgroundKey) }
+        set { set(newValue, forKey: Self.textBackgroundKey) }
     }
 
     var counterToolFontSize: CGFloat {

@@ -33,6 +33,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
+- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with Option + Command + T.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -143,18 +144,19 @@ brew install --cask annotate
 
 #### ⚡ Quick Actions
 
-| Shortcut                                             | Action               | Description                                                                |
-| ---------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
-| <kbd>Space</kbd>                                     | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
-| <kbd>Delete</kbd>                                    | **Delete**           | Remove selected objects or most recent annotation                          |
-| <kbd>Option</kbd> + <kbd>Delete</kbd>                | **Clear All**        | Remove all annotations                                                     |
-| <kbd>Command</kbd> + <kbd>Z</kbd>                    | **Undo**             | Undo the last action                                                       |
-| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | **Redo**             | Redo the last undone action                                                |
-| Mouse Backward Button                                | **Undo**             | Undo the last action (mouse button 3)                                      |
-| Mouse Forward Button                                 | **Redo**             | Redo the last undone action (mouse button 4)                               |
-| <kbd>Command</kbd> + <kbd>Scroll</kbd>               | **Adjust Width**     | Quickly change line width                                                  |
-| <kbd>Shift</kbd> (while drawing)                     | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
-| <kbd>Command</kbd> + <kbd>R</kbd>                    | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
+| Shortcut                                              | Action               | Description                                                                |
+| ----------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
+| <kbd>Space</kbd>                                      | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
+| <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
+| <kbd>Delete</kbd>                                     | **Delete**           | Remove selected objects or most recent annotation                          |
+| <kbd>Option</kbd> + <kbd>Delete</kbd>                 | **Clear All**        | Remove all annotations                                                     |
+| <kbd>Command</kbd> + <kbd>Z</kbd>                     | **Undo**             | Undo the last action                                                       |
+| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | **Redo**             | Redo the last undone action                                                |
+| Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
+| Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
+| <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
+| <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
+| <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
 #### 📋 Copy/Paste (Select Mode Only)
 
@@ -165,6 +167,16 @@ brew install --cask annotate
 | <kbd>Command</kbd> + <kbd>X</kbd> | **Cut**        | Cut selected objects (copy + delete)   |
 | <kbd>Command</kbd> + <kbd>V</kbd> | **Paste**      | Paste objects at mouse cursor position |
 | <kbd>Command</kbd> + <kbd>D</kbd> | **Duplicate**  | Duplicate selected objects with offset |
+
+#### 🔤 Text Editing (While Typing a Label)
+
+| Shortcut                                             | Action               | Description                                        |
+| ---------------------------------------------------- | -------------------- | -------------------------------------------------- |
+| <kbd>Command</kbd> + <kbd>+</kbd>                    | **Increase Size**    | Step the label font size up one notch              |
+| <kbd>Command</kbd> + <kbd>-</kbd>                    | **Decrease Size**    | Step the label font size down one notch            |
+| <kbd>Command</kbd> + <kbd>B</kbd>                    | **Label Background** | Toggle the rounded background pill behind the text |
+
+<kbd>Command</kbd> + <kbd>B</kbd> also works with the Text tool selected, so you can set the background on or off before you place a label.
 
 #### 🪟 Overlay Controls
 
@@ -222,6 +234,8 @@ Annotate provides flexible line width control:
 - Type your text and press <kbd>Enter</kbd> or <kbd>Esc</kbd> to finalize
 - Double-click any text annotation to edit its content
 - Click and drag to reposition text
+- Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
+- Press <kbd>Command</kbd> + <kbd>B</kbd> to toggle a rounded background pill behind the text
 
 #### Counter Tool
 
@@ -321,6 +335,9 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
+- **Show toolbar**: Display the floating shortcut toolbar on annotation overlays.
+- **Play sounds**: Play feedback sounds for overlay and clear actions.
+- **Sound Theme**: Choose between Chalk (default), Paper, Marker, Pencil, and Typewriter feedback sounds.
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Persist Text Mode**: Stay in text mode after pressing Enter.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
@@ -328,6 +345,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 ### Tools
 
 - **Default Text Size**: Adjust the default font size for text annotations.
+- **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
 
 ### Board
@@ -341,6 +359,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Cursor Size**: Adjust the size of circle or crosshair cursor indicators (8-24px).
 - **Enable Cursor Spotlight**: Show a visual spotlight following your cursor.
 - **Spotlight Size**: Adjust the size of the cursor spotlight (30-100).
+- **Only Show While Annotating**: Show the spotlight only while the overlay is active.
 - **Enable Click Effect**: Show a ripple on click and a highlight while holding.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.

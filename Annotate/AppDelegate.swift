@@ -4,14 +4,10 @@ import Sparkle
 import SwiftUI
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate,
-    NSMenuDelegate
-{
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     static weak var shared: AppDelegate?
 
     var statusItem: NSStatusItem!
-    var colorPopover: NSPopover?
-    var lineWidthPopover: NSPopover?
     var currentColor: NSColor = .systemRed
     var hotkeyMonitor: Any?
     var overlayWindows: [NSScreen: OverlayWindow] = [:]
@@ -42,6 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        SoundPlayer.preload()
         updateDockIconVisibility()
 
         if let colorData = userDefaults.data(forKey: "SelectedColor"),
@@ -147,20 +144,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     func setupStatusBarItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-        if statusItem.button != nil {
+        if statusItem?.button != nil {
             updateStatusBarIcon(with: .gray)
 
             let menu = NSMenu()
 
             let colorItem = NSMenuItem(
-                title: "Color",
+                title: "Color…",
                 action: #selector(showColorPicker(_:)),
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .colorPicker))
             colorItem.keyEquivalentModifierMask = []
             menu.addItem(colorItem)
 
             let lineWidthItem = NSMenuItem(
-                title: "Line Width",
+                title: "Line Width…",
                 action: #selector(showLineWidthPicker(_:)),
                 keyEquivalent: ShortcutManager.shared.getShortcut(for: .lineWidthPicker))
             lineWidthItem.keyEquivalentModifierMask = []
@@ -287,19 +284,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             toggleDrawingModeItem.keyEquivalentModifierMask = []
             menu.addItem(toggleDrawingModeItem)
 
-            let fadeTimeItem = NSMenuItem(title: "Fade Time", action: nil, keyEquivalent: "")
-            let fadeTimeMenu = NSMenu()
-            for delay in Self.fadeDelayPresets {
-                let presetItem = NSMenuItem(
-                    title: Self.formatFadeDelay(delay),
-                    action: #selector(setFadeDelay(_:)),
-                    keyEquivalent: "")
-                presetItem.representedObject = delay
-                fadeTimeMenu.addItem(presetItem)
-            }
-            fadeTimeItem.submenu = fadeTimeMenu
-            menu.addItem(fadeTimeItem)
-
             menu.addItem(NSMenuItem.separator())
             
             let currentOverlayModeItem = NSMenuItem(
@@ -317,13 +301,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             )
             menu.addItem(toggleAlwaysOnModeItem)
 
+            let toolbarItem = NSMenuItem(
+                title: toolbarVisible ? "Hide Toolbar" : "Show Toolbar",
+                action: #selector(toggleToolbar),
+                keyEquivalent: "t"
+            )
+            toolbarItem.keyEquivalentModifierMask = [.command, .option]
+            menu.addItem(toolbarItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let clearAllItem = NSMenuItem(
                 title: "Clear All",
                 action: #selector(clearAllAnnotations),
-                keyEquivalent: ShortcutManager.shared.getShortcut(for: .clearAll)
-            )
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .clearAll))
             clearAllItem.keyEquivalentModifierMask = []
             menu.addItem(clearAllItem)
 
@@ -367,15 +358,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                     title: "Quit", action: #selector(NSApplication.terminate(_:)),
                     keyEquivalent: "q"))
 
-            menu.delegate = self
-            statusItem.menu = menu
-            updateFadeTimeMenuItems()
+            statusItem?.menu = menu
         }
-    }
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === statusItem.menu else { return }
-        updateFadeTimeMenuItems()
     }
 
     @objc func screenParametersChanged() {
@@ -404,6 +388,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         }
 
         updateCursorHighlightWindowsForScreenChange()
+        CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 
     func getCurrentScreen() -> NSScreen? {
@@ -430,47 +415,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     @objc func showColorPicker(_ sender: Any?) {
-        if colorPopover == nil {
-            colorPopover = NSPopover()
-            colorPopover?.contentViewController = ColorPickerViewController(userDefaults: userDefaults)
-            colorPopover?.behavior = .transient
-            colorPopover?.delegate = self
-        }
-
-        if let button = statusItem.button {
-            colorPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-
-            if let popoverWindow = colorPopover?.contentViewController?.view.window {
-                popoverWindow.level = .popUpMenu
-            }
-        }
+        showQuickPicker(.color)
     }
 
     @objc func showLineWidthPicker(_ sender: Any?) {
-        if lineWidthPopover == nil {
-            lineWidthPopover = NSPopover()
-            lineWidthPopover?.contentViewController = LineWidthPickerViewController(userDefaults: userDefaults)
-            lineWidthPopover?.behavior = .transient
-            lineWidthPopover?.delegate = self
-        }
+        showQuickPicker(.width)
+    }
 
-        if let button = statusItem.button {
-            lineWidthPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-
-            if let popoverWindow = lineWidthPopover?.contentViewController?.view.window {
-                popoverWindow.level = .popUpMenu
-            }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(showColorPicker(_:)), #selector(showLineWidthPicker(_:)):
+            return visibleMainOverlayWindow != nil
+        default:
+            return true
         }
     }
 
-    func popoverWillClose(_ notification: Notification) {
-        if let popover = notification.object as? NSPopover {
-            if popover == colorPopover {
-                colorPopover = nil
-            } else if popover == lineWidthPopover {
-                lineWidthPopover = nil
-            }
-        }
+    private var visibleMainOverlayWindow: OverlayWindow? {
+        guard let mainScreen = NSScreen.main,
+            let overlayWindow = overlayWindows[mainScreen],
+            overlayWindow.isVisible
+        else { return nil }
+        return overlayWindow
+    }
+
+    private func showQuickPicker(_ mode: QuickPickerView.Mode) {
+        guard let overlayWindow = visibleMainOverlayWindow else { return }
+        let anchor = NSPoint(
+            x: overlayWindow.overlayView.bounds.midX,
+            y: overlayWindow.overlayView.bounds.midY)
+        overlayWindow.beginQuickPicker(mode, anchor: anchor)
     }
 
     @objc func toggleOverlay() {
@@ -490,6 +464,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         } else {
@@ -500,6 +475,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             }
 
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
@@ -523,6 +499,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.orderOut(nil)
             }
         }
+        CursorHighlightManager.shared.overlayVisibilityChanged()
 
         let iconColor = alwaysOnMode
             ? currentColor.withAlphaComponent(0.7)
@@ -542,6 +519,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             updateStatusBarIcon(with: .gray)
+            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
             CursorHighlightManager.shared.overlayVisibilityChanged()
         }
@@ -560,6 +538,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         {
             configureWindowForNormalMode(overlayWindow)
             updateStatusBarIcon(with: currentColor)
+            SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
             overlayWindow.setFrame(screenFrame, display: true)
             overlayWindow.makeKeyAndOrderFront(nil)
@@ -652,7 +631,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func updateBoardMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
 
         let boardType = BoardManager.shared.displayName
         let boardEnabled = BoardManager.shared.isEnabled
@@ -678,7 +657,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func updateClickEffectsMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         if let item = menu.items.first(where: { $0.action == #selector(toggleClickEffects(_:)) }) {
             let isEnabled = CursorHighlightManager.shared.clickEffectsEnabled
             item.title = isEnabled ? "Disable Cursor Highlight" : "Enable Cursor Highlight"
@@ -686,7 +665,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func updateAlwaysOnMenuItems() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentOverlayModeItem = menu.items.first { 
             $0.title.hasPrefix("Overlay Mode:")
@@ -702,7 +681,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
     
     func updateCurrentToolMenuItem(to toolName: String) {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentToolItem = menu.items.first { $0.title.hasPrefix("Current Tool:") }
         currentToolItem?.title = "Current Tool: \(toolName)"
@@ -711,15 +690,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     private func configureWindowForNormalMode(_ overlayWindow: OverlayWindow) {
         overlayWindow.ignoresMouseEvents = false
         overlayWindow.overlayView.isReadOnlyMode = false
+        overlayWindow.updateToolbarVisibility()
 
         let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
         overlayWindow.overlayView.fadeMode = persistedFadeMode
+        overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
 
     private func configureWindowForAlwaysOnMode(_ overlayWindow: OverlayWindow) {
+        overlayWindow.prepareForAlwaysOnMode()
         overlayWindow.ignoresMouseEvents = true
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.isReadOnlyMode = true
+        overlayWindow.updateToolbarVisibility()
 
         let screenFrame = overlayWindow.screen?.frame ?? NSScreen.main?.frame ?? .zero
         overlayWindow.setFrame(screenFrame, display: true)
@@ -727,32 +710,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         overlayWindow.stopFadeLoop()
     }
     
-    static let fadeDelayPresets: [Double] = [0.25, 0.5, 1, 2, 3, 5]
-
-    static func formatFadeDelay(_ delay: Double) -> String {
-        delay == delay.rounded() ? "\(Int(delay))s" : String(format: "%gs", delay)
-    }
-
-    @objc func setFadeDelay(_ sender: NSMenuItem) {
-        guard let delay = sender.representedObject as? Double else { return }
-        userDefaults.fadeDelay = delay
-        updateFadeTimeMenuItems()
-    }
-
-    private func updateFadeTimeMenuItems() {
-        guard let submenu = statusItem.menu?.items.first(where: { $0.title == "Fade Time" })?
-            .submenu
-        else { return }
-
-        let current = userDefaults.fadeDelay
-        for item in submenu.items {
-            guard let delay = item.representedObject as? Double else { continue }
-            item.state = abs(delay - current) < 0.01 ? .on : .off
-        }
-    }
-
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
         
         let currentDrawingModeItem = menu.items.first { 
             $0.title.hasPrefix("Drawing Mode:") 
@@ -813,7 +772,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
     }
 
     func refreshMenuKeyEquivalents() {
-        guard let menu = statusItem.menu else { return }
+        guard let menu = statusItem?.menu else { return }
 
         for item in menu.items {
             switch item.action {
@@ -876,7 +835,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             let overlayWindow = overlayWindows[currentScreen],
             overlayWindow.isVisible
         {
-            overlayWindow.overlayView.clearAll()
+            if overlayWindow.overlayView.clearAll() {
+                SoundPlayer.shared.playClearAll()
+            }
         }
     }
 
@@ -885,6 +846,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         for window in overlayWindows.values {
             window.overlayView.fadeMode.toggle()
+            if window.overlayView.fadeMode {
+                window.overlayView.startFadeLoopIfNeeded()
+            } else {
+                window.stopFadeLoop()
+            }
         }
 
         userDefaults.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
@@ -895,6 +861,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         let icon = isCurrentlyFadeMode ? "📌" : "⏳"
         for (_, window) in overlayWindows where window.isVisible {
             window.showToggleFeedback(text, icon: icon)
+        }
+    }
+
+    var toolbarVisible: Bool {
+        userDefaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
+            ?? UserDefaults.toolbarVisibleDefault
+    }
+
+    @objc func toggleToolbar() {
+        setToolbarVisible(!toolbarVisible)
+    }
+
+    func setToolbarVisible(_ visible: Bool) {
+        userDefaults.set(visible, forKey: UserDefaults.toolbarVisibleKey)
+        overlayWindows.values.forEach { $0.updateToolbarVisibility() }
+        if let item = statusItem?.menu?.items.first(where: { $0.action == #selector(toggleToolbar) }) {
+            item.title = visible ? "Hide Toolbar" : "Show Toolbar"
         }
     }
 
@@ -950,7 +933,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
         compositeImage.isTemplate = false
 
         // Set the composite image to the status bar button
-        statusItem.button?.image = compositeImage
+        statusItem?.button?.image = compositeImage
     }
     
     func setupApplicationMenu() {

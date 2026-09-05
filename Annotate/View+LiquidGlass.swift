@@ -23,4 +23,27 @@ extension View {
             self.buttonStyle(.bordered)
         }
     }
+
+    /// Gives an overlay toolbar segment a Liquid Glass background on macOS 26,
+    /// falling back to an ultra-thin material with a hairline rim on earlier systems.
+    @ViewBuilder
+    func toolbarGlassSegment(cornerRadius: CGFloat = 18) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            self
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.32), .white.opacity(0.09)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
+    }
 }

@@ -27,6 +27,52 @@ enum ToolType: String, CaseIterable {
         case .select: return "Select"
         }
     }
+
+    /// The shortcut entry that selects this tool. Exhaustive so a new case cannot
+    /// silently miss the overlay toolbar or the shortcut settings.
+    var shortcutKey: ShortcutKey {
+        switch self {
+        case .pen: return .pen
+        case .arrow: return .arrow
+        case .line: return .line
+        case .highlighter: return .highlighter
+        case .rectangle: return .rectangle
+        case .circle: return .circle
+        case .text: return .text
+        case .counter: return .counter
+        case .select: return .select
+        case .eraser: return .eraser
+        }
+    }
+
+    /// SF Symbol shown for this tool on the overlay toolbar.
+    var symbolName: String {
+        switch self {
+        case .pen: return "pencil"
+        case .arrow: return "arrow.up.right"
+        case .line: return "line.diagonal"
+        case .highlighter: return "highlighter"
+        case .rectangle: return "rectangle"
+        case .circle: return "circle"
+        case .text: return "textformat"
+        case .counter: return "number"
+        case .select: return "cursorarrow"
+        case .eraser: return "eraser"
+        }
+    }
+
+    /// Rendered width per nominal point, keeping the highlighter's 14/3 ratio.
+    /// Rendering, dirty-rect padding, selection and eraser hit-testing all read this,
+    /// so the value must not be re-inlined at a call site.
+    var strokeWidthMultiplier: CGFloat {
+        self == .highlighter ? 4.67 : 1
+    }
+
+    /// Alpha ink is laid down at, applied at render time so the stored color is
+    /// whatever the user picked. Same single-authority rule as the multiplier.
+    var laydownAlpha: CGFloat {
+        self == .highlighter ? 0.5 : 1
+    }
 }
 
 /// Which tool becomes active each time the overlay is activated. `.lastUsed` keeps the
@@ -92,6 +138,26 @@ struct DrawingPath {
     var points: [TimedPoint]
     var color: NSColor
     var lineWidth: CGFloat
+    var bezierPath: NSBezierPath? = nil
+    var cachedBounds: NSRect = .null
+
+    mutating func recacheBounds() {
+        cachedBounds = DrawingPath.bounds(of: points)
+    }
+
+    mutating func expandCachedBounds(with point: NSPoint) {
+        let pointRect = NSRect(origin: point, size: .zero)
+        cachedBounds = cachedBounds.isNull ? pointRect : cachedBounds.union(pointRect)
+    }
+
+    static func bounds(of points: [TimedPoint]) -> NSRect {
+        guard let first = points.first else { return .null }
+        var bounds = NSRect(origin: first.point, size: .zero)
+        for timedPoint in points.dropFirst() {
+            bounds = bounds.union(NSRect(origin: timedPoint.point, size: .zero))
+        }
+        return bounds
+    }
 }
 
 /// Represents an arrow annotation with start and end points.
@@ -136,6 +202,41 @@ struct TextAnnotation {
     var position: NSPoint
     var color: NSColor
     var fontSize: CGFloat
+    var hasBackground: Bool = false
+    var creationTime: CFTimeInterval?
+
+    /// Padding between the text and the edge of the background pill.
+    static var pillInsets: NSEdgeInsets { NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8) }
+
+    /// Corner radius of the background pill.
+    static let pillCornerRadius: CGFloat = 6
+
+    /// Opacity of the pill fill before any fade alpha is applied.
+    static let pillFillAlpha: CGFloat = 0.85
+
+    /// Bounds of the label for an already measured text size.
+    ///
+    /// With a background the insets are the pill's own padding, so the rect matches
+    /// exactly what gets drawn. Without one the caller supplies its own slop, which
+    /// keeps hit testing as forgiving as it was before pills existed.
+    func bounds(textSize: NSSize, fallbackInsets: NSEdgeInsets) -> NSRect {
+        let insets = hasBackground ? Self.pillInsets : fallbackInsets
+        return NSRect(
+            x: position.x - insets.left,
+            y: position.y - insets.bottom,
+            width: textSize.width + insets.left + insets.right,
+            height: textSize.height + insets.top + insets.bottom
+        )
+    }
+
+    /// Bounds of the label, measuring the text with the annotation's own font.
+    func bounds(fallbackInsets: NSEdgeInsets) -> NSRect {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize)
+        ]
+        return bounds(
+            textSize: text.size(withAttributes: attributes), fallbackInsets: fallbackInsets)
+    }
 }
 
 struct CounterAnnotation {
@@ -254,7 +355,8 @@ extension Circle: Equatable {
 extension TextAnnotation: Equatable {
     public static func == (lhs: TextAnnotation, rhs: TextAnnotation) -> Bool {
         return lhs.text == rhs.text && lhs.position == rhs.position && lhs.color.isEqual(rhs.color)
-            && lhs.fontSize == rhs.fontSize
+            && lhs.fontSize == rhs.fontSize && lhs.hasBackground == rhs.hasBackground
+            && lhs.creationTime == rhs.creationTime
     }
 }
 

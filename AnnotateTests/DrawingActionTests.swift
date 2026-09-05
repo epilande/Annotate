@@ -123,7 +123,11 @@ final class DrawingActionTests: XCTestCase {
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
-        let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
+        let texts = [
+            TextAnnotation(
+                text: "Test", position: .zero, color: .black, fontSize: 12,
+                hasBackground: true)
+        ]
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
         let action = DrawingAction.clearAll(
@@ -153,7 +157,11 @@ final class DrawingActionTests: XCTestCase {
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
-        let texts = [TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)]
+        let texts = [
+            TextAnnotation(
+                text: "Test", position: .zero, color: .black, fontSize: 12,
+                hasBackground: true)
+        ]
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .black)]
 
         let action = DrawingAction.clearAll(
@@ -183,7 +191,11 @@ final class DrawingActionTests: XCTestCase {
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
         let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
-        let texts = [TextAnnotation(text: "Erased", position: .zero, color: .black, fontSize: 12)]
+        let texts = [
+            TextAnnotation(
+                text: "Erased", position: .zero, color: .black, fontSize: 12,
+                hasBackground: true)
+        ]
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
         let action = DrawingAction.eraseAnnotations(

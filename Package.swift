@@ -25,6 +25,7 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets"),
                 .process("Preview Content"),
+                .process("Sounds"),
             ]
         ),
         .testTarget(

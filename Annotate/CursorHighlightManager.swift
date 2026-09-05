@@ -125,6 +125,14 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    var spotlightRequiresOverlay: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.spotlightRequiresOverlayKey)
+            notifyStateChanged()
+        }
+    }
+
     var spotlightSize: CGFloat {
         get {
             let stored = userDefaults.double(forKey: UserDefaults.spotlightSizeKey)
@@ -190,12 +198,18 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool { clickEffectsEnabled }
+    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
+    /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
+    /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
+    var cursorHighlightAvailable: Bool {
+        cursorHighlightEnabled && overlayGateSatisfied
+    }
+
     var shouldShowCursorHighlight: Bool {
-        cursorHighlightEnabled && !isMouseDown
+        cursorHighlightAvailable && !isMouseDown
     }
 
     var hasActiveAnimation: Bool {
@@ -226,6 +240,11 @@ class CursorHighlightManager: @unchecked Sendable {
 
     func hasAnyActiveOverlay() -> Bool {
         AppDelegate.shared?.overlayWindows.values.contains { $0.isVisible } ?? false
+    }
+
+    /// "Only Show While Annotating" applies to the whole cursor-highlight feature.
+    private var overlayGateSatisfied: Bool {
+        !spotlightRequiresOverlay || hasAnyActiveOverlay()
     }
 
     /// Used to keep cursor highlight windows active when any overlay is visible

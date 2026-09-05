@@ -56,6 +56,40 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertFalse(finalValue, "hideToolFeedback should be false after resetting")
     }
 
+    func testSoundsEnabledDefaultsToTrueWhenAbsent() {
+        testDefaults.removeObject(forKey: UserDefaults.soundsEnabledKey)
+
+        XCTAssertTrue(testDefaults.soundsEnabled)
+    }
+
+    func testSoundsEnabledPersistsExplicitValue() {
+        testDefaults.soundsEnabled = false
+        XCTAssertFalse(testDefaults.soundsEnabled)
+
+        testDefaults.soundsEnabled = true
+        XCTAssertTrue(testDefaults.soundsEnabled)
+    }
+
+    func testSoundThemeDefaultsToChalkWhenAbsent() {
+        testDefaults.removeObject(forKey: UserDefaults.soundThemeKey)
+
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
+    func testSoundThemePersistsExplicitValue() {
+        testDefaults.soundTheme = .paper
+        XCTAssertEqual(testDefaults.soundTheme, .paper)
+
+        testDefaults.soundTheme = .chalk
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
+    func testSoundThemeFallsBackToChalkForUnknownValue() {
+        testDefaults.set("granite", forKey: UserDefaults.soundThemeKey)
+
+        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+    }
+
     func testEnableBoardBinding() {
         let initialValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertFalse(initialValue, "enableBoard should default to false")

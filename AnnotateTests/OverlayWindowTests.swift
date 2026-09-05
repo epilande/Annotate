@@ -5,10 +5,14 @@ import XCTest
 @MainActor
 final class OverlayWindowTests: XCTestCase, Sendable {
     var window: OverlayWindow!
+    var originalMouseCoalescingEnabled = true
 
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // A spy leaked from another suite would redirect pickerUserDefaults.
+            AppDelegate.shared = nil
+            originalMouseCoalescingEnabled = NSEvent.isMouseCoalescingEnabled
             let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
             window = OverlayWindow(
                 contentRect: frame,
@@ -21,7 +25,10 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            window.cancelQuickPicker()
+            window.stopFadeLoop()
             window = nil
+            NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
         }
         super.tearDown()
     }
@@ -35,6 +42,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertNotNil(window.contentView)
         XCTAssertNotNil(window.overlayView)
+        XCTAssertFalse(window.overlayView.wantsLayer)
     }
 
     func testWindowLevelConfiguration() {
@@ -102,6 +110,464 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             location: NSPoint(x: 150, y: 150)
         )
         window.mouseUp(with: mouseUpEvent!)
+    }
+
+    func testFreehandInputPreservesEveryEventAndRestoresCoalescingOnMouseUp() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        let mouseDown = TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!
+        let dragEvents = (1...256).map { index in
+            TestEvents.createMouseEvent(
+                type: .leftMouseDragged,
+                location: NSPoint(
+                    x: CGFloat(100 + index),
+                    y: CGFloat(100 + index % 17)
+                )
+            )!
+        }
+        let mouseUp = TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: dragEvents.last!.locationInWindow
+        )!
+
+        window.mouseDown(with: mouseDown)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+        dragEvents.forEach { window.mouseDragged(with: $0) }
+
+        XCTAssertEqual(window.overlayView.currentPath?.points.first?.timestamp, mouseDown.timestamp)
+        XCTAssertEqual(window.overlayView.currentPath?.points.last?.timestamp, dragEvents.last?.timestamp)
+
+        window.mouseUp(with: mouseUp)
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertEqual(window.overlayView.paths.last?.points.count, 257)
+        XCTAssertEqual(window.overlayView.paths.last?.bezierPath?.elementCount, 257)
+        XCTAssertFalse(window.overlayView.paths.last?.cachedBounds.isNull ?? true)
+    }
+
+    func testMouseCoalescingIsDisabledOnlyForFreehandTools() {
+        for tool in [ToolType.pen, .highlighter] {
+            NSEvent.isMouseCoalescingEnabled = true
+            window.overlayView.currentTool = tool
+            window.mouseDown(with: TestEvents.createMouseEvent(
+                type: .leftMouseDown,
+                location: NSPoint(x: 100, y: 100)
+            )!)
+
+            XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+            window.mouseUp(with: TestEvents.createMouseEvent(
+                type: .leftMouseUp,
+                location: NSPoint(x: 100, y: 100)
+            )!)
+            XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        }
+
+        window.overlayView.currentTool = .line
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        window.overlayView.currentTool = .highlighter
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.currentPath?.points.count, 2)
+        XCTAssertNil(window.overlayView.currentHighlight)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.paths.last?.points.count, 2)
+        XCTAssertTrue(window.overlayView.highlightPaths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
+        window.overlayView.paths = [
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
+                color: .systemRed,
+                lineWidth: 3
+            )
+        ]
+
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        window.overlayView.clearAll()
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testClearAllOnEmptyCanvasEndsInFlightStroke() {
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        XCTAssertNotNil(window.overlayView.currentPath)
+
+        window.overlayView.clearAll()
+
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testOptionDeleteMidDragCancelsStrokeOnAnEmptyCanvas() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        XCTAssertNotNil(window.overlayView.currentPath)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        window.keyDown(with: TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 51,
+            modifierFlags: .option
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testEscapeMidDragCancelsStroke() {
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        window.keyDown(with: TestEvents.createKeyEvent(type: .keyDown, keyCode: 53)!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+    }
+
+    func testHighlighterStrokeCommitsOnMouseUp() {
+        window.overlayView.currentTool = .highlighter
+        window.overlayView.fadeMode = true
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+        window.overlayView.currentTool = .select
+        window.overlayView.selectedObjects = [.arrow(index: 0)]
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        XCTAssertEqual(window.overlayView.highlightPaths.count, 1)
+        XCTAssertEqual(window.overlayView.highlightPaths.last?.points.count, 2)
+        XCTAssertNil(window.overlayView.currentHighlight)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNotNil(window.fadeTimer)
+        window.stopFadeLoop()
+    }
+
+    func testEscapeRestoresMouseCoalescing() {
+        beginUncoalescedPenStroke()
+
+        window.keyDown(with: TestEvents.createKeyEvent(type: .keyDown, keyCode: 53)!)
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testOrderOutRestoresMouseCoalescing() {
+        beginUncoalescedPenStroke()
+
+        window.orderOut(nil)
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testResignKeyRestoresMouseCoalescing() {
+        beginUncoalescedPenStroke()
+
+        window.resignKey()
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testBeginUncoalescedInputTakesOwnershipWhenCoalescingAlreadyOff() {
+        NSEvent.isMouseCoalescingEnabled = false
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+    }
+
+    func testAlwaysOnEntryRestoresCoalescingAndCancelsInFlightStroke() {
+        beginUncoalescedPenStroke()
+        XCTAssertNotNil(window.overlayView.currentPath)
+
+        window.prepareForAlwaysOnMode()
+
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertNil(window.overlayView.currentPath)
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testFadeTimerCompactsExpiredAnnotationsAndRemapsSelection() {
+        let now = CACurrentMediaTime()
+        window.overlayView.fadeMode = true
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+        window.overlayView.selectedObjects = [.arrow(index: 1)]
+
+        window.updateFade()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
+        XCTAssertEqual(window.overlayView.selectedObjects, [.arrow(index: 0)])
+    }
+
+    func testPersistingToFadeCompactsExpiredAndStartsLoop() {
+        let now = CACurrentMediaTime()
+        window.overlayView.fadeMode = false
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+
+        window.overlayView.fadeMode = true
+        window.overlayView.startFadeLoopIfNeeded()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
+    func testRedoOfTimedStrokeStartsFadeLoop() {
+        window.overlayView.fadeMode = true
+        let now = CACurrentMediaTime()
+        let path = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now),
+                TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now)
+            ],
+            color: .systemRed,
+            lineWidth: 3
+        )
+        window.overlayView.paths.append(path)
+        window.overlayView.registerUndo(action: .addPath(path))
+        window.overlayView.undo()
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+
+        window.stopFadeLoop()
+        window.overlayView.redo()
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
+    func testDuplicateStartsFadeLoopWhenFadeModeIsOn() {
+        window.overlayView.fadeMode = true
+        window.overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 40, y: 40),
+                endPoint: NSPoint(x: 80, y: 80),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime()
+            )
+        ]
+        window.overlayView.selectedObjects = [.arrow(index: 0)]
+        window.stopFadeLoop()
+
+        window.overlayView.duplicateSelectedObjects()
+
+        XCTAssertEqual(window.overlayView.arrows.count, 2)
+        XCTAssertNotNil(window.fadeTimer)
+    }
+
+    func testHighlighterDragInvalidatesOnlyPaddedSegment() {
+        let trackingView = installTrackingOverlayView()
+        trackingView.currentTool = .highlighter
+        trackingView.currentLineWidth = 20
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 120, y: 110)
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: start
+        )!)
+        trackingView.invalidatedRects.removeAll()
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: end
+        )!)
+
+        let padding = trackingView.currentLineWidth * ToolType.highlighter.strokeWidthMultiplier / 2 + 6
+        let expectedRect = NSRect(
+            x: start.x,
+            y: start.y,
+            width: end.x - start.x,
+            height: end.y - start.y
+        ).insetBy(dx: -padding, dy: -padding)
+        XCTAssertEqual(trackingView.invalidatedRects.last, expectedRect)
+    }
+
+    func testLiveShapeInvalidatesUnionOfPreviousAndCurrentBounds() {
+        let trackingView = installTrackingOverlayView()
+        trackingView.currentTool = .line
+        trackingView.currentLineWidth = 4
+        let start = NSPoint(x: 100, y: 100)
+        let firstEnd = NSPoint(x: 200, y: 150)
+        let secondEnd = NSPoint(x: 150, y: 125)
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: start
+        )!)
+        trackingView.invalidatedRects.removeAll()
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: firstEnd
+        )!)
+        let firstDirtyRect = trackingView.invalidatedRects.last
+
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: secondEnd
+        )!)
+
+        XCTAssertEqual(trackingView.invalidatedRects.last, firstDirtyRect)
+    }
+
+    private func installTrackingOverlayView() -> TrackingOverlayView {
+        let trackingView = TrackingOverlayView(frame: window.overlayView.frame)
+        trackingView.autoresizingMask = window.overlayView.autoresizingMask
+        window.overlayView.removeFromSuperview()
+        window.contentView?.addSubview(trackingView)
+        window.overlayView = trackingView
+        return trackingView
+    }
+
+    private func beginUncoalescedPenStroke() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
     }
 
     func testKeyEvents() {
@@ -714,5 +1180,462 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertEqual(window.overlayView.nextCounterNumber, 1)
         XCTAssertEqual(window.overlayView.counterAnnotations.count, 2, "Existing counters should remain")
+    }
+
+    // MARK: - Quick picker sendEvent
+
+    func testSendEventTapKeepsPickerOpen() {
+        sendKey("c", type: .keyDown, keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        sendKey("c", type: .keyUp, keyCode: 8)
+
+        XCTAssertTrue(window.isQuickPickerOpen, "A tap should leave the picker open")
+        XCTAssertEqual(quickPickerView?.mode, .color)
+    }
+
+    func testSendEventHoldCommitsOnKeyUp() {
+        let originalColor = window.overlayView.currentColor
+        sendKey("c", type: .keyDown, keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        wait(for: OverlayWindowTests.quickPickerHoldWait)
+        sendKey("c", type: .keyUp, keyCode: 8)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "A hold should commit and dismiss on key-up")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventDigitCommitsPicker() {
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("2", keyCode: 19)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: colorPalette[1]))
+    }
+
+    func testSendEventEscapeCancelsPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("", keyCode: 53)
+        XCTAssertFalse(window.isQuickPickerOpen, "Escape should dismiss without committing")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testResignKeyCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.resignKey()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Cmd+Tab / resignKey should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testAlwaysOnEntryCancelsQuickPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.prepareForAlwaysOnMode()
+
+        XCTAssertFalse(window.isQuickPickerOpen, "Always-On entry should dismiss the picker")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventSameKeyCancelsPicker() {
+        let originalColor = window.overlayView.currentColor
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        sendKey("c", keyCode: 8)
+        XCTAssertFalse(window.isQuickPickerOpen, "Pressing the same key again should dismiss without committing")
+        XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
+    }
+
+    func testSendEventClickCellCommitsPicker() {
+        window.overlayView.currentLineWidth = 3
+        tapPickerKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertEqual(quickPickerView?.mode, .width)
+
+        let cellPoint = pointInPickerCell(index: QuickPickerView.widthOptions.count - 1)
+        sendMouse(.leftMouseDown, at: cellPoint)
+        sendMouse(.leftMouseUp, at: cellPoint)
+        waitForPickerToDismiss()
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(
+            window.overlayView.currentLineWidth, 24,
+            "Clicking the last width cell should apply 24 without clamping to 20")
+    }
+
+    func testSendEventClickOutsideCancelsPicker() {
+        let originalWidth = window.overlayView.currentLineWidth
+        tapPickerKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        let outside = pointOutsidePicker()
+        sendMouse(.leftMouseDown, at: outside)
+        sendMouse(.leftMouseUp, at: outside)
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+    }
+
+    func testSendEventMouseUpWhilePickerOpenDoesNotCommitGeometry() {
+        window.overlayView.currentTool = .arrow
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 180, y: 360))
+        XCTAssertNotNil(window.overlayView.currentArrow)
+
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertNil(window.overlayView.currentArrow)
+
+        sendMouse(.leftMouseUp, at: NSPoint(x: 180, y: 360))
+
+        XCTAssertTrue(window.overlayView.arrows.isEmpty, "Mouse-up while the picker is open must not commit leftover geometry")
+        XCTAssertNil(window.overlayView.currentArrow)
+        XCTAssertTrue(window.isQuickPickerOpen)
+    }
+
+    func testSendEventBeginQuickPickerMidStrokeLeavesEmptyCanvasAndRestoresCoalescing() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 330))
+        XCTAssertNotNil(window.overlayView.currentPath)
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("w", keyCode: 13)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled, "Discarding a stroke on picker open should restore coalescing")
+
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 330))
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+    }
+
+    func testSendEventPickerEscapeRestoresCoalescing() {
+        NSEvent.isMouseCoalescingEnabled = true
+        window.overlayView.currentTool = .pen
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+
+        sendKey("", keyCode: 53)
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testSendEventTypesCAndDoesNotOpenSizePickerWhileEditingText() {
+        guard let field = startEditingAnnotationText() else { return }
+
+        sendKey("c", keyCode: 8)
+        XCTAssertFalse(window.isQuickPickerOpen, "c must not open the color picker while editing")
+        let typedC =
+            field.stringValue.lowercased().contains("c")
+            || field.currentEditor()?.string.lowercased().contains("c") == true
+        XCTAssertTrue(typedC, "c should type into the annotation field")
+
+        sendKey("w", keyCode: 13)
+        XCTAssertFalse(window.isQuickPickerOpen, "w must not open the size picker while editing")
+    }
+
+    func testSendEventBracketsTypeWhileEditingText() {
+        guard let field = startEditingAnnotationText() else { return }
+        let originalFontSize = UserDefaults.standard.textToolFontSize
+        let originalWidth = window.overlayView.currentLineWidth
+        defer { UserDefaults.standard.textToolFontSize = originalFontSize }
+
+        sendKey("[", keyCode: 33)
+        sendKey("]", keyCode: 30)
+
+        XCTAssertFalse(window.isQuickPickerOpen)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, originalFontSize, "[ ] must not step size while editing")
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+        let typedBrackets =
+            field.stringValue.contains("[")
+            || field.stringValue.contains("]")
+            || field.currentEditor()?.string.contains("[") == true
+            || field.currentEditor()?.string.contains("]") == true
+        XCTAssertTrue(typedBrackets, "[ and ] should type into the annotation field")
+    }
+
+    func testSendEventEditingControlKeysDoNotAppendViaFallback() {
+        guard startEditingAnnotationText() != nil else { return }
+
+        seedAnnotationField("Hi")
+        sendKey("\r", keyCode: 36, modifierFlags: .shift)
+        let afterReturn = annotationFieldText()
+        XCTAssertNotEqual(
+            afterReturn, "Hi\r",
+            "Shift+Return must not append CR via stringValue += fallback")
+        XCTAssertFalse(
+            afterReturn.contains("\r"),
+            "Shift+Return must not append a carriage return through the annotation-field path")
+
+        seedAnnotationField("Hi")
+        sendKey("a", keyCode: 0, modifierFlags: .command)
+        sendKey("c", keyCode: 8, modifierFlags: .command)
+        sendKey("v", keyCode: 9, modifierFlags: .command)
+        sendKey("z", keyCode: 6, modifierFlags: .command)
+        let afterShortcuts = annotationFieldText()
+        XCTAssertNotEqual(
+            afterShortcuts, "Hiacvz",
+            "Cmd+A/C/V/Z must not append their characters via stringValue += fallback")
+        XCTAssertFalse(
+            afterShortcuts.contains("a") || afterShortcuts.contains("c")
+                || afterShortcuts.contains("v") || afterShortcuts.contains("z"),
+            "Cmd+A/C/V/Z must not be routed through the annotation-field += fallback")
+
+        seedAnnotationField("Hi")
+        sendKey("\u{7f}", keyCode: 51)
+        let afterDelete = annotationFieldText()
+        XCTAssertFalse(
+            afterDelete.contains("\u{7f}"),
+            "Delete must not append DEL via stringValue += fallback")
+        XCTAssertNotEqual(
+            afterDelete, "Hi\u{7f}",
+            "Delete must not be routed through the annotation-field += fallback")
+    }
+
+    func testSendEventRemappedToolTakesPrecedenceOverBracketStep() {
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 3
+        sendKey("[", keyCode: 33)
+        XCTAssertEqual(window.overlayView.currentLineWidth, 2, "[ should step the width ladder when it is not a tool shortcut")
+
+        window.overlayView.currentLineWidth = 3
+        ShortcutManager.shared.setShortcut("]", for: .eraser)
+        defer { ShortcutManager.shared.resetToDefault(tool: .eraser) }
+
+        sendKey("]", keyCode: 30)
+        XCTAssertEqual(
+            window.overlayView.currentLineWidth, 3,
+            "A remapped tool shortcut on ] should win over ladder stepping")
+    }
+
+    func testScrollWheelLineWidthUpperBoundMatchesPickerLadder() {
+        let original = window.overlayView.currentLineWidth
+        defer { window.overlayView.currentLineWidth = original }
+
+        window.overlayView.currentLineWidth = 20
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertGreaterThan(
+            window.overlayView.currentLineWidth, 20,
+            "Cmd-scroll must be able to move past the old 20 px cap toward the picker ladder")
+
+        window.overlayView.currentLineWidth = lineWidthRange.upperBound
+        if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
+            window.scrollWheel(with: scrollUp)
+        }
+        XCTAssertEqual(window.overlayView.currentLineWidth, lineWidthRange.upperBound)
+    }
+
+    func testApplyLineWidthAcceptsPickerMaximum() {
+        window.applyLineWidth(24, showsFeedback: false)
+        XCTAssertEqual(window.overlayView.currentLineWidth, 24)
+        window.applyLineWidth(3, showsFeedback: false)
+    }
+
+    private static let quickPickerHoldWait: TimeInterval = 0.3
+
+    private var quickPickerView: QuickPickerView? {
+        window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
+    }
+
+    private func sendKey(
+        _ characters: String,
+        type: NSEvent.EventType = .keyDown,
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags = []
+    ) {
+        let event = TestEvents.createKeyEvent(
+            type: type,
+            keyCode: keyCode,
+            modifierFlags: modifierFlags,
+            characters: characters,
+            windowNumber: window.windowNumber
+        )
+        window.sendEvent(event!)
+    }
+
+    private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
+        window.sendEvent(
+            TestEvents.createMouseEvent(
+                type: type, location: location, windowNumber: window.windowNumber)!)
+    }
+
+    private func tapPickerKey(_ characters: String, keyCode: UInt16) {
+        sendKey(characters, type: .keyDown, keyCode: keyCode)
+        sendKey(characters, type: .keyUp, keyCode: keyCode)
+    }
+
+    private func waitForPickerToDismiss() {
+        let deadline = Date().addingTimeInterval(TestConstants.defaultTimeout)
+        while window.isQuickPickerOpen && Date() < deadline {
+            // Run the whole slice instead of returning after the first source. The
+            // toolbar's hosting view installs run-loop sources of its own, and
+            // bailing out early can starve the main-queue drain that delivers the
+            // picker's dismissal block.
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+        }
+    }
+
+    private func pointInPickerCell(index: Int) -> NSPoint {
+        guard let picker = quickPickerView else {
+            XCTFail("Expected an open quick picker")
+            return .zero
+        }
+        return NSPoint(
+            x: picker.frame.minX + QuickPickerView.padding + QuickPickerView.cellSize * (CGFloat(index) + 0.5),
+            y: picker.frame.minY + QuickPickerView.padding + QuickPickerView.cellSize / 2
+        )
+    }
+
+    private func pointOutsidePicker() -> NSPoint {
+        guard let picker = quickPickerView else { return NSPoint(x: 5, y: 5) }
+        let candidates = [
+            NSPoint(x: 8, y: 8),
+            NSPoint(x: window.overlayView.bounds.maxX - 8, y: 8),
+            NSPoint(x: 8, y: window.overlayView.bounds.maxY - 8),
+            NSPoint(x: window.overlayView.bounds.maxX - 8, y: window.overlayView.bounds.maxY - 8)
+        ]
+        return candidates.first { !picker.frame.insetBy(dx: -4, dy: -4).contains($0) }
+            ?? NSPoint(x: -20, y: -20)
+    }
+
+    private func seedAnnotationField(_ text: String) {
+        guard let field = window.overlayView.activeTextField else { return }
+        field.stringValue = text
+        field.currentEditor()?.string = text
+    }
+
+    private func annotationFieldText() -> String {
+        let field = window.overlayView.activeTextField
+        return field?.currentEditor()?.string ?? field?.stringValue ?? ""
+    }
+
+    private func startEditingAnnotationText() -> NSTextField? {
+        window.overlayView.currentTool = .text
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: NSPoint(x: 120, y: 120),
+            color: .black,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+        window.overlayView.createTextField(
+            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+        guard let field = window.overlayView.activeTextField else {
+            XCTFail("Expected an annotation text field")
+            return nil
+        }
+        // selectText can end+restart editing and fire controlTextDidEndEditing,
+        // which finalizes and clears activeTextField before sendEvent sees the keys.
+        if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
+            window.makeFirstResponder(field)
+        }
+        if field.currentEditor() == nil {
+            field.becomeFirstResponder()
+        }
+        XCTAssertNotNil(
+            window.overlayView.activeTextField,
+            "Annotation field must stay active so c / [ / ] type instead of opening pickers")
+        return field
+    }
+
+    func testTextSizeSteppingUsesQuickPickerLadderAndResizesActiveField() throws {
+        UserDefaults.standard.textToolFontSize = 18
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: NSPoint(x: 100, y: 100), color: .red, fontSize: 44)
+        window.overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Headline")
+        let textField = try XCTUnwrap(window.overlayView.activeTextField)
+        let initialSize = textField.frame.size
+
+        window.stepTextFontSize(1)
+
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 60)
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.fontSize, 60)
+        XCTAssertEqual(textField.font?.pointSize, 60)
+        XCTAssertGreaterThan(textField.frame.height, initialSize.height)
+
+        window.stepTextFontSize(-1)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+    }
+
+    func testToggleTextBackgroundUpdatesCurrentAnnotationAndPersistedDefault() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: .zero, color: .red, fontSize: 18)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, true)
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, false)
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBTogglesLabelBackgroundWithTextToolAndNoActiveField() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .text
+        XCTAssertNil(window.overlayView.activeTextField)
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBIsIgnoredWhenTheTextToolIsNotActive() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .pen
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertFalse(window.performKeyEquivalent(with: cmdB))
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+}
+
+@MainActor
+private final class TrackingOverlayView: OverlayView {
+    var invalidatedRects: [NSRect] = []
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        invalidatedRects.append(invalidRect)
+        super.setNeedsDisplay(invalidRect)
     }
 }

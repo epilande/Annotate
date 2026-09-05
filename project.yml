@@ -9,7 +9,11 @@ targets:
     type: application
     platform: macOS
     sources:
-      - Annotate
+      - path: Annotate
+        excludes:
+          - "Sounds/**"
+      - path: Annotate/Sounds
+        buildPhase: resources
     dependencies:
       - package: KeyboardShortcuts
       - package: Sparkle

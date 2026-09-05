@@ -60,6 +60,66 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertNil(overlayView.currentTextAnnotation)
     }
 
+    func testFreehandStrokeLifecyclePreservesEveryPoint() {
+        let points = (0...256).map { index in
+            TimedPoint(
+                point: NSPoint(x: CGFloat(index), y: CGFloat(index % 17)),
+                timestamp: CFTimeInterval(index)
+            )
+        }
+
+        for tool in [ToolType.pen, .highlighter] {
+            overlayView.beginFreehandStroke(
+                DrawingPath(points: [points[0]], color: .systemRed, lineWidth: 3),
+                tool: tool
+            )
+            for point in points.dropFirst() {
+                overlayView.appendFreehandPoint(point, tool: tool)
+            }
+
+            let completedStroke = overlayView.endFreehandStroke(tool: tool)
+
+            XCTAssertEqual(completedStroke?.points, points)
+            XCTAssertEqual(completedStroke?.bezierPath?.elementCount, points.count)
+            XCTAssertFalse(completedStroke?.cachedBounds.isNull ?? true)
+            XCTAssertNil(overlayView.currentPath)
+            XCTAssertNil(overlayView.currentHighlight)
+        }
+    }
+
+    func testHighlighterSelectionUsesRenderedStrokeWidth() {
+        let now = CACurrentMediaTime()
+        overlayView.highlightPaths = [
+            DrawingPath(
+                points: [
+                    TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: now),
+                    TimedPoint(point: NSPoint(x: 200, y: 100), timestamp: now),
+                ],
+                color: .systemYellow,
+                lineWidth: 10
+            )
+        ]
+
+        XCTAssertEqual(
+            overlayView.findObjectAt(point: NSPoint(x: 150, y: 120)),
+            .highlight(index: 0)
+        )
+    }
+
+    func testHighlighterEraserHitTestUsesRenderedStrokeWidth() {
+        overlayView.highlightPaths = [
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 100, y: 100), timestamp: 0)],
+                color: .systemYellow,
+                lineWidth: 10
+            )
+        ]
+
+        overlayView.eraseAtPoint(NSPoint(x: 130, y: 100))
+
+        XCTAssertTrue(overlayView.highlightPaths.isEmpty)
+    }
+
     func testToolSwitching() {
         // Test all tool types
         overlayView.currentTool = .pen
@@ -107,6 +167,22 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertTrue(overlayView.rectangles.isEmpty)
         XCTAssertTrue(overlayView.circles.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
+    }
+
+    func testClearAllEndsInFlightStrokeWhenCollectionsAreEmpty() {
+        overlayView.beginFreehandStroke(
+            DrawingPath(
+                points: [TimedPoint(point: NSPoint(x: 10, y: 10), timestamp: 0)],
+                color: .systemRed,
+                lineWidth: 3
+            ),
+            tool: .pen
+        )
+        XCTAssertNotNil(overlayView.currentPath)
+
+        overlayView.clearAll()
+
+        XCTAssertNil(overlayView.currentPath)
     }
     
     func testDrawLine() {
@@ -159,9 +235,102 @@ final class OverlayViewTests: XCTestCase, Sendable {
         
         overlayView.lines.append(oldLine)
         XCTAssertEqual(overlayView.lines.count, 2)
-        
-        // Note: We can't directly test the drawing behavior since it's done
-        // in the draw method that interacts with the graphics context
+
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(overlayView.lines.count, 1)
+        XCTAssertEqual(overlayView.lines.first?.startPoint, NSPoint(x: 100, y: 100))
+    }
+
+    func testDrawDoesNotCompactExpiredAnnotations() {
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime() - 10
+            )
+        ]
+
+        let image = NSImage(size: overlayView.bounds.size)
+        image.lockFocus()
+        overlayView.draw(overlayView.bounds)
+        image.unlockFocus()
+
+        XCTAssertEqual(overlayView.arrows.count, 1)
+    }
+
+    func testFadeCompactionRemapsIndexBasedSelection() {
+        let now = CACurrentMediaTime()
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: .zero,
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: now - 10
+            ),
+            Arrow(
+                startPoint: NSPoint(x: 20, y: 20),
+                endPoint: NSPoint(x: 30, y: 30),
+                color: .systemBlue,
+                lineWidth: 3,
+                creationTime: now
+            )
+        ]
+        overlayView.selectedObjects = [.arrow(index: 1)]
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.arrows.count, 1)
+        XCTAssertEqual(overlayView.selectedObjects, [.arrow(index: 0)])
+    }
+
+    func testFadeCompactionTrimsExpiredPathPointsAndRebuildsBezier() {
+        overlayView.fadeMode = true
+        let now = CACurrentMediaTime()
+        var path = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now - 10),
+                TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now - 10),
+                TimedPoint(point: NSPoint(x: 20, y: 0), timestamp: now)
+            ],
+            color: .systemRed,
+            lineWidth: 3
+        )
+        path.bezierPath = NSBezierPath()
+        path.bezierPath?.move(to: NSPoint(x: 0, y: 0))
+        path.bezierPath?.line(to: NSPoint(x: 10, y: 0))
+        path.bezierPath?.line(to: NSPoint(x: 20, y: 0))
+        overlayView.paths = [path]
+        overlayView.selectedObjects = [.path(index: 0)]
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.paths.count, 1)
+        XCTAssertEqual(overlayView.paths.first?.points.count, 1)
+        XCTAssertEqual(overlayView.paths.first?.bezierPath?.elementCount, 1)
+        XCTAssertEqual(overlayView.selectedObjects, [.path(index: 0)])
+    }
+
+    func testFindObjectAtSkipsExpiredAnnotations() {
+        overlayView.fadeMode = true
+        overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 0, y: 0),
+                endPoint: NSPoint(x: 10, y: 10),
+                color: .systemRed,
+                lineWidth: 3,
+                creationTime: CACurrentMediaTime() - 10
+            )
+        ]
+
+        XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 5, y: 5)), .none)
+        XCTAssertTrue(
+            overlayView.findObjectsInRect(NSRect(x: 0, y: 0, width: 20, height: 20)).isEmpty
+        )
     }
 
     func testCounterAnnotations() {
@@ -392,7 +561,9 @@ final class OverlayViewTests: XCTestCase, Sendable {
         }
 
         let originalX = textField.frame.origin.x
-        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        // 48 pt is mid-ladder: wide enough to overflow the right edge, narrow enough that
+        // the string still fits inside the safe editing width once the field slides left.
+        let font = NSFont.systemFont(ofSize: 48)
         textField.font = font
         textField.stringValue = "Hello world test"
         overlayView.resizeActiveTextField(textField)
@@ -412,6 +583,43 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertGreaterThanOrEqual(
             textField.frame.size.width, textWidth,
             "Text field should stay wide enough to show the full text instead of clipping it"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testResizeActiveTextFieldClampsToFullWidthAtMaximumFontSize() {
+        // The view is 800 wide with no window, so availableWidth falls back to bounds.width
+        let clickPoint = NSPoint(x: 790, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.stringValue = "Hello world test"
+        overlayView.resizeActiveTextField(textField)
+
+        let margin: CGFloat = 20
+
+        XCTAssertEqual(
+            textField.frame.size.width, overlayView.bounds.width - margin * 2,
+            "Text wider than the display should use the full safe editing width"
+        )
+        XCTAssertEqual(
+            textField.frame.origin.x, margin,
+            "A full-width field should stay inside the left screen margin"
+        )
+        XCTAssertLessThanOrEqual(
+            textField.frame.maxX, overlayView.bounds.width - margin,
+            "Text field should not overflow the right edge of the screen"
         )
 
         textField.removeFromSuperview()
@@ -520,5 +728,225 @@ final class OverlayViewTests: XCTestCase, Sendable {
         let expectedY = clickPoint.y - 16 + 4  // -16 for field offset, +4 for padding
         XCTAssertEqual(annotation.position.x, expectedX, accuracy: 0.01, "Position X should account for padding")
         XCTAssertEqual(annotation.position.y, expectedY, accuracy: 0.01, "Position Y should account for padding")
+    }
+
+    func testTextFieldCommandShortcutsStepAndToggle() throws {
+        let textField = AnnotationTextField(frame: .zero)
+        var directions: [Int] = []
+        var toggleCount = 0
+        textField.onFontSizeStep = { directions.append($0) }
+        textField.onToggleBackground = { toggleCount += 1 }
+
+        for character in ["=", "+", "-", "b"] {
+            let event = try XCTUnwrap(
+                NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: .command,
+                    timestamp: 0,
+                    windowNumber: 0,
+                    context: nil,
+                    characters: character,
+                    charactersIgnoringModifiers: character,
+                    isARepeat: false,
+                    keyCode: 0))
+            XCTAssertTrue(textField.performKeyEquivalent(with: event))
+        }
+
+        XCTAssertEqual(directions, [1, 1, -1])
+        XCTAssertEqual(toggleCount, 1)
+    }
+
+    func testFinalizePreservesBackgroundAndStartsFadeLifecycle() throws {
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "",
+            position: NSPoint(x: 200, y: 300),
+            color: .red,
+            fontSize: 44,
+            hasBackground: true)
+        overlayView.createTextField(at: NSPoint(x: 200, y: 300))
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        textField.stringValue = "Pill"
+
+        overlayView.finalizeTextAnnotation(textField)
+
+        let annotation = try XCTUnwrap(overlayView.textAnnotations.first)
+        XCTAssertTrue(annotation.hasBackground)
+        XCTAssertEqual(annotation.fontSize, 44)
+        XCTAssertNotNil(annotation.creationTime)
+    }
+
+    func testBackgroundPillAddsRenderedAreaAndFadesWithText() {
+        overlayView.fadeMode = false
+        let plain = TextAnnotation(
+            text: "A",
+            position: NSPoint(x: 120, y: 300),
+            color: .red,
+            fontSize: 44)
+        overlayView.textAnnotations = [plain]
+        let plainPixels = renderedPixelCount(of: overlayView)
+
+        var pill = plain
+        pill.hasBackground = true
+        overlayView.textAnnotations = [pill]
+        XCTAssertGreaterThan(renderedPixelCount(of: overlayView), plainPixels)
+
+        pill.creationTime = CACurrentMediaTime() - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [pill]
+        _ = renderedPixelCount(of: overlayView)
+        XCTAssertEqual(overlayView.textAnnotations.count, 1, "draw must not compact expired text")
+        overlayView.compactExpiredAnnotations()
+        XCTAssertTrue(overlayView.textAnnotations.isEmpty)
+    }
+
+    // MARK: - Text compaction under an active edit or drag
+
+    private func seedFadingTextAnnotations(now: CFTimeInterval) {
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "expired", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: now - overlayView.fadeDuration - 1),
+            TextAnnotation(
+                text: "live", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: now),
+        ]
+    }
+
+    func testCompactionRemapsEditingTextIndexWhenAnEarlierLabelExpires() {
+        seedFadingTextAnnotations(now: CACurrentMediaTime())
+        overlayView.editingTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(
+            overlayView.editingTextAnnotationIndex, 0,
+            "The edited label moved down a slot, so its index has to follow")
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "live")
+    }
+
+    func testCompactionRemapsDraggedTextIndexWhenAnEarlierLabelExpires() {
+        seedFadingTextAnnotations(now: CACurrentMediaTime())
+        overlayView.draggedTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(
+            overlayView.draggedTextAnnotationIndex, 0,
+            "The dragged label moved down a slot, so its index has to follow")
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "live")
+    }
+
+    func testCompactionKeepsAnExpiredLabelWhileItIsBeingEdited() {
+        let now = CACurrentMediaTime()
+        let expired = now - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "gone", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "editing", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "live", position: NSPoint(x: 30, y: 30), color: .black, fontSize: 18,
+                creationTime: now),
+        ]
+        overlayView.editingTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 2)
+        XCTAssertEqual(overlayView.editingTextAnnotationIndex, 0)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "editing")
+        XCTAssertEqual(overlayView.textAnnotations[1].text, "live")
+    }
+
+    func testCompactionKeepsAnExpiredLabelWhileItIsBeingDragged() {
+        let now = CACurrentMediaTime()
+        let expired = now - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "gone", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "dragging", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: expired),
+        ]
+        overlayView.draggedTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(overlayView.draggedTextAnnotationIndex, 0)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "dragging")
+    }
+
+    // MARK: - Label geometry
+
+    func testPlainLabelRectKeepsInteractionSlop() {
+        let annotation = TextAnnotation(
+            text: "Hello", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18)
+        overlayView.textAnnotations = [annotation]
+        let bareSize = annotation.text.size(
+            withAttributes: [.font: NSFont.systemFont(ofSize: annotation.fontSize)])
+
+        let rect = overlayView.getObjectBounds(.text(index: 0))
+
+        XCTAssertEqual(rect.origin.x, annotation.position.x)
+        XCTAssertEqual(rect.origin.y, annotation.position.y)
+        XCTAssertGreaterThan(
+            rect.width, bareSize.width,
+            "A label without a background still needs slop so it stays easy to grab")
+        XCTAssertGreaterThan(rect.height, bareSize.height)
+    }
+
+    func testLabelWithBackgroundUsesPillGeometry() {
+        var annotation = TextAnnotation(
+            text: "Hello", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18)
+        annotation.hasBackground = true
+        overlayView.textAnnotations = [annotation]
+        let bareSize = annotation.text.size(
+            withAttributes: [.font: NSFont.systemFont(ofSize: annotation.fontSize)])
+        let insets = TextAnnotation.pillInsets
+
+        let rect = overlayView.getObjectBounds(.text(index: 0))
+
+        XCTAssertEqual(rect.origin.x, annotation.position.x - insets.left)
+        XCTAssertEqual(rect.origin.y, annotation.position.y - insets.bottom)
+        XCTAssertEqual(rect.width, bareSize.width + insets.left + insets.right, accuracy: 0.001)
+        XCTAssertEqual(rect.height, bareSize.height + insets.top + insets.bottom, accuracy: 0.001)
+    }
+
+    // MARK: - Finalizing an edit
+
+    func testFinalizingAnEditRestampsCreationTime() throws {
+        let seeded = CACurrentMediaTime() - 0.5
+        overlayView.fadeMode = true
+        overlayView.currentTool = .text
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "before", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18,
+                creationTime: seeded)
+        ]
+        overlayView.editingTextAnnotationIndex = 0
+        overlayView.currentTextAnnotation = overlayView.textAnnotations[0]
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "before")
+
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        textField.stringValue = "after"
+        overlayView.finalizeTextAnnotation(textField)
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "after")
+        let stamped = try XCTUnwrap(overlayView.textAnnotations[0].creationTime)
+        XCTAssertGreaterThan(
+            stamped, seeded,
+            "A re-edited label restarts its fade clock instead of inheriting the old one")
     }
 }
