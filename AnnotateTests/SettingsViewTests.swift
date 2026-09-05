@@ -12,11 +12,15 @@ final class SettingsViewTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
         UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
         testDefaults = UserDefaults.standard
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey)
     }
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
         UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey)
         super.tearDown()
     }
 
@@ -168,6 +172,14 @@ final class SettingsViewTests: XCTestCase {
         XCTAssertTrue(appDelegateSpy.updateDockIconVisibilityCalled)
 
         AppDelegate.shared = nil
+    }
+
+    func testTextToolDefaultsKeepSizeAtEighteenAndPersistBackgroundChoice() {
+        XCTAssertEqual(testDefaults.textToolFontSize, 18)
+        XCTAssertFalse(testDefaults.textBackgroundEnabled)
+
+        testDefaults.textBackgroundEnabled = true
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.textBackgroundKey))
     }
 }
 

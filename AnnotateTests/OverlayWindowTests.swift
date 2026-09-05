@@ -10,6 +10,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // A spy leaked from another suite would redirect pickerUserDefaults.
+            AppDelegate.shared = nil
             originalMouseCoalescingEnabled = NSEvent.isMouseCoalescingEnabled
             let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
             window = OverlayWindow(
@@ -1559,6 +1561,72 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             window.overlayView.activeTextField,
             "Annotation field must stay active so c / [ / ] type instead of opening pickers")
         return field
+    }
+
+    func testTextSizeSteppingUsesQuickPickerLadderAndResizesActiveField() throws {
+        UserDefaults.standard.textToolFontSize = 18
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: NSPoint(x: 100, y: 100), color: .red, fontSize: 44)
+        window.overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Headline")
+        let textField = try XCTUnwrap(window.overlayView.activeTextField)
+        let initialSize = textField.frame.size
+
+        window.stepTextFontSize(1)
+
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 60)
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.fontSize, 60)
+        XCTAssertEqual(textField.font?.pointSize, 60)
+        XCTAssertGreaterThan(textField.frame.height, initialSize.height)
+
+        window.stepTextFontSize(-1)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+    }
+
+    func testToggleTextBackgroundUpdatesCurrentAnnotationAndPersistedDefault() {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: .zero, color: .red, fontSize: 18)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, true)
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        window.toggleTextBackground()
+        XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, false)
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBTogglesLabelBackgroundWithTextToolAndNoActiveField() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .text
+        XCTAssertNil(window.overlayView.activeTextField)
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBIsIgnoredWhenTheTextToolIsNotActive() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .pen
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertFalse(window.performKeyEquivalent(with: cmdB))
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
     }
 }
 

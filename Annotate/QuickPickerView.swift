@@ -9,7 +9,7 @@ final class QuickPickerView: NSView {
     }
 
     static let widthOptions: [CGFloat] = [1, 2, 3, 5, 8, 12, 16, 24]
-    static let fontSizeOptions: [CGFloat] = [14, 18, 24, 32, 44, 60, 80, 110]
+    static let fontSizeOptions: [CGFloat] = [12, 18, 24, 32, 44, 60, 80, 120]
     static let counterSizeOptions: [CGFloat] = {
         let count = 8
         let span = counterFontSizeRange.upperBound - counterFontSizeRange.lowerBound

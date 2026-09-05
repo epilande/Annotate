@@ -4,6 +4,8 @@ import Cocoa
 @MainActor
 class AnnotationTextField: NSTextField {
     var onCommandReturn: (() -> Void)?
+    var onFontSizeStep: ((Int) -> Void)?
+    var onToggleBackground: (() -> Void)?
 
     /// The unclamped left-edge x the field targets before any right-edge shifting. Set when
     /// the field is created so that shrinking text after a left-shift can move it back toward
@@ -11,9 +13,29 @@ class AnnotationTextField: NSTextField {
     var anchorX: CGFloat = 0
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.contains(.command) && event.keyCode == 36 {
-            onCommandReturn?()
-            return true
+        if event.modifierFlags.contains(.command) {
+            if event.keyCode == 36 {
+                onCommandReturn?()
+                return true
+            }
+            // Shift is allowed because Command-Shift-equals is how "+" is typed on a US
+            // layout, but Option and Control belong to other key equivalents.
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if modifiers.isDisjoint(with: [.option, .control]) {
+                switch event.charactersIgnoringModifiers?.lowercased() {
+                case "=", "+":
+                    onFontSizeStep?(1)
+                    return true
+                case "-", "_":
+                    onFontSizeStep?(-1)
+                    return true
+                case "b":
+                    onToggleBackground?()
+                    return true
+                default:
+                    break
+                }
+            }
         }
         return super.performKeyEquivalent(with: event)
     }
@@ -109,6 +131,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         didSet { notifyToolbarChanged() }
     }
     let fadeDuration: CFTimeInterval = 1.25
+
+    /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
+    /// defaults through the same store.
+    var pickerUserDefaults: UserDefaults {
+        AppDelegate.shared?.userDefaults ?? .standard
+    }
     var isReadOnlyMode: Bool = false
 
     private var cursorTrackingArea: NSTrackingArea?
@@ -704,8 +732,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         for (index, annotation) in textAnnotations.enumerated() {
             if index == editingTextAnnotationIndex { continue }
-            guard intersectsDirtyRect(getTextRect(for: annotation), dirtyRect) else { continue }
-            drawText(annotation)
+            guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
+            let textRect = getTextRect(for: annotation)
+            guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
+            drawText(annotation, alpha: alpha, bounds: textRect)
         }
 
         for counter in counterAnnotations {
@@ -951,6 +981,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
+        // A label being edited or dragged is addressed by a standalone index, so it has to
+        // survive compaction and then follow its annotation to the new slot.
+        let protectedTextIndices = Set(
+            [editingTextAnnotationIndex, draggedTextAnnotationIndex].compactMap { $0 })
+        let textIndexMap = compactItems(
+            &textAnnotations,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            protectedIndices: protectedTextIndices,
+            extractIndex: { if case .text(let index) = $0 { return index }; return nil },
+            make: { .text(index: $0) }
+        )
+        if let textIndexMap {
+            editingTextAnnotationIndex = editingTextAnnotationIndex.flatMap { textIndexMap[$0] }
+            draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
+        }
         compactFadedPaths(
             &paths,
             now: now,
@@ -965,24 +1010,32 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
     }
 
+    /// Drops the items `keep` rejects and remaps the selection onto the surviving indices.
+    ///
+    /// Indices listed in `protectedIndices` are kept even when `keep` rejects them, for
+    /// callers that hold a standalone index into the array. Returns the old-to-new index
+    /// map so those callers can follow their index, or nil when nothing was removed.
+    @discardableResult
     private func compactItems<T>(
         _ items: inout [T],
         keep: (T) -> Bool,
+        protectedIndices: Set<Int> = [],
         extractIndex: (SelectedObject) -> Int?,
         make: (Int) -> SelectedObject
-    ) {
+    ) -> [Int: Int]? {
         var newItems: [T] = []
         var indexMap: [Int: Int] = [:]
         newItems.reserveCapacity(items.count)
         for (oldIndex, item) in items.enumerated() {
-            if keep(item) {
+            if keep(item) || protectedIndices.contains(oldIndex) {
                 indexMap[oldIndex] = newItems.count
                 newItems.append(item)
             }
         }
-        guard newItems.count != items.count else { return }
+        guard newItems.count != items.count else { return nil }
         items = newItems
         remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
+        return indexMap
     }
 
     private func compactFadedPaths(
@@ -1164,14 +1217,28 @@ class OverlayView: NSView, NSTextFieldDelegate {
         renderedPath.stroke()
     }
 
-    private func drawText(_ annotation: TextAnnotation) {
+    /// Draws a label. `bounds` is the rect the caller already measured with `getTextRect`,
+    /// which for a label with a background is exactly the pill.
+    private func drawText(_ annotation: TextAnnotation, alpha: CGFloat, bounds: NSRect) {
         let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
-
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: adaptedColor,
+            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
             .font: NSFont.systemFont(ofSize: annotation.fontSize),
         ]
         let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
+
+        if annotation.hasBackground {
+            let pill = NSBezierPath(
+                roundedRect: bounds,
+                xRadius: TextAnnotation.pillCornerRadius,
+                yRadius: TextAnnotation.pillCornerRadius
+            )
+            adaptedColor.contrastingColor()
+                .withAlphaComponent(TextAnnotation.pillFillAlpha * alpha)
+                .setFill()
+            pill.fill()
+        }
+
         attributedString.draw(at: annotation.position)
     }
 
@@ -1553,6 +1620,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
             case .text(var text):
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
+                text.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 textAnnotations.append(text)
                 registerUndo(action: .addText(text))
                 pastedObjects.append(.text(index: textAnnotations.count - 1))
@@ -1573,6 +1641,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         startFadeLoopIfNeeded()
         needsDisplay = true
+        if fadeMode {
+            (window as? OverlayWindow)?.startFadeLoop()
+        }
     }
     
     /// Calculate the center point of objects in clipboard
@@ -1700,7 +1771,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Offset to align text cursor with click point:
         // X: -8 for left padding
         // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
-        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
+        let fontSize = currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
         let font = NSFont.systemFont(ofSize: fontSize)
         // Size the empty new field to one line of the current font so large text and the cursor
         // aren't clipped top/bottom. "Ay" is a full ascender+descender sample; reusing the same
@@ -1713,6 +1784,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.onCommandReturn = { [weak self, weak textField] in
             guard let self = self, let textField = textField else { return }
             self.finalizeTextAnnotation(textField)
+        }
+        textField.onFontSizeStep = { [weak self] direction in
+            (self?.window as? OverlayWindow)?.stepTextFontSize(direction)
+        }
+        textField.onToggleBackground = { [weak self] in
+            (self?.window as? OverlayWindow)?.toggleTextBackground()
         }
         activeTextField = textField
         // Remember where the field started so resize can slide it back right as text shrinks.
@@ -1809,11 +1886,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         if !typedText.isEmpty {
+            // Finishing an edit restarts the fade clock. Keeping the original creationTime
+            // would let a label the user just retyped disappear immediately.
+            let isEdit = editingTextAnnotationIndex != nil
             let finalAnnotation = TextAnnotation(
                 text: typedText,
                 position: position,
                 color: currentText.color,
-                fontSize: currentText.fontSize
+                fontSize: currentText.fontSize,
+                hasBackground: currentText.hasBackground,
+                creationTime: isEdit
+                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime())
             )
 
             if let editingIndex = editingTextAnnotationIndex {
@@ -1826,6 +1909,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             } else {
                 registerUndo(action: .addText(finalAnnotation))
                 textAnnotations.append(finalAnnotation)
+            }
+            if fadeMode {
+                (window as? OverlayWindow)?.startFadeLoop()
             }
         } else if let editingIndex = editingTextAnnotationIndex {
             if editingIndex < textAnnotations.count {
@@ -1872,7 +1958,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: UserDefaults.standard.textToolFontSize
+            fontSize: pickerUserDefaults.textToolFontSize,
+            hasBackground: pickerUserDefaults.textBackgroundEnabled
         )
         createTextField(at: point)
     }
@@ -1902,7 +1989,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
-        let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
+        let font = textField.font ?? NSFont.systemFont(ofSize: pickerUserDefaults.textToolFontSize)
         let box = textFieldBoxSize(forText: textField.stringValue, font: font)
 
         let margin: CGFloat = 20
@@ -1958,6 +2045,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
+        let stillFadingText = textAnnotations.contains { annotation in
+            if let creationTime = annotation.creationTime {
+                return (now - creationTime) < fadeDuration
+            }
+            return false
+        }
+
         let maxPathAge =
             highlightPaths.contains { path in
                 if let minTimestamp = path.points.map({ $0.timestamp }).min() {
@@ -1976,6 +2070,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || stillFadingLines
             || stillFadingRectangles
             || stillFadingCircles
+            || stillFadingText
             || stillFadingCounters
             || maxPathAge
     }
@@ -2020,7 +2115,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .highlight(let index):
             guard index < highlightPaths.count else { return true }
             return !isPathVisible(highlightPaths[index], now: now)
-        case .text, .none:
+        case .text(let index):
+            guard index < textAnnotations.count else { return true }
+            return fadeAlphaIfVisible(creationTime: textAnnotations[index].creationTime, now: now) == nil
+        case .none:
             return false
         }
     }
@@ -2367,17 +2465,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return textRect.contains(point)
     }
     
+    /// Slop added to a label that draws without a background, so hit testing, erasing and
+    /// marquee selection stay as forgiving as they were before background pills existed.
+    static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 4, left: 0, bottom: 0, right: 4) }
+
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: annotation.fontSize)
-        ]
-        let size = annotation.text.size(withAttributes: attributes)
-        return NSRect(
-            x: annotation.position.x,
-            y: annotation.position.y,
-            width: size.width + 4,
-            height: size.height + 4
-        )
+        annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
     
     private func hitTestCounter(_ counter: CounterAnnotation, point: NSPoint) -> Bool {

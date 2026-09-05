@@ -202,6 +202,41 @@ struct TextAnnotation {
     var position: NSPoint
     var color: NSColor
     var fontSize: CGFloat
+    var hasBackground: Bool = false
+    var creationTime: CFTimeInterval?
+
+    /// Padding between the text and the edge of the background pill.
+    static var pillInsets: NSEdgeInsets { NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8) }
+
+    /// Corner radius of the background pill.
+    static let pillCornerRadius: CGFloat = 6
+
+    /// Opacity of the pill fill before any fade alpha is applied.
+    static let pillFillAlpha: CGFloat = 0.85
+
+    /// Bounds of the label for an already measured text size.
+    ///
+    /// With a background the insets are the pill's own padding, so the rect matches
+    /// exactly what gets drawn. Without one the caller supplies its own slop, which
+    /// keeps hit testing as forgiving as it was before pills existed.
+    func bounds(textSize: NSSize, fallbackInsets: NSEdgeInsets) -> NSRect {
+        let insets = hasBackground ? Self.pillInsets : fallbackInsets
+        return NSRect(
+            x: position.x - insets.left,
+            y: position.y - insets.bottom,
+            width: textSize.width + insets.left + insets.right,
+            height: textSize.height + insets.top + insets.bottom
+        )
+    }
+
+    /// Bounds of the label, measuring the text with the annotation's own font.
+    func bounds(fallbackInsets: NSEdgeInsets) -> NSRect {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize)
+        ]
+        return bounds(
+            textSize: text.size(withAttributes: attributes), fallbackInsets: fallbackInsets)
+    }
 }
 
 struct CounterAnnotation {
@@ -320,7 +355,8 @@ extension Circle: Equatable {
 extension TextAnnotation: Equatable {
     public static func == (lhs: TextAnnotation, rhs: TextAnnotation) -> Bool {
         return lhs.text == rhs.text && lhs.position == rhs.position && lhs.color.isEqual(rhs.color)
-            && lhs.fontSize == rhs.fontSize
+            && lhs.fontSize == rhs.fontSize && lhs.hasBackground == rhs.hasBackground
+            && lhs.creationTime == rhs.creationTime
     }
 }
 

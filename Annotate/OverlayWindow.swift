@@ -1052,7 +1052,8 @@ class OverlayWindow: NSPanel {
                 text: "",
                 position: startPoint,
                 color: currentColor,
-                fontSize: UserDefaults.standard.textToolFontSize
+                fontSize: pickerUserDefaults.textToolFontSize,
+                hasBackground: pickerUserDefaults.textBackgroundEnabled
             )
             overlayView.createTextField(at: startPoint)
         }
@@ -1104,17 +1105,12 @@ class OverlayWindow: NSPanel {
         overlayView.needsDisplay = true
     }
 
+    /// Slop added to a label that draws without a background. Clicking and double-clicking
+    /// a label is more forgiving than the view's own hit test, which this preserves.
+    static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 10, left: 0, bottom: 0, right: 20) }
+
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: annotation.fontSize)
-        ]
-        let size = annotation.text.size(withAttributes: attributes)
-        return NSRect(
-            x: annotation.position.x,
-            y: annotation.position.y,
-            width: size.width + 20,
-            height: size.height + 10
-        )
+        annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1164,6 +1160,13 @@ class OverlayWindow: NSPanel {
         if let draggedIndex = overlayView.draggedTextAnnotationIndex,
             let dragOffset = overlayView.dragOffset
         {
+            // The label can vanish mid-drag if fade compaction outruns the remap.
+            guard draggedIndex < overlayView.textAnnotations.count else {
+                overlayView.draggedTextAnnotationIndex = nil
+                overlayView.originalTextPosition = nil
+                overlayView.dragOffset = nil
+                return
+            }
             // Update the position of the dragged text annotation
             let newPosition = NSPoint(
                 x: currentPoint.x - dragOffset.x,
@@ -1480,12 +1483,15 @@ class OverlayWindow: NSPanel {
         }
 
         if let draggedIndex = overlayView.draggedTextAnnotationIndex {
-            let oldPosition =
-                overlayView.originalTextPosition
-                ?? overlayView.textAnnotations[draggedIndex].position
-            let newPosition = overlayView.textAnnotations[draggedIndex].position
-            if newPosition != oldPosition {
-                overlayView.registerUndo(action: .moveText(draggedIndex, oldPosition, newPosition))
+            if draggedIndex < overlayView.textAnnotations.count {
+                let oldPosition =
+                    overlayView.originalTextPosition
+                    ?? overlayView.textAnnotations[draggedIndex].position
+                let newPosition = overlayView.textAnnotations[draggedIndex].position
+                if newPosition != oldPosition {
+                    overlayView.registerUndo(
+                        action: .moveText(draggedIndex, oldPosition, newPosition))
+                }
             }
             overlayView.draggedTextAnnotationIndex = nil
             overlayView.originalTextPosition = nil
@@ -1843,8 +1849,14 @@ class OverlayWindow: NSPanel {
         applyTextFontSize(size)
     }
 
-    func applyTextFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
-        guard size != pickerUserDefaults.textToolFontSize else { return }
+    func applyTextFontSize(_ requestedSize: CGFloat, showsFeedback: Bool = true) {
+        let size = requestedSize.clamped(to: textAnnotationFontSizeRange)
+        guard size != pickerUserDefaults.textToolFontSize
+            || runtimeOverlayWindows.contains(where: {
+                $0.overlayView.activeTextField != nil
+                    && $0.overlayView.currentTextAnnotation?.fontSize != size
+            })
+        else { return }
         pickerUserDefaults.textToolFontSize = size
 
         runtimeOverlayWindows.forEach { window in
@@ -1860,6 +1872,29 @@ class OverlayWindow: NSPanel {
         if showsFeedback {
             showFontSizeFeedback(size)
         }
+    }
+
+    func stepTextFontSize(_ direction: Int) {
+        let currentSize =
+            overlayView.currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+        applyTextFontSize(
+            QuickPickerView.steppedValue(
+                in: QuickPickerView.fontSizeOptions,
+                current: currentSize,
+                direction: direction))
+    }
+
+    func toggleTextBackground() {
+        let enabled = !(overlayView.currentTextAnnotation?.hasBackground
+            ?? pickerUserDefaults.textBackgroundEnabled)
+        pickerUserDefaults.textBackgroundEnabled = enabled
+
+        runtimeOverlayWindows.forEach { window in
+            window.overlayView.currentTextAnnotation?.hasBackground = enabled
+            window.overlayView.needsDisplay = true
+        }
+
+        showFeedback(enabled ? "Label background on" : "Label background off")
     }
 
     private func showFontSizeFeedback(_ size: CGFloat) {
@@ -1892,11 +1927,7 @@ class OverlayWindow: NSPanel {
 
     private func stepActiveLadder(_ direction: Int) {
         if overlayView.currentTool == .text || overlayView.activeTextField != nil {
-            applyTextFontSize(
-                QuickPickerView.steppedValue(
-                    in: QuickPickerView.fontSizeOptions,
-                    current: pickerUserDefaults.textToolFontSize,
-                    direction: direction))
+            stepTextFontSize(direction)
             return
         }
 
@@ -2241,7 +2272,21 @@ class OverlayWindow: NSPanel {
             }
             overlayView.duplicateSelectedObjects()
             return true
-            
+
+        case "b":
+            // Command-B toggles the label background whenever the text tool is in play,
+            // with or without an active field. Bare "b" stays Toggle Board; that path runs
+            // in keyDown and only fires when no modifier is held.
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard modifiers.isDisjoint(with: [.option, .control]),
+                overlayView.currentTool == .text || overlayView.activeTextField != nil
+            else {
+                return super.performKeyEquivalent(with: event)
+            }
+            toggleTextBackground()
+            return true
+
+
         default:
             return super.performKeyEquivalent(with: event)
         }

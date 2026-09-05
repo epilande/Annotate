@@ -1002,4 +1002,26 @@ final class SelectionFeatureTests: XCTestCase {
         // Should still have only 1 line
         XCTAssertEqual(overlayView.lines.count, 1)
     }
+
+    func testTextSelectionClipboardPreservesBackgroundPill() {
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Label",
+                position: NSPoint(x: 100, y: 100),
+                color: .white,
+                fontSize: 44,
+                hasBackground: true,
+                creationTime: 1.5)
+        ]
+        overlayView.currentTool = .select
+        overlayView.selectedObjects = [.text(index: 0)]
+
+        overlayView.copySelectedObjects()
+
+        guard case .text(let copied)? = overlayView.clipboard.first else {
+            return XCTFail("Clipboard should contain the selected text annotation")
+        }
+        XCTAssertTrue(copied.hasBackground)
+        XCTAssertEqual(copied.creationTime, 1.5)
+    }
 }

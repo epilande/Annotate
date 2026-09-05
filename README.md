@@ -168,6 +168,16 @@ brew install --cask annotate
 | <kbd>Command</kbd> + <kbd>V</kbd> | **Paste**      | Paste objects at mouse cursor position |
 | <kbd>Command</kbd> + <kbd>D</kbd> | **Duplicate**  | Duplicate selected objects with offset |
 
+#### 🔤 Text Editing (While Typing a Label)
+
+| Shortcut                                             | Action               | Description                                        |
+| ---------------------------------------------------- | -------------------- | -------------------------------------------------- |
+| <kbd>Command</kbd> + <kbd>+</kbd>                    | **Increase Size**    | Step the label font size up one notch              |
+| <kbd>Command</kbd> + <kbd>-</kbd>                    | **Decrease Size**    | Step the label font size down one notch            |
+| <kbd>Command</kbd> + <kbd>B</kbd>                    | **Label Background** | Toggle the rounded background pill behind the text |
+
+<kbd>Command</kbd> + <kbd>B</kbd> also works with the Text tool selected, so you can set the background on or off before you place a label.
+
 #### 🪟 Overlay Controls
 
 | Shortcut                                            | Action             | Description                          |
@@ -224,6 +234,8 @@ Annotate provides flexible line width control:
 - Type your text and press <kbd>Enter</kbd> or <kbd>Esc</kbd> to finalize
 - Double-click any text annotation to edit its content
 - Click and drag to reposition text
+- Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
+- Press <kbd>Command</kbd> + <kbd>B</kbd> to toggle a rounded background pill behind the text
 
 #### Counter Tool
 
@@ -333,6 +345,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 ### Tools
 
 - **Default Text Size**: Adjust the default font size for text annotations.
+- **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
 
 ### Board

@@ -95,17 +95,29 @@ final class ModelTests: XCTestCase {
         let fontSize: CGFloat = 18.0
 
         let annotation = TextAnnotation(
-            text: text, position: position, color: color, fontSize: fontSize)
+            text: text,
+            position: position,
+            color: color,
+            fontSize: fontSize,
+            hasBackground: true,
+            creationTime: 1.5)
 
         XCTAssertEqual(annotation.text, text)
         XCTAssertEqual(annotation.position, position)
         XCTAssertEqual(annotation.color, color)
         XCTAssertEqual(annotation.fontSize, fontSize)
+        XCTAssertTrue(annotation.hasBackground)
+        XCTAssertEqual(annotation.creationTime, 1.5)
 
-        // Test empty text
+        var changedBackground = annotation
+        changedBackground.hasBackground = false
+        XCTAssertNotEqual(annotation, changedBackground)
+
         let emptyAnnotation = TextAnnotation(
             text: "", position: .zero, color: .black, fontSize: 12.0)
         XCTAssertTrue(emptyAnnotation.text.isEmpty)
+        XCTAssertFalse(emptyAnnotation.hasBackground)
+        XCTAssertNil(emptyAnnotation.creationTime)
     }
 
     func testCounterAnnotation() {
