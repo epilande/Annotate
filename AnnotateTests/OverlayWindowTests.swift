@@ -1456,6 +1456,9 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     private static let quickPickerHoldWait: TimeInterval = 0.3
+    // A headless CI runner can stall one run-loop pass for several seconds, which
+    // pushes the picker's asyncAfter dismissal past the default two-second budget.
+    private static let pickerDismissTimeout: TimeInterval = 10
 
     private var quickPickerView: QuickPickerView? {
         window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
@@ -1489,7 +1492,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     private func waitForPickerToDismiss() {
-        let deadline = Date().addingTimeInterval(TestConstants.defaultTimeout)
+        let deadline = Date().addingTimeInterval(Self.pickerDismissTimeout)
         while window.isQuickPickerOpen && Date() < deadline {
             // Run the whole slice instead of returning after the first source. The
             // toolbar's hosting view installs run-loop sources of its own, and
