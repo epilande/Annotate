@@ -15,8 +15,12 @@ extension UserDefaults {
     static let alwaysOnModeKey = "AlwaysOnMode"
     static let lineWidthKey = "LineWidth"
     static let hideToolFeedbackKey = "HideToolFeedback"
+    static let toolbarVisibleKey = "ToolbarVisible"
+    static let toolbarVisibleDefault = true
     static let soundsEnabledKey = "SoundsEnabled"
     static let soundsEnabledDefault = true
+    static let soundThemeKey = "SoundTheme"
+    static let soundThemeDefault = SoundTheme.chalk
     static let clickRippleEnabledKey = "ClickRippleEnabled"
     static let clickRippleColorKey = "ClickRippleColor"
     static let clickRippleSizeKey = "ClickRippleSize"
@@ -62,6 +66,18 @@ extension UserDefaults {
         }
         set {
             set(newValue, forKey: Self.soundsEnabledKey)
+        }
+    }
+
+    /// The palette of feedback clips to play. Defaults to `.chalk` when the key is absent or holds
+    /// a theme the app no longer ships.
+    var soundTheme: SoundTheme {
+        get {
+            let stored = string(forKey: Self.soundThemeKey) ?? ""
+            return SoundTheme(rawValue: stored) ?? Self.soundThemeDefault
+        }
+        set {
+            set(newValue.rawValue, forKey: Self.soundThemeKey)
         }
     }
 
