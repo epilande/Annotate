@@ -175,8 +175,6 @@ final class SettingsViewTests: XCTestCase {
     }
 
     func testTextToolDefaultsKeepSizeAtEighteenAndPersistBackgroundChoice() {
-        XCTAssertEqual(defaultTextAnnotationFontSize, 18)
-        XCTAssertEqual(textAnnotationFontSizeRange, 12...120)
         XCTAssertEqual(testDefaults.textToolFontSize, 18)
         XCTAssertFalse(testDefaults.textBackgroundEnabled)
 

@@ -1105,20 +1105,12 @@ class OverlayWindow: NSPanel {
         overlayView.needsDisplay = true
     }
 
+    /// Slop added to a label that draws without a background. Clicking and double-clicking
+    /// a label is more forgiving than the view's own hit test, which this preserves.
+    static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 10, left: 0, bottom: 0, right: 20) }
+
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: annotation.fontSize)
-        ]
-        let size = annotation.text.size(withAttributes: attributes)
-        let padding = annotation.hasBackground
-            ? NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-            : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        return NSRect(
-            x: annotation.position.x - padding.left,
-            y: annotation.position.y - padding.bottom,
-            width: size.width + padding.left + padding.right,
-            height: size.height + padding.top + padding.bottom
-        )
+        annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1168,6 +1160,13 @@ class OverlayWindow: NSPanel {
         if let draggedIndex = overlayView.draggedTextAnnotationIndex,
             let dragOffset = overlayView.dragOffset
         {
+            // The label can vanish mid-drag if fade compaction outruns the remap.
+            guard draggedIndex < overlayView.textAnnotations.count else {
+                overlayView.draggedTextAnnotationIndex = nil
+                overlayView.originalTextPosition = nil
+                overlayView.dragOffset = nil
+                return
+            }
             // Update the position of the dragged text annotation
             let newPosition = NSPoint(
                 x: currentPoint.x - dragOffset.x,
@@ -1484,12 +1483,15 @@ class OverlayWindow: NSPanel {
         }
 
         if let draggedIndex = overlayView.draggedTextAnnotationIndex {
-            let oldPosition =
-                overlayView.originalTextPosition
-                ?? overlayView.textAnnotations[draggedIndex].position
-            let newPosition = overlayView.textAnnotations[draggedIndex].position
-            if newPosition != oldPosition {
-                overlayView.registerUndo(action: .moveText(draggedIndex, oldPosition, newPosition))
+            if draggedIndex < overlayView.textAnnotations.count {
+                let oldPosition =
+                    overlayView.originalTextPosition
+                    ?? overlayView.textAnnotations[draggedIndex].position
+                let newPosition = overlayView.textAnnotations[draggedIndex].position
+                if newPosition != oldPosition {
+                    overlayView.registerUndo(
+                        action: .moveText(draggedIndex, oldPosition, newPosition))
+                }
             }
             overlayView.draggedTextAnnotationIndex = nil
             overlayView.originalTextPosition = nil
@@ -1885,9 +1887,13 @@ class OverlayWindow: NSPanel {
     func toggleTextBackground() {
         let enabled = !(overlayView.currentTextAnnotation?.hasBackground
             ?? pickerUserDefaults.textBackgroundEnabled)
-        overlayView.currentTextAnnotation?.hasBackground = enabled
         pickerUserDefaults.textBackgroundEnabled = enabled
-        overlayView.needsDisplay = true
+
+        runtimeOverlayWindows.forEach { window in
+            window.overlayView.currentTextAnnotation?.hasBackground = enabled
+            window.overlayView.needsDisplay = true
+        }
+
         showFeedback(enabled ? "Label background on" : "Label background off")
     }
 
@@ -2266,7 +2272,21 @@ class OverlayWindow: NSPanel {
             }
             overlayView.duplicateSelectedObjects()
             return true
-            
+
+        case "b":
+            // Command-B toggles the label background whenever the text tool is in play,
+            // with or without an active field. Bare "b" stays Toggle Board; that path runs
+            // in keyDown and only fires when no modifier is held.
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard modifiers.isDisjoint(with: [.option, .control]),
+                overlayView.currentTool == .text || overlayView.activeTextField != nil
+            else {
+                return super.performKeyEquivalent(with: event)
+            }
+            toggleTextBackground()
+            return true
+
+
         default:
             return super.performKeyEquivalent(with: event)
         }

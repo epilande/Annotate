@@ -546,7 +546,9 @@ final class OverlayViewTests: XCTestCase, Sendable {
         }
 
         let originalX = textField.frame.origin.x
-        let font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        // 48 pt is mid-ladder: wide enough to overflow the right edge, narrow enough that
+        // the string still fits inside the safe editing width once the field slides left.
+        let font = NSFont.systemFont(ofSize: 48)
         textField.font = font
         textField.stringValue = "Hello world test"
         overlayView.resizeActiveTextField(textField)
@@ -562,6 +564,36 @@ final class OverlayViewTests: XCTestCase, Sendable {
             textField.frame.origin.x, originalX,
             "Text field should slide left when it would overflow the right edge"
         )
+        let textWidth = textField.stringValue.size(withAttributes: [.font: font]).width
+        XCTAssertGreaterThanOrEqual(
+            textField.frame.size.width, textWidth,
+            "Text field should stay wide enough to show the full text instead of clipping it"
+        )
+
+        textField.removeFromSuperview()
+        overlayView.activeTextField = nil
+    }
+
+    func testResizeActiveTextFieldClampsToFullWidthAtMaximumFontSize() {
+        // The view is 800 wide with no window, so availableWidth falls back to bounds.width
+        let clickPoint = NSPoint(x: 790, y: 300)
+        overlayView.currentTool = .text
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: clickPoint, color: .black, fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: clickPoint, withText: "", width: 100)
+
+        guard let textField = overlayView.activeTextField else {
+            XCTFail("Text field should be created")
+            return
+        }
+
+        textField.font = NSFont.systemFont(ofSize: textAnnotationFontSizeRange.upperBound)
+        textField.stringValue = "Hello world test"
+        overlayView.resizeActiveTextField(textField)
+
+        let margin: CGFloat = 20
+
         XCTAssertEqual(
             textField.frame.size.width, overlayView.bounds.width - margin * 2,
             "Text wider than the display should use the full safe editing width"
@@ -569,6 +601,10 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(
             textField.frame.origin.x, margin,
             "A full-width field should stay inside the left screen margin"
+        )
+        XCTAssertLessThanOrEqual(
+            textField.frame.maxX, overlayView.bounds.width - margin,
+            "Text field should not overflow the right edge of the screen"
         )
 
         textField.removeFromSuperview()
@@ -748,5 +784,154 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.textAnnotations.count, 1, "draw must not compact expired text")
         overlayView.compactExpiredAnnotations()
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
+    }
+
+    // MARK: - Text compaction under an active edit or drag
+
+    private func seedFadingTextAnnotations(now: CFTimeInterval) {
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "expired", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: now - overlayView.fadeDuration - 1),
+            TextAnnotation(
+                text: "live", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: now),
+        ]
+    }
+
+    func testCompactionRemapsEditingTextIndexWhenAnEarlierLabelExpires() {
+        seedFadingTextAnnotations(now: CACurrentMediaTime())
+        overlayView.editingTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(
+            overlayView.editingTextAnnotationIndex, 0,
+            "The edited label moved down a slot, so its index has to follow")
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "live")
+    }
+
+    func testCompactionRemapsDraggedTextIndexWhenAnEarlierLabelExpires() {
+        seedFadingTextAnnotations(now: CACurrentMediaTime())
+        overlayView.draggedTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(
+            overlayView.draggedTextAnnotationIndex, 0,
+            "The dragged label moved down a slot, so its index has to follow")
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "live")
+    }
+
+    func testCompactionKeepsAnExpiredLabelWhileItIsBeingEdited() {
+        let now = CACurrentMediaTime()
+        let expired = now - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "gone", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "editing", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "live", position: NSPoint(x: 30, y: 30), color: .black, fontSize: 18,
+                creationTime: now),
+        ]
+        overlayView.editingTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 2)
+        XCTAssertEqual(overlayView.editingTextAnnotationIndex, 0)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "editing")
+        XCTAssertEqual(overlayView.textAnnotations[1].text, "live")
+    }
+
+    func testCompactionKeepsAnExpiredLabelWhileItIsBeingDragged() {
+        let now = CACurrentMediaTime()
+        let expired = now - overlayView.fadeDuration - 1
+        overlayView.fadeMode = true
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "gone", position: NSPoint(x: 10, y: 10), color: .black, fontSize: 18,
+                creationTime: expired),
+            TextAnnotation(
+                text: "dragging", position: NSPoint(x: 20, y: 20), color: .black, fontSize: 18,
+                creationTime: expired),
+        ]
+        overlayView.draggedTextAnnotationIndex = 1
+
+        overlayView.compactExpiredAnnotations()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(overlayView.draggedTextAnnotationIndex, 0)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "dragging")
+    }
+
+    // MARK: - Label geometry
+
+    func testPlainLabelRectKeepsInteractionSlop() {
+        let annotation = TextAnnotation(
+            text: "Hello", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18)
+        overlayView.textAnnotations = [annotation]
+        let bareSize = annotation.text.size(
+            withAttributes: [.font: NSFont.systemFont(ofSize: annotation.fontSize)])
+
+        let rect = overlayView.getObjectBounds(.text(index: 0))
+
+        XCTAssertEqual(rect.origin.x, annotation.position.x)
+        XCTAssertEqual(rect.origin.y, annotation.position.y)
+        XCTAssertGreaterThan(
+            rect.width, bareSize.width,
+            "A label without a background still needs slop so it stays easy to grab")
+        XCTAssertGreaterThan(rect.height, bareSize.height)
+    }
+
+    func testLabelWithBackgroundUsesPillGeometry() {
+        var annotation = TextAnnotation(
+            text: "Hello", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18)
+        annotation.hasBackground = true
+        overlayView.textAnnotations = [annotation]
+        let bareSize = annotation.text.size(
+            withAttributes: [.font: NSFont.systemFont(ofSize: annotation.fontSize)])
+        let insets = TextAnnotation.pillInsets
+
+        let rect = overlayView.getObjectBounds(.text(index: 0))
+
+        XCTAssertEqual(rect.origin.x, annotation.position.x - insets.left)
+        XCTAssertEqual(rect.origin.y, annotation.position.y - insets.bottom)
+        XCTAssertEqual(rect.width, bareSize.width + insets.left + insets.right, accuracy: 0.001)
+        XCTAssertEqual(rect.height, bareSize.height + insets.top + insets.bottom, accuracy: 0.001)
+    }
+
+    // MARK: - Finalizing an edit
+
+    func testFinalizingAnEditRestampsCreationTime() throws {
+        let seeded = CACurrentMediaTime() - 0.5
+        overlayView.fadeMode = true
+        overlayView.currentTool = .text
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "before", position: NSPoint(x: 100, y: 100), color: .black, fontSize: 18,
+                creationTime: seeded)
+        ]
+        overlayView.editingTextAnnotationIndex = 0
+        overlayView.currentTextAnnotation = overlayView.textAnnotations[0]
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "before")
+
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        textField.stringValue = "after"
+        overlayView.finalizeTextAnnotation(textField)
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(overlayView.textAnnotations[0].text, "after")
+        let stamped = try XCTUnwrap(overlayView.textAnnotations[0].creationTime)
+        XCTAssertGreaterThan(
+            stamped, seeded,
+            "A re-edited label restarts its fade clock instead of inheriting the old one")
     }
 }

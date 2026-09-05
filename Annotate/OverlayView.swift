@@ -18,18 +18,23 @@ class AnnotationTextField: NSTextField {
                 onCommandReturn?()
                 return true
             }
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "=", "+":
-                onFontSizeStep?(1)
-                return true
-            case "-":
-                onFontSizeStep?(-1)
-                return true
-            case "b":
-                onToggleBackground?()
-                return true
-            default:
-                break
+            // Shift is allowed because Command-Shift-equals is how "+" is typed on a US
+            // layout, but Option and Control belong to other key equivalents.
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if modifiers.isDisjoint(with: [.option, .control]) {
+                switch event.charactersIgnoringModifiers?.lowercased() {
+                case "=", "+":
+                    onFontSizeStep?(1)
+                    return true
+                case "-", "_":
+                    onFontSizeStep?(-1)
+                    return true
+                case "b":
+                    onToggleBackground?()
+                    return true
+                default:
+                    break
+                }
             }
         }
         return super.performKeyEquivalent(with: event)
@@ -126,6 +131,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         didSet { notifyToolbarChanged() }
     }
     let fadeDuration: CFTimeInterval = 1.25
+
+    /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
+    /// defaults through the same store.
+    var pickerUserDefaults: UserDefaults {
+        AppDelegate.shared?.userDefaults ?? .standard
+    }
     var isReadOnlyMode: Bool = false
 
     private var cursorTrackingArea: NSTrackingArea?
@@ -722,8 +733,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         for (index, annotation) in textAnnotations.enumerated() {
             if index == editingTextAnnotationIndex { continue }
             guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(getTextRect(for: annotation), dirtyRect) else { continue }
-            drawText(annotation, alpha: alpha)
+            let textRect = getTextRect(for: annotation)
+            guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
+            drawText(annotation, alpha: alpha, bounds: textRect)
         }
 
         for counter in counterAnnotations {
@@ -969,12 +981,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
-        compactItems(
+        // A label being edited or dragged is addressed by a standalone index, so it has to
+        // survive compaction and then follow its annotation to the new slot.
+        let protectedTextIndices = Set(
+            [editingTextAnnotationIndex, draggedTextAnnotationIndex].compactMap { $0 })
+        let textIndexMap = compactItems(
             &textAnnotations,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            protectedIndices: protectedTextIndices,
             extractIndex: { if case .text(let index) = $0 { return index }; return nil },
             make: { .text(index: $0) }
         )
+        if let textIndexMap {
+            editingTextAnnotationIndex = editingTextAnnotationIndex.flatMap { textIndexMap[$0] }
+            draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
+        }
         compactFadedPaths(
             &paths,
             now: now,
@@ -989,24 +1010,32 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
     }
 
+    /// Drops the items `keep` rejects and remaps the selection onto the surviving indices.
+    ///
+    /// Indices listed in `protectedIndices` are kept even when `keep` rejects them, for
+    /// callers that hold a standalone index into the array. Returns the old-to-new index
+    /// map so those callers can follow their index, or nil when nothing was removed.
+    @discardableResult
     private func compactItems<T>(
         _ items: inout [T],
         keep: (T) -> Bool,
+        protectedIndices: Set<Int> = [],
         extractIndex: (SelectedObject) -> Int?,
         make: (Int) -> SelectedObject
-    ) {
+    ) -> [Int: Int]? {
         var newItems: [T] = []
         var indexMap: [Int: Int] = [:]
         newItems.reserveCapacity(items.count)
         for (oldIndex, item) in items.enumerated() {
-            if keep(item) {
+            if keep(item) || protectedIndices.contains(oldIndex) {
                 indexMap[oldIndex] = newItems.count
                 newItems.append(item)
             }
         }
-        guard newItems.count != items.count else { return }
+        guard newItems.count != items.count else { return nil }
         items = newItems
         remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
+        return indexMap
     }
 
     private func compactFadedPaths(
@@ -1188,7 +1217,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         renderedPath.stroke()
     }
 
-    private func drawText(_ annotation: TextAnnotation, alpha: CGFloat) {
+    /// Draws a label. `bounds` is the rect the caller already measured with `getTextRect`,
+    /// which for a label with a background is exactly the pill.
+    private func drawText(_ annotation: TextAnnotation, alpha: CGFloat, bounds: NSRect) {
         let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: adaptedColor.withAlphaComponent(alpha),
@@ -1197,15 +1228,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
 
         if annotation.hasBackground {
-            let textSize = attributedString.size()
-            let pillRect = NSRect(
-                x: annotation.position.x - 8,
-                y: annotation.position.y - 4,
-                width: textSize.width + 16,
-                height: textSize.height + 8
+            let pill = NSBezierPath(
+                roundedRect: bounds,
+                xRadius: TextAnnotation.pillCornerRadius,
+                yRadius: TextAnnotation.pillCornerRadius
             )
-            let pill = NSBezierPath(roundedRect: pillRect, xRadius: 6, yRadius: 6)
-            adaptedColor.contrastingColor().withAlphaComponent(0.85 * alpha).setFill()
+            adaptedColor.contrastingColor()
+                .withAlphaComponent(TextAnnotation.pillFillAlpha * alpha)
+                .setFill()
             pill.fill()
         }
 
@@ -1741,7 +1771,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Offset to align text cursor with click point:
         // X: -8 for left padding
         // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
-        let fontSize = currentTextAnnotation?.fontSize ?? UserDefaults.standard.textToolFontSize
+        let fontSize = currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
         let font = NSFont.systemFont(ofSize: fontSize)
         // Size the empty new field to one line of the current font so large text and the cursor
         // aren't clipped top/bottom. "Ay" is a full ascender+descender sample; reusing the same
@@ -1856,13 +1886,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         if !typedText.isEmpty {
+            // Finishing an edit restarts the fade clock. Keeping the original creationTime
+            // would let a label the user just retyped disappear immediately.
+            let isEdit = editingTextAnnotationIndex != nil
             let finalAnnotation = TextAnnotation(
                 text: typedText,
                 position: position,
                 color: currentText.color,
                 fontSize: currentText.fontSize,
                 hasBackground: currentText.hasBackground,
-                creationTime: currentText.creationTime ?? CACurrentMediaTime()
+                creationTime: isEdit
+                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime())
             )
 
             if let editingIndex = editingTextAnnotationIndex {
@@ -1924,8 +1958,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: UserDefaults.standard.textToolFontSize,
-            hasBackground: UserDefaults.standard.textBackgroundEnabled
+            fontSize: pickerUserDefaults.textToolFontSize,
+            hasBackground: pickerUserDefaults.textBackgroundEnabled
         )
         createTextField(at: point)
     }
@@ -1955,7 +1989,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
-        let font = textField.font ?? NSFont.systemFont(ofSize: UserDefaults.standard.textToolFontSize)
+        let font = textField.font ?? NSFont.systemFont(ofSize: pickerUserDefaults.textToolFontSize)
         let box = textFieldBoxSize(forText: textField.stringValue, font: font)
 
         let margin: CGFloat = 20
@@ -2431,20 +2465,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return textRect.contains(point)
     }
     
+    /// Slop added to a label that draws without a background, so hit testing, erasing and
+    /// marquee selection stay as forgiving as they were before background pills existed.
+    static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 4, left: 0, bottom: 0, right: 4) }
+
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: annotation.fontSize)
-        ]
-        let size = annotation.text.size(withAttributes: attributes)
-        let padding = annotation.hasBackground
-            ? NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-            : NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        return NSRect(
-            x: annotation.position.x - padding.left,
-            y: annotation.position.y - padding.bottom,
-            width: size.width + padding.left + padding.right,
-            height: size.height + padding.top + padding.bottom
-        )
+        annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
     
     private func hitTestCounter(_ counter: CounterAnnotation, point: NSPoint) -> Bool {

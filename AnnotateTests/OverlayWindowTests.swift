@@ -10,6 +10,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // A spy leaked from another suite would redirect pickerUserDefaults.
+            AppDelegate.shared = nil
             originalMouseCoalescingEnabled = NSEvent.isMouseCoalescingEnabled
             let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
             window = OverlayWindow(
@@ -1594,6 +1596,36 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         window.toggleTextBackground()
         XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, false)
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBTogglesLabelBackgroundWithTextToolAndNoActiveField() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .text
+        XCTAssertNil(window.overlayView.activeTextField)
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+
+        XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
+        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    func testCommandBIsIgnoredWhenTheTextToolIsNotActive() throws {
+        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        window.overlayView.currentTool = .pen
+
+        let cmdB = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
+
+        XCTAssertFalse(window.performKeyEquivalent(with: cmdB))
         XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
     }
 }
