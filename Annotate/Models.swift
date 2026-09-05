@@ -28,6 +28,39 @@ enum ToolType: String, CaseIterable {
         }
     }
 
+    /// The shortcut entry that selects this tool. Exhaustive so a new case cannot
+    /// silently miss the overlay toolbar or the shortcut settings.
+    var shortcutKey: ShortcutKey {
+        switch self {
+        case .pen: return .pen
+        case .arrow: return .arrow
+        case .line: return .line
+        case .highlighter: return .highlighter
+        case .rectangle: return .rectangle
+        case .circle: return .circle
+        case .text: return .text
+        case .counter: return .counter
+        case .select: return .select
+        case .eraser: return .eraser
+        }
+    }
+
+    /// SF Symbol shown for this tool on the overlay toolbar.
+    var symbolName: String {
+        switch self {
+        case .pen: return "pencil"
+        case .arrow: return "arrow.up.right"
+        case .line: return "line.diagonal"
+        case .highlighter: return "highlighter"
+        case .rectangle: return "rectangle"
+        case .circle: return "circle"
+        case .text: return "textformat"
+        case .counter: return "number"
+        case .select: return "cursorarrow"
+        case .eraser: return "eraser"
+        }
+    }
+
     /// Rendered width per nominal point, keeping the highlighter's 14/3 ratio.
     /// Rendering, dirty-rect padding, selection and eraser hit-testing all read this,
     /// so the value must not be re-inlined at a call site.
