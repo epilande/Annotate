@@ -1288,15 +1288,15 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     func testSendEventMouseUpWhilePickerOpenDoesNotCommitGeometry() {
         window.overlayView.currentTool = .arrow
-        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
-        sendMouse(.leftMouseDragged, at: NSPoint(x: 180, y: 160))
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 180, y: 360))
         XCTAssertNotNil(window.overlayView.currentArrow)
 
         tapPickerKey("c", keyCode: 8)
         XCTAssertTrue(window.isQuickPickerOpen)
         XCTAssertNil(window.overlayView.currentArrow)
 
-        sendMouse(.leftMouseUp, at: NSPoint(x: 180, y: 160))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 180, y: 360))
 
         XCTAssertTrue(window.overlayView.arrows.isEmpty, "Mouse-up while the picker is open must not commit leftover geometry")
         XCTAssertNil(window.overlayView.currentArrow)
@@ -1306,8 +1306,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     func testSendEventBeginQuickPickerMidStrokeLeavesEmptyCanvasAndRestoresCoalescing() {
         NSEvent.isMouseCoalescingEnabled = true
         window.overlayView.currentTool = .pen
-        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
-        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 130))
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 330))
         XCTAssertNotNil(window.overlayView.currentPath)
         XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
 
@@ -1317,7 +1317,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.paths.isEmpty)
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled, "Discarding a stroke on picker open should restore coalescing")
 
-        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 130))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 330))
         XCTAssertTrue(window.overlayView.paths.isEmpty)
         XCTAssertNil(window.overlayView.currentPath)
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
@@ -1326,7 +1326,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     func testSendEventPickerEscapeRestoresCoalescing() {
         NSEvent.isMouseCoalescingEnabled = true
         window.overlayView.currentTool = .pen
-        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 100))
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
         XCTAssertFalse(NSEvent.isMouseCoalescingEnabled)
 
         sendKey("c", keyCode: 8)

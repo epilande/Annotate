@@ -158,16 +158,25 @@ final class ToolbarTests: XCTestCase {
         XCTAssertTrue(window.isPointInToolbar(toolbarPoint))
         let draggedPoint = NSPoint(x: toolbarPoint.x + 30, y: toolbarPoint.y + 30)
 
+        window.overlayView.currentTool = .pen
+
         sendMouse(.leftMouseDown, at: toolbarPoint)
         sendMouse(.leftMouseDragged, at: draggedPoint)
         sendMouse(.leftMouseUp, at: draggedPoint)
 
         XCTAssertEqual(window.anchorPoint, .zero)
-        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertTrue(
+            window.overlayView.paths.isEmpty,
+            "A press on the bar released off it must never leave a stroke behind")
 
         let canvasPoint = NSPoint(x: 100, y: 300)
         sendMouse(.leftMouseDown, at: canvasPoint)
         XCTAssertEqual(window.anchorPoint, canvasPoint)
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 160, y: 340))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 160, y: 340))
+        XCTAssertFalse(
+            window.overlayView.paths.isEmpty,
+            "The canvas must draw normally after a toolbar gesture ends off the bar")
     }
 
     func testQuickPickerPlacementAndFeedbackClearVisibleToolbar() throws {
@@ -186,6 +195,18 @@ final class ToolbarTests: XCTestCase {
     func testOptionCommandTTogglesPersistedVisibility() throws {
         window.sendEvent(try XCTUnwrap(toolbarToggleEvent()))
 
+        XCTAssertFalse(appDelegate.toolbarVisible)
+    }
+
+    func testHoldingOptionCommandTTogglesOnlyOnce() throws {
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent()))
+        XCTAssertFalse(appDelegate.toolbarVisible)
+
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent(isARepeat: true)))
+
+        XCTAssertEqual(
+            defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool, false,
+            "An auto-repeat of the held chord must not toggle the toolbar back on")
         XCTAssertFalse(appDelegate.toolbarVisible)
     }
 
@@ -368,8 +389,31 @@ final class ToolbarTests: XCTestCase {
             "A narrow proposal must take the stacked ViewThatFits layout")
     }
 
+    func testToolbarWrapsToASecondRowInANarrowWindow() {
+        let narrowWindow = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 800),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { narrowWindow.close() }
+        narrowWindow.contentView?.layoutSubtreeIfNeeded()
+
+        let wideFrame = window.toolbarFrame
+        let narrowFrame = narrowWindow.toolbarFrame
+
+        XCTAssertEqual(narrowWindow.frame.width, 700, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(
+            narrowFrame.width, 700 - 40,
+            "Toolbar width \(narrowFrame.width) must stay inside the 20pt margins")
+        XCTAssertGreaterThan(
+            narrowFrame.height, wideFrame.height,
+            "Narrow height \(narrowFrame.height) must exceed wide height \(wideFrame.height)")
+    }
+
     private func toolbarToggleEvent(
-        modifierFlags: NSEvent.ModifierFlags = [.command, .option]
+        modifierFlags: NSEvent.ModifierFlags = [.command, .option],
+        isARepeat: Bool = false
     ) -> NSEvent? {
         TestEvents.createKeyEvent(
             type: .keyDown,
@@ -377,7 +421,8 @@ final class ToolbarTests: XCTestCase {
             modifierFlags: modifierFlags,
             characters: modifierFlags.contains(.option) ? "\u{2020}" : "t",
             charactersIgnoringModifiers: "t",
-            windowNumber: window.windowNumber
+            windowNumber: window.windowNumber,
+            isARepeat: isARepeat
         )
     }
 

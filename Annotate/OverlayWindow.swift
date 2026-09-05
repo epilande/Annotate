@@ -335,7 +335,11 @@ class OverlayWindow: NSPanel {
         if event.type == .keyDown, quickPicker == nil, !isEditingAnnotationText,
             !overlayView.isReadOnlyMode, isToolbarToggleEvent(event)
         {
-            AppDelegate.shared?.toggleToolbar()
+            // Holding the chord auto-repeats, so only the first press toggles. The repeats are
+            // swallowed with it: the chord belongs to the window, and nothing downstream wants it.
+            if !event.isARepeat {
+                AppDelegate.shared?.toggleToolbar()
+            }
             return
         }
 
@@ -377,6 +381,11 @@ class OverlayWindow: NSPanel {
         }
 
         super.sendEvent(event)
+
+        // The release that ends a toolbar gesture is cleared only once the host has seen it.
+        if event.type == .leftMouseUp {
+            isToolbarGestureActive = false
+        }
     }
 
     /// Canvas mouse goes through OverlayWindow's drawing handlers even when AppKit
@@ -420,13 +429,17 @@ class OverlayWindow: NSPanel {
         }
 
         if isToolbarGestureActive {
-            // A fresh press supersedes a gesture stranded by a lost mouse-up.
-            if event.type == .leftMouseDown {
+            switch event.type {
+            case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+                // A fresh press of any button supersedes a gesture stranded by a lost mouse-up,
+                // so a right-click or a mouse-button undo is never eaten once.
                 isToolbarGestureActive = false
-            } else {
-                if event.type == .leftMouseUp {
-                    isToolbarGestureActive = false
-                }
+            case .leftMouseUp:
+                // AppKit delivers the release to the view that took the press, so let it through
+                // wherever it lands or a chip stays visually pressed. The canvas is fenced by the
+                // guards in the drawing handlers, and sendEvent clears the flag once super returns.
+                return false
+            default:
                 // Stay on the bar: let the host keep the gesture. Leave the bar:
                 // swallow so a toolbar-origin drag cannot start a canvas stroke.
                 return isPointInToolbar(event.locationInWindow) ? false : true
@@ -1388,6 +1401,12 @@ class OverlayWindow: NSPanel {
             return
         }
 
+        // Set by routeOverlayMouseEvent before it hands a toolbar press to the host. The release
+        // travels to the host through super.sendEvent, so keep the canvas out of it here.
+        if isToolbarGestureActive {
+            return
+        }
+
         restoreMouseCoalescing()
 
         // Commit before the selection and text branches below, which return early.
@@ -2273,4 +2292,18 @@ private extension OverlayWindow {
 
 private final class ToolbarHostingView: NSHostingView<ToolbarView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// ViewThatFits chooses a layout from the width it is offered, but a hosting view measures
+    /// its intrinsic size against an unbounded proposal, so the one-row bar always won and the
+    /// margin constraints then squeezed it until it clipped. Hand the view the width actually
+    /// available so a narrow screen can take the stacked layout instead.
+    override func layout() {
+        if let container = superview {
+            let available = max(0, container.bounds.width - 40)
+            if rootView.model.availableWidth != available {
+                rootView.model.availableWidth = available
+            }
+        }
+        super.layout()
+    }
 }
