@@ -252,21 +252,31 @@ class OverlayWindow: NSPanel {
         super.orderOut(sender)
     }
 
-    override func becomeKey() {
-        super.becomeKey()
-        clearToolbarKeyboardFocus()
+    /// The toolbar chips are SwiftUI buttons, so with Keyboard navigation on they join the key
+    /// view loop, and both AppKit's automatic pick when the panel becomes key and SwiftUI's own
+    /// focus restoration try to park focus on the first chip. A focused chip draws a focus ring
+    /// and swallows Space and Return, which belong to the canvas. Refuse every such request and
+    /// honor only the ones the user drove with Tab or Shift+Tab, so Full Keyboard Access still
+    /// reaches the bar. A click on a chip arrives as a mouse event and never takes focus.
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if let host = toolbarHost, let view = responder as? NSView,
+            view.isDescendant(of: host), !isTabbing
+        {
+            return false
+        }
+        return super.makeFirstResponder(responder)
     }
 
-    /// The toolbar chips are SwiftUI buttons, so with Keyboard navigation on they join the key
-    /// view loop and AppKit parks focus on the first chip when the panel becomes key. A focused
-    /// chip draws a focus ring and swallows Space and Return, which belong to the canvas. This
-    /// only drops that automatic pick: tabbing into the bar on purpose still works.
-    private func clearToolbarKeyboardFocus() {
-        guard let host = toolbarHost,
-            let focused = firstResponder as? NSView,
-            focused.isDescendant(of: host)
-        else { return }
-        makeFirstResponder(nil)
+    /// True while keyboard focus sits on the toolbar.
+    var isToolbarFocused: Bool {
+        guard let host = toolbarHost, let focused = firstResponder as? NSView else { return false }
+        return focused.isDescendant(of: host)
+    }
+
+    /// True while the event being handled is a Tab press. Shift+Tab shares the key code.
+    private var isTabbing: Bool {
+        guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
+        return event.keyCode == 48
     }
 
     override func resignKey() {
@@ -326,6 +336,11 @@ class OverlayWindow: NSPanel {
             !overlayView.isReadOnlyMode, isToolbarToggleEvent(event)
         {
             AppDelegate.shared?.toggleToolbar()
+            return
+        }
+
+        if event.type == .keyDown, quickPicker == nil, isToolbarFocusExitEvent(event) {
+            makeFirstResponder(nil)
             return
         }
 
@@ -435,6 +450,10 @@ class OverlayWindow: NSPanel {
 
         switch event.type {
         case .leftMouseDown:
+            // A press on the canvas takes focus back from a chip the user tabbed to.
+            if isToolbarFocused {
+                makeFirstResponder(nil)
+            }
             mouseDown(with: event)
         case .leftMouseDragged:
             mouseDragged(with: event)
@@ -2233,6 +2252,16 @@ class LinePreviewView: NSView {
 }
 
 private extension OverlayWindow {
+    /// Tab reaches the toolbar, but the key view loop holds only chips, so Escape is the way
+    /// back to the canvas. It is swallowed ahead of the shortcut handling that would otherwise
+    /// read Escape as "close the overlay". With nothing focused in the bar, and for Shift+Escape
+    /// either way, Escape keeps its usual meaning.
+    func isToolbarFocusExitEvent(_ event: NSEvent) -> Bool {
+        event.keyCode == 53
+            && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+            && isToolbarFocused
+    }
+
     /// Option+Command+T, matched on the character rather than the key code so it resolves
     /// the way AppKit resolves the menu key equivalent and still works on non-QWERTY layouts.
     func isToolbarToggleEvent(_ event: NSEvent) -> Bool {

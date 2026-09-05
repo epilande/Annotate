@@ -208,19 +208,72 @@ final class ToolbarTests: XCTestCase {
             "Option+Command+T must not toggle the toolbar from sendEvent while editing")
     }
 
-    func testBecomingKeyKeepsKeyboardFocusOffTheToolbar() throws {
+    func testToolbarRefusesKeyboardFocusTheUserDidNotAskFor() throws {
         let host = try XCTUnwrap(window.toolbarHost)
-        try XCTSkipUnless(
-            window.makeFirstResponder(host),
-            "This run cannot park focus on the toolbar host, so there is nothing to assert")
+        let before = window.firstResponder
 
-        window.becomeKey()
+        XCTAssertFalse(
+            window.makeFirstResponder(host),
+            "Focus must not land on a chip on its own: a focused chip draws a ring "
+                + "and swallows Space and Return")
 
         let focused = window.firstResponder as? NSView
+        XCTAssertFalse(focused?.isDescendant(of: host) ?? false)
+        XCTAssertTrue(window.firstResponder === before, "A refused request changes nothing")
+    }
+
+    func testToolbarStillTakesFocusWhenTheUserTabsToIt() throws {
+        let host = try XCTUnwrap(window.toolbarHost)
+        try XCTSkipUnless(
+            tabFocusToToolbar(),
+            "This run cannot make a Tab press the current event, so the rule cannot be exercised")
+
+        XCTAssertTrue(
+            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
+            "Full Keyboard Access must still reach the bar when the user tabs to it")
+    }
+
+    func testEscapeReturnsFocusToTheCanvasWithoutClosingTheOverlay() throws {
+        let host = try XCTUnwrap(window.toolbarHost)
+        try XCTSkipUnless(tabFocusToToolbar(), "Nothing to return focus from")
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+
+        window.sendEvent(try XCTUnwrap(escapeEvent()))
+
         XCTAssertFalse(
-            focused?.isDescendant(of: host) ?? false,
-            "Becoming key must not leave focus on a toolbar chip: a focused chip draws a ring "
-                + "and swallows Space and Return")
+            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
+            "Escape is the only way off the bar, since the key view loop holds just chips")
+        XCTAssertFalse(
+            spy.didToggleOverlay,
+            "Escape that reclaims focus must not also close the overlay")
+    }
+
+    func testEscapeStillClosesTheOverlayWhenNothingInTheToolbarIsFocused() throws {
+        XCTAssertFalse(window.isToolbarFocused)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+
+        window.sendEvent(try XCTUnwrap(escapeEvent()))
+
+        XCTAssertTrue(spy.didToggleOverlay, "Escape keeps its usual meaning off the bar")
+    }
+
+    func testCanvasPressTakesFocusBackFromTheToolbarButAToolbarPressDoesNot() throws {
+        let host = try XCTUnwrap(window.toolbarHost)
+        try XCTSkipUnless(tabFocusToToolbar(), "Nothing to take focus back from")
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY))
+        XCTAssertTrue(
+            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
+            "Clicking the bar itself must leave a tabbed-to chip focused")
+        sendMouse(.leftMouseUp, at: NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY))
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        XCTAssertFalse(
+            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
+            "Drawing on the canvas hands keyboard focus back to it")
+        sendMouse(.leftMouseUp, at: NSPoint(x: 100, y: 300))
     }
 
     func testToolbarHostAcceptsFirstMouse() {
@@ -328,6 +381,41 @@ final class ToolbarTests: XCTestCase {
         )
     }
 
+    private func escapeEvent() -> NSEvent? {
+        TestEvents.createKeyEvent(
+            type: .keyDown,
+            keyCode: 53,
+            characters: "\u{1b}",
+            windowNumber: window.windowNumber
+        )
+    }
+
+    /// Parks focus on the toolbar the way Tab does. The window only honors a focus request
+    /// while a Tab press is the current event, so pump one and retire it straight after:
+    /// NSApp.currentEvent outlives this test and would leak into every later one.
+    private func tabFocusToToolbar() -> Bool {
+        guard let host = window.toolbarHost else { return false }
+        pumpKey(type: .keyDown)
+        defer { pumpKey(type: .keyUp) }
+        guard NSApp.currentEvent?.type == .keyDown, NSApp.currentEvent?.keyCode == 48 else {
+            return false
+        }
+        return window.makeFirstResponder(host)
+    }
+
+    private func pumpKey(type: NSEvent.EventType) {
+        guard
+            let event = TestEvents.createKeyEvent(
+                type: type,
+                keyCode: 48,
+                characters: "\t",
+                windowNumber: window.windowNumber
+            )
+        else { return }
+        NSApp.postEvent(event, atStart: true)
+        _ = NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true)
+    }
+
     private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
         window.sendEvent(
             TestEvents.createMouseEvent(
@@ -362,6 +450,11 @@ final class ToolbarTests: XCTestCase {
 private final class ToolbarAppDelegateSpy: AppDelegate {
     var selectedTool: ToolType?
     var didToggleFade = false
+    var didToggleOverlay = false
+
+    override func toggleOverlay() {
+        didToggleOverlay = true
+    }
 
     override func switchTool(to tool: ToolType, persist: Bool = true) {
         selectedTool = tool
