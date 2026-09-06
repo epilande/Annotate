@@ -29,7 +29,7 @@ extension UserDefaults {
     static let spotlightRequiresOverlayKey = "SpotlightRequiresOverlay"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
-    static let returnToPreviousToolAfterTextKey = "ReturnToPreviousToolAfterText"
+    static let selectAfterPlacingTextKey = "SelectAfterPlacingText"
     static let defaultTextFontSizeKey = "TextFontSize"
     static let textBackgroundKey = "TextBackgroundOn"
     static let defaultCounterFontSizeKey = "CounterFontSize"
@@ -94,6 +94,13 @@ extension UserDefaults {
     var textBackgroundEnabled: Bool {
         get { bool(forKey: Self.textBackgroundKey) }
         set { set(newValue, forKey: Self.textBackgroundKey) }
+    }
+
+    /// Whether committing a label switches to the Select tool with that label selected.
+    /// Off by default so text mode stays sticky.
+    var selectAfterPlacingText: Bool {
+        get { bool(forKey: Self.selectAfterPlacingTextKey) }
+        set { set(newValue, forKey: Self.selectAfterPlacingTextKey) }
     }
 
     var counterToolFontSize: CGFloat {
