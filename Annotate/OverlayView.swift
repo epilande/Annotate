@@ -135,10 +135,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     let fadeDuration: CFTimeInterval = 1.25
 
+    /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
+    var pickerUserDefaultsOverride: UserDefaults?
+
     /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
     /// defaults through the same store.
     var pickerUserDefaults: UserDefaults {
-        AppDelegate.shared?.userDefaults ?? .standard
+        pickerUserDefaultsOverride ?? AppDelegate.shared?.userDefaults ?? .standard
     }
     var isReadOnlyMode: Bool = false
 
@@ -1873,12 +1876,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
               let committedIndex = lastCommittedTextIndex else { return }
 
         currentTool = .select
-        AppDelegate.shared?.overlayWindows.values.forEach { window in
-            window.overlayView.currentTool = .select
-            window.invalidateCursorRects(for: window.overlayView)
-            window.overlayView.updateCursor()
+        // Only broadcast to the live overlay set when this view is one of those
+        // windows. A detached view (unit tests, previews) must not rewrite
+        // another suite's current tool or last-used menu.
+        if let appDelegate = AppDelegate.shared,
+            appDelegate.overlayWindows.values.contains(where: { $0.overlayView === self })
+        {
+            appDelegate.overlayWindows.values.forEach { window in
+                window.overlayView.currentTool = .select
+                window.invalidateCursorRects(for: window.overlayView)
+                window.overlayView.updateCursor()
+            }
+            appDelegate.updateCurrentToolMenuItem(to: ToolType.select.displayName)
         }
-        AppDelegate.shared?.updateCurrentToolMenuItem(to: ToolType.select.displayName)
 
         selectedObjects = [.text(index: committedIndex)]
         needsDisplay = true

@@ -9,12 +9,17 @@ final class OverlayViewTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // A leaked AppDelegate.shared would redirect pickerUserDefaults into
+            // another suite's store and let commitTextField rewrite its windows.
+            AppDelegate.shared = nil
             overlayView = OverlayView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+            overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
         }
     }
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            overlayView?.pickerUserDefaultsOverride = nil
             overlayView = nil
         }
         super.tearDown()

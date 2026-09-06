@@ -575,11 +575,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// setting is "Last used", leaving whatever tool is already current in place, or when
     /// every window is already on the configured tool (avoids showing tool feedback on
     /// every activation). Applying the default is not an explicit tool selection, so it does
-    /// not overwrite the persisted last-used tool.
+    /// not overwrite the persisted last-used tool — even if a toolbar sync re-enters
+    /// `switchTool` with the default `persist: true`.
     func applyConfiguredDefaultTool() {
         guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
         guard overlayWindows.values.contains(where: { $0.overlayView.currentTool != tool }) else { return }
+
+        let preservedLastUsed = userDefaults.string(forKey: UserDefaults.lastUsedToolKey)
         switchTool(to: tool, persist: false)
+        if let preservedLastUsed {
+            userDefaults.set(preservedLastUsed, forKey: UserDefaults.lastUsedToolKey)
+        } else {
+            userDefaults.removeObject(forKey: UserDefaults.lastUsedToolKey)
+        }
     }
 
     @objc func enableArrowMode(_ sender: NSMenuItem) {

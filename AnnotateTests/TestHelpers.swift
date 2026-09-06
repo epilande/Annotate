@@ -16,7 +16,10 @@ enum TestUserDefaults {
     /// Creates a fresh isolated UserDefaults instance for testing
     /// - Returns: A new UserDefaults suite completely isolated from production data
     static func create() -> UserDefaults {
-        let suite = UserDefaults(suiteName: TestConstants.testSuiteName)!
+        // Unique suite per call so parallel XCTest classes cannot wipe
+        // LastUsedTool / DefaultTool out from under each other.
+        let suiteName = "\(TestConstants.testSuiteName).\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
         clear(suite)
         return suite
     }
