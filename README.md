@@ -149,7 +149,7 @@ brew install --cask annotate
 | <kbd>Space</kbd>                                      | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
 | <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
 | <kbd>Delete</kbd>                                     | **Delete**           | Remove selected objects or most recent annotation                          |
-| <kbd>Option</kbd> + <kbd>Delete</kbd>                 | **Clear All**        | Remove all annotations                                                     |
+| <kbd>X</kbd> or <kbd>Option</kbd> + <kbd>Delete</kbd> | **Clear All**        | Remove all annotations (<kbd>X</kbd> is remappable in Settings)            |
 | <kbd>Command</kbd> + <kbd>Z</kbd>                     | **Undo**             | Undo the last action                                                       |
 | <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | **Redo**             | Redo the last undone action                                                |
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
@@ -301,7 +301,7 @@ Toggle between modes with the <kbd>Space</kbd> key.
 
 #### Fade Mode
 
-In fade mode, annotations gradually disappear after a few seconds, keeping your screen clean while allowing for temporary emphasis.
+In fade mode, annotations gradually disappear after a short delay, keeping your screen clean while allowing for temporary emphasis. Adjust how long they stay on screen with the **Fade Delay** slider in Settings > General (0.25 to 5 seconds).
 
 #### Persist Mode
 
@@ -321,7 +321,7 @@ Always-On Mode displays your annotations persistently without any user interacti
 ### Deletion Controls
 
 - <kbd>Delete</kbd>: Removes the most recently added annotation.
-- <kbd>Option</kbd> + <kbd>Delete</kbd>: Clear all annotations from the screen.
+- <kbd>X</kbd> or <kbd>Option</kbd> + <kbd>Delete</kbd>: Clear all annotations from the screen.
 
 ## ⚙️ Settings
 
