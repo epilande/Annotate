@@ -48,6 +48,7 @@ final class SoundPlayerTests: XCTestCase {
     }
 
     func testEachActionPlaysOnlyItsClip() {
+        testDefaults.soundsEnabled = true
         let players = makePlayers()
         let soundPlayer = SoundPlayer(userDefaults: testDefaults) { players[$0]?[$1] }
         let chalk = players[.chalk]
@@ -66,6 +67,19 @@ final class SoundPlayerTests: XCTestCase {
         XCTAssertEqual(chalk?[.overlayOn]?.playCount, 1)
         XCTAssertEqual(chalk?[.overlayOff]?.playCount, 1)
         XCTAssertEqual(chalk?[.clearAll]?.playCount, 1)
+    }
+
+    func testPlaybackIsSilentWhenSoundsEnabledKeyIsAbsent() {
+        testDefaults.removeObject(forKey: UserDefaults.soundsEnabledKey)
+        let players = makePlayers()
+        let soundPlayer = SoundPlayer(userDefaults: testDefaults) { players[$0]?[$1] }
+        let chalk = players[.chalk] ?? [:]
+
+        soundPlayer.playOverlayOn()
+        soundPlayer.playOverlayOff()
+        soundPlayer.playClearAll()
+
+        XCTAssertTrue(chalk.values.allSatisfy { $0.playCount == 0 })
     }
 
     func testPlaybackFollowsSoundsEnabledSetting() {
@@ -89,6 +103,7 @@ final class SoundPlayerTests: XCTestCase {
     }
 
     func testPlaybackUsesSelectedTheme() {
+        testDefaults.soundsEnabled = true
         let players = makePlayers()
         let soundPlayer = SoundPlayer(userDefaults: testDefaults) { players[$0]?[$1] }
 
@@ -106,6 +121,7 @@ final class SoundPlayerTests: XCTestCase {
     }
 
     func testPlaybackRestartsLoadedClip() {
+        testDefaults.soundsEnabled = true
         let players = makePlayers()
         players[.chalk]?[.overlayOn]?.currentTime = 1
         let soundPlayer = SoundPlayer(userDefaults: testDefaults) { players[$0]?[$1] }
