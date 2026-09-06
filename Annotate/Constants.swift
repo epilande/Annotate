@@ -18,7 +18,7 @@ extension UserDefaults {
     static let toolbarVisibleKey = "ToolbarVisible"
     static let toolbarVisibleDefault = true
     static let soundsEnabledKey = "SoundsEnabled"
-    static let soundsEnabledDefault = true
+    static let soundsEnabledDefault = false
     static let soundThemeKey = "SoundTheme"
     static let soundThemeDefault = SoundTheme.chalk
     static let clickRippleEnabledKey = "ClickRippleEnabled"

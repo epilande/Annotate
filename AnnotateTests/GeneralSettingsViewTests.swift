@@ -56,10 +56,10 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertFalse(finalValue, "hideToolFeedback should be false after resetting")
     }
 
-    func testSoundsEnabledDefaultsToTrueWhenAbsent() {
+    func testSoundsEnabledDefaultsToFalseWhenAbsent() {
         testDefaults.removeObject(forKey: UserDefaults.soundsEnabledKey)
 
-        XCTAssertTrue(testDefaults.soundsEnabled)
+        XCTAssertFalse(testDefaults.soundsEnabled)
     }
 
     func testSoundsEnabledPersistsExplicitValue() {
