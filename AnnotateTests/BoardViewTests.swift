@@ -5,10 +5,15 @@ import XCTest
 @MainActor
 final class BoardViewTests: XCTestCase, Sendable {
     var boardView: BoardView!
+    var testDefaults: UserDefaults!
 
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // Unique suite so leftover BoardOpacity from other classes
+            // (or a prior 0.5 write on .standard) cannot make both colors identical.
+            testDefaults = TestUserDefaults.create()
+            BoardManager.shared = BoardManager(userDefaults: testDefaults)
             boardView = BoardView(frame: NSRect(x: 0, y: 0, width: 500, height: 500))
         }
     }
@@ -16,7 +21,9 @@ final class BoardViewTests: XCTestCase, Sendable {
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
             boardView = nil
+            BoardManager.shared = BoardManager()
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -27,20 +34,20 @@ final class BoardViewTests: XCTestCase, Sendable {
     }
 
     func testBoardBackgroundColor() {
-        let backgroundColor = boardView.layer?.backgroundColor
+        // Pin a known start opacity. Shared BoardManager state from other
+        // suites can already be 0.5, which would make the next write a no-op.
+        BoardManager.shared.opacity = 0.9
+        boardView.updateForAppearance()
 
+        let backgroundColor = boardView.layer?.backgroundColor
         XCTAssertNotNil(backgroundColor, "Background color should be set")
 
-        let originalOpacity = BoardManager.shared.opacity
         BoardManager.shared.opacity = 0.5
-
         boardView.updateForAppearance()
 
         let newBackgroundColor = boardView.layer?.backgroundColor
         XCTAssertNotEqual(
             backgroundColor, newBackgroundColor, "Background color should change with opacity")
-
-        BoardManager.shared.opacity = originalOpacity
     }
 
     func testVisibilityChangeNotification() {
