@@ -934,4 +934,112 @@ final class OverlayViewTests: XCTestCase, Sendable {
             stamped, seeded,
             "A re-edited label restarts its fade clock instead of inheriting the old one")
     }
+
+    // MARK: - Text mode stickiness
+
+    func testEnterCommitsLabelAndStaysInTextModeByDefault() throws {
+        try withReturnToPreviousToolAfterText(nil) {
+            overlayView.currentTool = .text
+            overlayView.previousTool = .pen
+            overlayView.currentTextAnnotation = TextAnnotation(
+                text: "", position: NSPoint(x: 100, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = "Hello"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.currentTool, .text, "Enter should stay in text mode by default")
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hello")
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEscapeCancelsFieldAndStaysInTextMode() throws {
+        try withReturnToPreviousToolAfterText(true) {
+            overlayView.currentTool = .text
+            overlayView.previousTool = .pen
+            overlayView.currentTextAnnotation = TextAnnotation(
+                text: "", position: NSPoint(x: 100, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = "Draft"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.cancelOperation(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(
+                overlayView.currentTool, .text,
+                "Esc should stay in text mode even when revert after placing text is on"
+            )
+            XCTAssertTrue(overlayView.textAnnotations.isEmpty, "Esc should discard the uncommitted field")
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEnterRevertsToPreviousToolWhenOptedIn() throws {
+        try withReturnToPreviousToolAfterText(true) {
+            overlayView.currentTool = .text
+            overlayView.previousTool = .pen
+            overlayView.currentTextAnnotation = TextAnnotation(
+                text: "", position: NSPoint(x: 100, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = "Hello"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(
+                overlayView.currentTool, .pen,
+                "Enter should restore the previous tool when revert after placing text is on"
+            )
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hello")
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    private func withReturnToPreviousToolAfterText(
+        _ enabled: Bool?,
+        body: () throws -> Void
+    ) rethrows {
+        let key = UserDefaults.returnToPreviousToolAfterTextKey
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        if let enabled {
+            UserDefaults.standard.set(enabled, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+
+        try body()
+    }
 }

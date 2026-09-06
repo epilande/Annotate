@@ -29,7 +29,10 @@ extension UserDefaults {
     static let spotlightRequiresOverlayKey = "SpotlightRequiresOverlay"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
+    /// Legacy key from v1.3.1. Left unused so its stored default is never flipped;
+    /// text stickiness now uses `returnToPreviousToolAfterTextKey`.
     static let persistTextModeKey = "PersistTextMode"
+    static let returnToPreviousToolAfterTextKey = "ReturnToPreviousToolAfterText"
     static let defaultTextFontSizeKey = "TextFontSize"
     static let textBackgroundKey = "TextBackgroundOn"
     static let defaultCounterFontSizeKey = "CounterFontSize"
