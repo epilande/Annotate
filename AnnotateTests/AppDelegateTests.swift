@@ -605,15 +605,16 @@ final class AppDelegateTests: XCTestCase, Sendable {
             return
         }
 
-        // restorePreviousTool reads persistTextMode from UserDefaults.standard, so pin it
-        // to false for this test and restore whatever was there afterwards.
-        let savedPersistTextMode = UserDefaults.standard.object(forKey: UserDefaults.persistTextModeKey)
-        UserDefaults.standard.set(false, forKey: UserDefaults.persistTextModeKey)
+        // restorePreviousTool reads the opt-in revert flag from UserDefaults.standard, so
+        // enable it for this test and restore whatever was there afterwards.
+        let savedRevertAfterText = UserDefaults.standard.object(
+            forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        UserDefaults.standard.set(true, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
         defer {
-            if let saved = savedPersistTextMode {
-                UserDefaults.standard.set(saved, forKey: UserDefaults.persistTextModeKey)
+            if let saved = savedRevertAfterText {
+                UserDefaults.standard.set(saved, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: UserDefaults.persistTextModeKey)
+                UserDefaults.standard.removeObject(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
             }
         }
 

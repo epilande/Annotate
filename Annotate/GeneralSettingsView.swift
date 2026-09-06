@@ -14,8 +14,8 @@ struct GeneralSettingsView: View {
     private var soundsEnabled = UserDefaults.soundsEnabledDefault
     @AppStorage(UserDefaults.soundThemeKey)
     private var soundTheme: SoundTheme = UserDefaults.soundThemeDefault
-    @AppStorage(UserDefaults.persistTextModeKey)
-    private var persistTextMode = false
+    @AppStorage(UserDefaults.returnToPreviousToolAfterTextKey)
+    private var returnToPreviousToolAfterText = false
     @AppStorage(UserDefaults.defaultToolKey)
     private var defaultToolOption: DefaultToolOption = .lastUsed
 
@@ -106,9 +106,9 @@ struct GeneralSettingsView: View {
                     AppDelegate.shared?.updateDockIconVisibility()
                 }
 
-                Toggle(isOn: $persistTextMode) {
-                    Text("Persist Text Mode")
-                    Text("Stay in text mode after pressing Enter")
+                Toggle(isOn: $returnToPreviousToolAfterText) {
+                    Text("Return to previous tool after placing text")
+                    Text("After committing a label with Enter, switch back to the last tool")
                 }
 
                 Picker(selection: $defaultToolOption) {

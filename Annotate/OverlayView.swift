@@ -1857,7 +1857,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func restorePreviousTool() {
-        if UserDefaults.standard.bool(forKey: UserDefaults.persistTextModeKey) { return }
+        if !UserDefaults.standard.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey) { return }
 
         currentTool = previousTool
         AppDelegate.shared?.overlayWindows.values.forEach { window in
@@ -1931,7 +1931,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             cancelTextAnnotation()
-            restorePreviousTool()
             return true
         } else if commandSelector == #selector(insertNewline(_:)) {
             guard let textField = control as? NSTextField else { return false }

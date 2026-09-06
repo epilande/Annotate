@@ -29,7 +29,7 @@ extension UserDefaults {
     static let spotlightRequiresOverlayKey = "SpotlightRequiresOverlay"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
-    static let persistTextModeKey = "PersistTextMode"
+    static let returnToPreviousToolAfterTextKey = "ReturnToPreviousToolAfterText"
     static let defaultTextFontSizeKey = "TextFontSize"
     static let textBackgroundKey = "TextBackgroundOn"
     static let defaultCounterFontSizeKey = "CounterFontSize"

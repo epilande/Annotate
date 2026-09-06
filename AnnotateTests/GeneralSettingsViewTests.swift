@@ -245,23 +245,23 @@ final class GeneralSettingsViewTests: XCTestCase {
         )
     }
 
-    // MARK: - Persist Text Mode Toggle Tests
+    // MARK: - Return to Previous Tool After Text Toggle Tests
 
-    func testPersistTextModeToggleDefaultsToFalse() {
-        testDefaults.removeObject(forKey: UserDefaults.persistTextModeKey)
+    func testReturnToPreviousToolAfterTextDefaultsToFalse() {
+        testDefaults.removeObject(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
 
-        let defaultValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
-        XCTAssertFalse(defaultValue, "persistTextMode should default to false")
+        let defaultValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        XCTAssertFalse(defaultValue, "returnToPreviousToolAfterText should default to false")
     }
 
-    func testPersistTextModeTogglePersistsValue() {
-        testDefaults.set(true, forKey: UserDefaults.persistTextModeKey)
-        let onValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
-        XCTAssertTrue(onValue, "persistTextMode should be true after setting to true")
+    func testReturnToPreviousToolAfterTextPersistsValue() {
+        testDefaults.set(true, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        let onValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        XCTAssertTrue(onValue, "returnToPreviousToolAfterText should be true after setting to true")
 
-        testDefaults.set(false, forKey: UserDefaults.persistTextModeKey)
-        let offValue = testDefaults.bool(forKey: UserDefaults.persistTextModeKey)
-        XCTAssertFalse(offValue, "persistTextMode should be false after setting to false")
+        testDefaults.set(false, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        let offValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+        XCTAssertFalse(offValue, "returnToPreviousToolAfterText should be false after setting to false")
     }
 
     // MARK: - Edge Cases

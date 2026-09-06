@@ -186,7 +186,8 @@ brew install --cask annotate
 | Custom (Settings)                                   | **Always-On Mode** | Persistent, non-interactive display  |
 | <kbd>Esc</kbd> or <kbd>Command</kbd> + <kbd>W</kbd> | **Close**          | Closes the annotation overlay        |
 | <kbd>Shift</kbd> + <kbd>Esc</kbd>                   | **Switch Mode**    | Close interactive → enable always-on |
-| <kbd>Enter</kbd> or <kbd>Esc</kbd> (in text)        | **Finalize Text**  | Complete text input                  |
+| <kbd>Enter</kbd> (in text)                          | **Commit Text**    | Place the label and stay in text mode |
+| <kbd>Esc</kbd> (in text)                            | **Cancel Text**    | Discard the in-progress label        |
 
 ### Drawing Tools
 
@@ -231,7 +232,7 @@ Annotate provides flexible line width control:
 #### Text Annotations
 
 - Click to place a text annotation
-- Type your text and press <kbd>Enter</kbd> or <kbd>Esc</kbd> to finalize
+- Type your text and press <kbd>Enter</kbd> to place it, or <kbd>Esc</kbd> to discard it
 - Double-click any text annotation to edit its content
 - Click and drag to reposition text
 - Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
@@ -339,7 +340,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Play sounds**: Play feedback sounds for overlay and clear actions.
 - **Sound Theme**: Choose between Chalk (default), Paper, Marker, Pencil, and Typewriter feedback sounds.
 - **Show in Dock**: Display Annotate icon in the Dock.
-- **Persist Text Mode**: Stay in text mode after pressing Enter.
+- **Return to previous tool after placing text**: After committing a label with Enter, switch back to the last tool. Off by default so text mode stays selected.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
 
 ### Tools
