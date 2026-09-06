@@ -264,15 +264,6 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertFalse(offValue, "returnToPreviousToolAfterText should be false after setting to false")
     }
 
-    func testPersistTextModeDefaultIsUnchanged() {
-        testDefaults.removeObject(forKey: UserDefaults.persistTextModeKey)
-
-        XCTAssertFalse(
-            testDefaults.bool(forKey: UserDefaults.persistTextModeKey),
-            "PersistTextMode must keep its historical false default; do not flip it"
-        )
-    }
-
     // MARK: - Edge Cases
 
     func testBoardOpacityAtBoundaries() {

@@ -186,7 +186,8 @@ brew install --cask annotate
 | Custom (Settings)                                   | **Always-On Mode** | Persistent, non-interactive display  |
 | <kbd>Esc</kbd> or <kbd>Command</kbd> + <kbd>W</kbd> | **Close**          | Closes the annotation overlay        |
 | <kbd>Shift</kbd> + <kbd>Esc</kbd>                   | **Switch Mode**    | Close interactive → enable always-on |
-| <kbd>Enter</kbd> or <kbd>Esc</kbd> (in text)        | **Finalize Text**  | Complete text input                  |
+| <kbd>Enter</kbd> (in text)                          | **Commit Text**    | Place the label and stay in text mode |
+| <kbd>Esc</kbd> (in text)                            | **Cancel Text**    | Discard the in-progress label        |
 
 ### Drawing Tools
 
@@ -231,7 +232,7 @@ Annotate provides flexible line width control:
 #### Text Annotations
 
 - Click to place a text annotation
-- Type your text and press <kbd>Enter</kbd> or <kbd>Esc</kbd> to finalize
+- Type your text and press <kbd>Enter</kbd> to place it, or <kbd>Esc</kbd> to discard it
 - Double-click any text annotation to edit its content
 - Click and drag to reposition text
 - Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
