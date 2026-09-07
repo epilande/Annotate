@@ -206,7 +206,17 @@ jobs:
           # `xcodegen generate` above, so only project.yml needs syncing here.
           SEMVER="${{ steps.version.outputs.semver }}"
 
+          if [[ ! "$SEMVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::warning::Skipping MARKETING_VERSION sync for non-release version '$SEMVER'"
+            exit 0
+          fi
+
           sed -i '' -E "s/(MARKETING_VERSION:[[:space:]]*\")[^\"]*(\")/\1${SEMVER}\2/" project.yml
+
+          grep -q "MARKETING_VERSION: \"${SEMVER}\"" project.yml || {
+            echo "::error::MARKETING_VERSION sync failed; project.yml format may have changed"
+            exit 1
+          }
 
       - name: Commit updated appcast
         if: ${{ !contains(github.ref_name, '-test') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') }}
