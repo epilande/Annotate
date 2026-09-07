@@ -41,9 +41,8 @@ class OverlayWindow: NSPanel {
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     
-    private(set) var toolbarHost: NSHostingView<ToolbarView>?
+    private(set) var toolbarPanel: ToolbarPanel?
     let toolbarModel = ToolbarModel()
-    private var isToolbarGestureActive = false
 
     // Create undo manager for this window
     private let _undoManager = UndoManager()
@@ -107,27 +106,20 @@ class OverlayWindow: NSPanel {
         containerView.addSubview(overlayView)
 
         self.contentView = containerView
-        installToolbar(in: containerView)
+        installToolbar()
     }
 
-    private func installToolbar(in container: NSView) {
-        let host = ToolbarHostingView(
-            rootView: ToolbarView(model: toolbarModel) { [weak self] action in
-                self?.performToolbarAction(action)
-            }
-        )
-        host.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(host)
-        NSLayoutConstraint.activate([
-            host.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            host.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
-            host.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 20),
-            host.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -20),
-        ])
-        toolbarHost = host
-        updateToolbarVisibility()
+    private func installToolbar() {
+        let panel = ToolbarPanel(overlay: self, model: toolbarModel) { [weak self] action in
+            self?.performToolbarAction(action)
+        }
+        toolbarPanel = panel
+        // Seed the model before placing the bar: the chips carry the user's shortcut keycaps,
+        // and a later width change would otherwise slide the restored position sideways.
         refreshToolbar()
         refreshToolbarShortcuts()
+        panel.restoreSavedPosition()
+        updateToolbarVisibility()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(toolbarShortcutsDidChange),
@@ -142,6 +134,8 @@ class OverlayWindow: NSPanel {
 
     func refreshToolbarShortcuts() {
         toolbarModel.shortcuts = ShortcutManager.shared.allShortcuts
+        // A longer keycap widens the chips, so the bar has to be re-measured or it clips.
+        toolbarPanel?.fitToContent()
     }
 
     func refreshToolbar() {
@@ -161,16 +155,22 @@ class OverlayWindow: NSPanel {
     }
 
     func updateToolbarVisibility() {
+        guard let panel = toolbarPanel else { return }
         let oldFeedbackPadding = feedbackBottomPadding
         let defaults = AppDelegate.shared?.userDefaults ?? .standard
         let persisted =
             defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
             ?? UserDefaults.toolbarVisibleDefault
-        // Always-On is a read-only, click-through overlay, so it carries no toolbar.
+        // Always-On is a read-only, click-through overlay, so it carries no toolbar. Hiding is
+        // a detach rather than a hidden view: a parent that ignores mouse events does not make
+        // its children click-through, so the bar has to leave the window group entirely.
         let visible = persisted && overlayView?.isReadOnlyMode != true
-        let changed = toolbarHost?.isHidden != !visible
-        toolbarHost?.isHidden = !visible
-        isToolbarGestureActive = false
+        let changed = panel.isAttached != visible
+        if visible {
+            panel.attach(to: self)
+        } else {
+            panel.detach()
+        }
         if changed {
             cancelQuickPicker()
             if let feedback = currentFeedbackView {
@@ -184,28 +184,66 @@ class OverlayWindow: NSPanel {
         }
     }
 
+    /// The bar's frame in overlay-window coordinates, which the overlay view shares, or `.zero`
+    /// while the bar is hidden. Single source of truth for everything that has to stay clear
+    /// of the bar now that the user can park it anywhere.
     var toolbarFrame: NSRect {
-        contentView?.layoutSubtreeIfNeeded()
-        return toolbarHost?.isHidden == false ? toolbarHost?.frame ?? .zero : .zero
+        guard let panel = toolbarPanel, panel.isAttached else { return .zero }
+        return NSRect(
+            origin: NSPoint(x: panel.frame.minX - frame.minX, y: panel.frame.minY - frame.minY),
+            size: panel.frame.size)
     }
 
+    /// The strip along the bottom of the overlay that the tool-feedback pill occupies: its
+    /// tallest form is 80 pt tall and it sits 20 pt off the bottom edge.
+    static let feedbackBandTop: CGFloat = 100
+
+    /// How far the feedback pill has to be lifted to clear the bar. The bar only pushes it up
+    /// while it actually sits in the band the pill uses; parked anywhere else it costs nothing.
     var toolbarClearance: CGFloat {
-        toolbarFrame.isEmpty ? 0 : toolbarFrame.maxY
+        let bar = toolbarFrame
+        guard !bar.isEmpty, bar.minY < Self.feedbackBandTop else { return 0 }
+        return bar.maxY
     }
 
     var feedbackBottomPadding: CGFloat {
         toolbarClearance > 0 ? toolbarClearance + 8 : 20
     }
 
-    func isPointInToolbar(_ windowPoint: NSPoint) -> Bool {
-        guard let host = toolbarHost, !host.isHidden, let container = contentView else {
-            return false
-        }
-        container.layoutSubtreeIfNeeded()
-        return host.frame.contains(container.convert(windowPoint, from: nil))
+    /// The largest slab of `bounds` left over once the bar is taken out of it, so a picker
+    /// placed inside it clears the bar wherever the user parked it. Falls back to the full
+    /// bounds when the two do not overlap or nothing usable remains.
+    static func placementBounds(_ bounds: NSRect, clearing bar: NSRect, gap: CGFloat) -> NSRect {
+        guard !bar.isEmpty, bounds.intersects(bar) else { return bounds }
+        let slabs = [
+            NSRect(
+                x: bounds.minX, y: bar.maxY + gap,
+                width: bounds.width, height: bounds.maxY - bar.maxY - gap),
+            NSRect(
+                x: bounds.minX, y: bounds.minY,
+                width: bounds.width, height: bar.minY - gap - bounds.minY),
+            NSRect(
+                x: bar.maxX + gap, y: bounds.minY,
+                width: bounds.maxX - bar.maxX - gap, height: bounds.height),
+            NSRect(
+                x: bounds.minX, y: bounds.minY,
+                width: bar.minX - gap - bounds.minX, height: bounds.height),
+        ]
+        let usable = slabs.filter { $0.width > 0 && $0.height > 0 }
+        return usable.max { $0.width * $0.height < $1.width * $1.height } ?? bounds
+    }
+
+    /// The display this overlay covers. `NSWindow.screen` is nil while the window is off
+    /// screen, so fall back to the display its frame overlaps.
+    var hostScreen: NSScreen? {
+        screen ?? NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
     }
 
     func performToolbarAction(_ action: ToolbarAction) {
+        // The bar is a panel of its own, so a click on it never reaches the canvas that used to
+        // dismiss an open picker. Close it here, or the picker actions below are refused and a
+        // stale picker stays on screen behind the bar.
+        cancelQuickPicker()
         if let activeField = overlayView.activeTextField {
             overlayView.finalizeTextAnnotation(activeField)
         }
@@ -246,41 +284,31 @@ class OverlayWindow: NSPanel {
     }
 
     override func orderOut(_ sender: Any?) {
-        isToolbarGestureActive = false
         cancelQuickPicker()
         restoreMouseCoalescing()
         super.orderOut(sender)
     }
 
-    /// The toolbar chips are SwiftUI buttons, so with Keyboard navigation on they join the key
-    /// view loop, and both AppKit's automatic pick when the panel becomes key and SwiftUI's own
-    /// focus restoration try to park focus on the first chip. A focused chip draws a focus ring
-    /// and swallows Space and Return, which belong to the canvas. Refuse every such request and
-    /// honor only the ones the user drove with Tab or Shift+Tab, so Full Keyboard Access still
-    /// reaches the bar. A click on a chip arrives as a mouse event and never takes focus.
-    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
-        if let host = toolbarHost, let view = responder as? NSView,
-            view.isDescendant(of: host), !isTabbing
-        {
-            return false
+    /// The overlay is resized on every show and whenever the display layout changes. AppKit
+    /// moves the toolbar panel with its parent, so the bar only needs the width it may occupy
+    /// and its clamp refreshed against the new frame.
+    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool) {
+        guard let panel = toolbarPanel else {
+            super.setFrame(frameRect, display: displayFlag)
+            return
         }
-        return super.makeFirstResponder(responder)
+        panel.aroundOverlayFrameChange {
+            super.setFrame(frameRect, display: displayFlag)
+        }
     }
 
-    /// True while keyboard focus sits on the toolbar.
-    var isToolbarFocused: Bool {
-        guard let host = toolbarHost, let focused = firstResponder as? NSView else { return false }
-        return focused.isDescendant(of: host)
-    }
-
-    /// True while the event being handled is a Tab press. Shift+Tab shares the key code.
-    private var isTabbing: Bool {
-        guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
-        return event.keyCode == 48
+    override func close() {
+        toolbarPanel?.tearDown()
+        toolbarPanel = nil
+        super.close()
     }
 
     override func resignKey() {
-        isToolbarGestureActive = false
         cancelQuickPicker()
         restoreMouseCoalescing()
         super.resignKey()
@@ -343,11 +371,6 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        if event.type == .keyDown, quickPicker == nil, isToolbarFocusExitEvent(event) {
-            makeFirstResponder(nil)
-            return
-        }
-
         if routeOverlayMouseEvent(event) {
             return
         }
@@ -381,19 +404,13 @@ class OverlayWindow: NSPanel {
         }
 
         super.sendEvent(event)
-
-        // The release that ends a toolbar gesture is cleared only once the host has seen it.
-        if event.type == .leftMouseUp {
-            isToolbarGestureActive = false
-        }
     }
 
     /// Canvas mouse goes through OverlayWindow's drawing handlers even when AppKit
     /// would drop a synthetic or non-key event. Clicks on the annotation field still
     /// take the normal first-responder path. While a picker is open, leftover mouse-up
-    /// restores coalescing and must not commit geometry. A mouse-down on the toolbar
-    /// takes the view path so chips receive the click; a canvas-origin stroke that
-    /// later crosses the bar stays on the canvas.
+    /// restores coalescing and must not commit geometry. The toolbar is a separate panel,
+    /// so its clicks never reach this window at all.
     private func routeOverlayMouseEvent(_ event: NSEvent) -> Bool {
         switch event.type {
         case .leftMouseDown, .leftMouseDragged, .leftMouseUp,
@@ -428,45 +445,12 @@ class OverlayWindow: NSPanel {
             return true
         }
 
-        if isToolbarGestureActive {
-            switch event.type {
-            case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-                // A fresh press of any button supersedes a gesture stranded by a lost mouse-up,
-                // so a right-click or a mouse-button undo is never eaten once.
-                isToolbarGestureActive = false
-            case .leftMouseUp:
-                // AppKit delivers the release to the view that took the press, so let it through
-                // wherever it lands or a chip stays visually pressed. The canvas is fenced by the
-                // guards in the drawing handlers, and sendEvent clears the flag once super returns.
-                return false
-            default:
-                // Stay on the bar: let the host keep the gesture. Leave the bar:
-                // swallow so a toolbar-origin drag cannot start a canvas stroke.
-                return isPointInToolbar(event.locationInWindow) ? false : true
-            }
-        }
-        switch event.type {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            if isPointInToolbar(event.locationInWindow) {
-                if event.type == .leftMouseDown {
-                    isToolbarGestureActive = true
-                }
-                return false
-            }
-        default:
-            break
-        }
-
         if isEventOverAnnotationText(event) {
             return false
         }
 
         switch event.type {
         case .leftMouseDown:
-            // A press on the canvas takes focus back from a chip the user tabbed to.
-            if isToolbarFocused {
-                makeFirstResponder(nil)
-            }
             mouseDown(with: event)
         case .leftMouseDragged:
             mouseDragged(with: event)
@@ -505,13 +489,10 @@ class OverlayWindow: NSPanel {
         let anchor =
             requestedAnchor
             ?? overlayView.convert(mouseLocationOutsideOfEventStream, from: nil)
-        var placementBounds = overlayView.bounds
-        let placementTop = placementBounds.maxY
-        let clearance = toolbarClearance
-        if clearance > 0 {
-            placementBounds.origin.y = clearance + 8
-            placementBounds.size.height = max(0, placementTop - placementBounds.origin.y)
-        }
+        // The bar can sit anywhere now, so hand the picker the largest slab of canvas that
+        // the bar does not occupy instead of assuming it hugs the bottom.
+        let placementBounds = Self.placementBounds(
+            overlayView.bounds, clearing: toolbarFrame, gap: ToolbarPanel.pickerGap)
         let picker = QuickPickerView(
             mode: mode,
             anchor: anchor,
@@ -876,11 +857,6 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        // Set by routeOverlayMouseEvent before it hands a toolbar press to the host.
-        if isToolbarGestureActive {
-            return
-        }
-
         // Update cursor highlight for local events (global monitors don't capture our own app's events)
         let cursorManager = CursorHighlightManager.shared
         if cursorManager.isActive {
@@ -1114,7 +1090,6 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        if isToolbarGestureActive { return }
         if quickPicker != nil {
             handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
             return
@@ -1401,12 +1376,6 @@ class OverlayWindow: NSPanel {
         }
         if quickPicker != nil {
             restoreMouseCoalescing()
-            return
-        }
-
-        // Set by routeOverlayMouseEvent before it hands a toolbar press to the host. The release
-        // travels to the host through super.sendEvent, so keep the canvas out of it here.
-        if isToolbarGestureActive {
             return
         }
 
@@ -2316,39 +2285,11 @@ class LinePreviewView: NSView {
 }
 
 private extension OverlayWindow {
-    /// Tab reaches the toolbar, but the key view loop holds only chips, so Escape is the way
-    /// back to the canvas. It is swallowed ahead of the shortcut handling that would otherwise
-    /// read Escape as "close the overlay". With nothing focused in the bar, and for Shift+Escape
-    /// either way, Escape keeps its usual meaning.
-    func isToolbarFocusExitEvent(_ event: NSEvent) -> Bool {
-        event.keyCode == 53
-            && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-            && isToolbarFocused
-    }
-
     /// Option+Command+T, matched on the character rather than the key code so it resolves
     /// the way AppKit resolves the menu key equivalent and still works on non-QWERTY layouts.
     func isToolbarToggleEvent(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         return modifiers == [.command, .option]
             && event.charactersIgnoringModifiers?.lowercased() == "t"
-    }
-}
-
-private final class ToolbarHostingView: NSHostingView<ToolbarView> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    /// ViewThatFits chooses a layout from the width it is offered, but a hosting view measures
-    /// its intrinsic size against an unbounded proposal, so the one-row bar always won and the
-    /// margin constraints then squeezed it until it clipped. Hand the view the width actually
-    /// available so a narrow screen can take the stacked layout instead.
-    override func layout() {
-        if let container = superview {
-            let available = max(0, container.bounds.width - 40)
-            if rootView.model.availableWidth != available {
-                rootView.model.availableWidth = available
-            }
-        }
-        super.layout()
     }
 }

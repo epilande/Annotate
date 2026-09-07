@@ -42,9 +42,136 @@ final class ToolbarTests: XCTestCase {
     func testToolbarUsesRequiredPersistenceKeyAndIsVisibleByDefault() {
         XCTAssertEqual(UserDefaults.toolbarVisibleKey, "ToolbarVisible")
         XCTAssertTrue(appDelegate.toolbarVisible)
-        XCTAssertFalse(window.toolbarHost?.isHidden ?? true)
+        XCTAssertTrue(window.toolbarPanel?.isAttached ?? false)
         XCTAssertFalse(window.toolbarFrame.isEmpty)
         XCTAssertEqual(window.toolbarFrame.minY, 20, accuracy: 0.5)
+        XCTAssertEqual(
+            window.toolbarFrame.midX, window.frame.width / 2, accuracy: 0.5,
+            "With nothing stored the bar keeps its historic bottom-center resting place")
+        XCTAssertNil(
+            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+            "Placing the bar at its default must not be recorded as the user parking it there")
+    }
+
+    func testToolbarLivesInANonKeyChildPanelOfTheOverlay() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+
+        XCTAssertTrue(panel.parent === window)
+        XCTAssertTrue(window.childWindows?.contains { $0 === panel } ?? false)
+        XCTAssertFalse(
+            panel.canBecomeKey,
+            "A key toolbar would steal the keystrokes that belong to the canvas")
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(
+            panel.isMovableByWindowBackground,
+            "Dragging the bar is AppKit's job, not the overlay's")
+        XCTAssertEqual(panel.level, window.level)
+        // AppKit adds bits of its own once the panel is a child, so check what we asked for.
+        XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(panel.collectionBehavior.contains(.transient))
+    }
+
+    func testConstrainFrameRectKeepsTheBarInsideTheOverlay() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let size = panel.frame.size
+
+        let clamped = panel.constrainFrameRect(
+            NSRect(origin: NSPoint(x: 5_000, y: -400), size: size), to: nil)
+
+        XCTAssertEqual(clamped.size, size, "Clamping moves the bar, it never resizes it")
+        XCTAssertEqual(clamped.maxX, window.frame.maxX, accuracy: 0.5)
+        XCTAssertEqual(clamped.minY, window.frame.minY, accuracy: 0.5)
+    }
+
+    func testAUserMoveIsStoredAsAnOffsetKeyedByDisplay() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+
+        panel.setFrameOrigin(NSPoint(x: window.frame.minX + 140, y: window.frame.minY + 500))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        let stored = try XCTUnwrap(
+            defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            "The bar's offset must be stored under this display's number")
+        XCTAssertEqual(
+            stored, [140, 500],
+            "An offset, not a screen coordinate, so it survives a resolution change")
+    }
+
+    func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        defaults.set([key: [140.0, 500.0]], forKey: UserDefaults.toolbarPositionsKey)
+
+        let reopened = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { reopened.close() }
+
+        XCTAssertEqual(reopened.toolbarFrame.minX, 140, accuracy: 0.5)
+        XCTAssertEqual(reopened.toolbarFrame.minY, 500, accuracy: 0.5)
+    }
+
+    func testMovingTheOverlayDoesNotPersistAPositionTheUserNeverChose() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        appDelegate.overlayWindows[screen] = window
+
+        window.setFrame(NSRect(x: 0, y: 0, width: 1_000, height: 700), display: false)
+
+        XCTAssertNil(
+            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+            "Resizing the overlay carries the bar along with it; that is not the user parking it")
+        XCTAssertEqual(window.toolbarFrame.minY, 20, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(window.toolbarFrame.minX, 0)
+        XCTAssertLessThanOrEqual(
+            window.toolbarFrame.maxX, 1_000,
+            "A narrower overlay has to pull the bar back inside it")
+    }
+
+    func testAToolbarActionDismissesAnOpenQuickPicker() {
+        window.performToolbarAction(.colorPicker)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        window.performToolbarAction(.tool(.pen))
+
+        XCTAssertFalse(
+            window.isQuickPickerOpen,
+            "A click on the bar no longer reaches the canvas, so the action has to close the picker")
+    }
+
+    func testASavedPositionOutsideTheOverlayIsClampedBackIn() throws {
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        defaults.set([key: [10_000.0, 10_000.0]], forKey: UserDefaults.toolbarPositionsKey)
+
+        let reopened = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { reopened.close() }
+
+        XCTAssertEqual(reopened.toolbarFrame.maxX, 1_200, accuracy: 0.5)
+        XCTAssertEqual(reopened.toolbarFrame.maxY, 800, accuracy: 0.5)
+    }
+
+    func testAnUnreadableSavedPositionFallsBackToTheDefaultPlacement() throws {
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        defaults.set([key: ["nonsense"]], forKey: UserDefaults.toolbarPositionsKey)
+
+        let reopened = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { reopened.close() }
+
+        XCTAssertEqual(reopened.toolbarFrame.minY, 20, accuracy: 0.5)
+        XCTAssertEqual(reopened.toolbarFrame.midX, 600, accuracy: 0.5)
     }
 
     func testVisibilityPersistsAndUpdatesEveryOverlay() throws {
@@ -54,13 +181,17 @@ final class ToolbarTests: XCTestCase {
         appDelegate.setToolbarVisible(false)
 
         XCTAssertEqual(defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool, false)
-        XCTAssertTrue(window.toolbarHost?.isHidden ?? false)
+        XCTAssertFalse(
+            window.toolbarPanel?.isAttached ?? true,
+            "A hidden bar leaves the overlay's window group; a hidden view would still be clickable")
+        XCTAssertFalse(window.toolbarPanel?.isVisible ?? true)
+        XCTAssertTrue(window.toolbarFrame.isEmpty)
         XCTAssertEqual(window.toolbarClearance, 0)
         XCTAssertEqual(window.feedbackBottomPadding, 20)
 
         appDelegate.setToolbarVisible(true)
 
-        XCTAssertFalse(window.toolbarHost?.isHidden ?? true)
+        XCTAssertTrue(window.toolbarPanel?.isAttached ?? false)
         XCTAssertGreaterThan(window.toolbarClearance, 20)
         XCTAssertEqual(window.feedbackBottomPadding, window.toolbarClearance + 8)
     }
@@ -153,32 +284,6 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = appDelegate
     }
 
-    func testToolbarMouseGestureNeverStartsOrCompletesCanvasGesture() {
-        let toolbarPoint = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
-        XCTAssertTrue(window.isPointInToolbar(toolbarPoint))
-        let draggedPoint = NSPoint(x: toolbarPoint.x + 30, y: toolbarPoint.y + 30)
-
-        window.overlayView.currentTool = .pen
-
-        sendMouse(.leftMouseDown, at: toolbarPoint)
-        sendMouse(.leftMouseDragged, at: draggedPoint)
-        sendMouse(.leftMouseUp, at: draggedPoint)
-
-        XCTAssertEqual(window.anchorPoint, .zero)
-        XCTAssertTrue(
-            window.overlayView.paths.isEmpty,
-            "A press on the bar released off it must never leave a stroke behind")
-
-        let canvasPoint = NSPoint(x: 100, y: 300)
-        sendMouse(.leftMouseDown, at: canvasPoint)
-        XCTAssertEqual(window.anchorPoint, canvasPoint)
-        sendMouse(.leftMouseDragged, at: NSPoint(x: 160, y: 340))
-        sendMouse(.leftMouseUp, at: NSPoint(x: 160, y: 340))
-        XCTAssertFalse(
-            window.overlayView.paths.isEmpty,
-            "The canvas must draw normally after a toolbar gesture ends off the bar")
-    }
-
     func testQuickPickerPlacementAndFeedbackClearVisibleToolbar() throws {
         let clearance = window.toolbarClearance
         XCTAssertGreaterThan(clearance, 0)
@@ -190,6 +295,37 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(picker.frame.minY, clearance)
         XCTAssertEqual(window.feedbackBottomPadding, clearance + 8)
+        window.cancelQuickPicker()
+    }
+
+    func testQuickPickerClearsAToolbarParkedAtTheTop() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        panel.setFrameOrigin(
+            NSPoint(
+                x: window.frame.midX - panel.frame.width / 2,
+                y: window.frame.maxY - panel.frame.height - 20))
+        let bar = window.toolbarFrame
+        XCTAssertGreaterThan(bar.minY, window.frame.height / 2)
+
+        window.beginQuickPicker(.color, anchor: NSPoint(x: 600, y: 780))
+        defer { window.cancelQuickPicker() }
+        let picker = try XCTUnwrap(
+            window.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first
+        )
+
+        XCTAssertLessThanOrEqual(
+            picker.frame.maxY, bar.minY,
+            "The picker has to clear the bar wherever the user parked it, not just at the bottom")
+    }
+
+    func testFeedbackKeepsItsUsualLiftWhenTheBarIsAwayFromTheBottom() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        panel.setFrameOrigin(NSPoint(x: 100, y: window.frame.minY + 400))
+
+        XCTAssertEqual(
+            window.toolbarClearance, 0,
+            "A bar parked mid-canvas is nowhere near the feedback pill")
+        XCTAssertEqual(window.feedbackBottomPadding, 20)
     }
 
     func testOptionCommandTTogglesPersistedVisibility() throws {
@@ -229,77 +365,20 @@ final class ToolbarTests: XCTestCase {
             "Option+Command+T must not toggle the toolbar from sendEvent while editing")
     }
 
-    func testToolbarRefusesKeyboardFocusTheUserDidNotAskFor() throws {
-        let host = try XCTUnwrap(window.toolbarHost)
-        let before = window.firstResponder
-
-        XCTAssertFalse(
-            window.makeFirstResponder(host),
-            "Focus must not land on a chip on its own: a focused chip draws a ring "
-                + "and swallows Space and Return")
-
-        let focused = window.firstResponder as? NSView
-        XCTAssertFalse(focused?.isDescendant(of: host) ?? false)
-        XCTAssertTrue(window.firstResponder === before, "A refused request changes nothing")
-    }
-
-    func testToolbarStillTakesFocusWhenTheUserTabsToIt() throws {
-        let host = try XCTUnwrap(window.toolbarHost)
-        try XCTSkipUnless(
-            tabFocusToToolbar(),
-            "This run cannot make a Tab press the current event, so the rule cannot be exercised")
-
-        XCTAssertTrue(
-            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
-            "Full Keyboard Access must still reach the bar when the user tabs to it")
-    }
-
-    func testEscapeReturnsFocusToTheCanvasWithoutClosingTheOverlay() throws {
-        let host = try XCTUnwrap(window.toolbarHost)
-        try XCTSkipUnless(tabFocusToToolbar(), "Nothing to return focus from")
+    func testEscapeKeepsClosingTheOverlay() throws {
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
 
         window.sendEvent(try XCTUnwrap(escapeEvent()))
 
-        XCTAssertFalse(
-            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
-            "Escape is the only way off the bar, since the key view loop holds just chips")
-        XCTAssertFalse(
-            spy.didToggleOverlay,
-            "Escape that reclaims focus must not also close the overlay")
+        XCTAssertTrue(spy.didToggleOverlay, "Escape closes the overlay, as it always has")
     }
 
-    func testEscapeStillClosesTheOverlayWhenNothingInTheToolbarIsFocused() throws {
-        XCTAssertFalse(window.isToolbarFocused)
-        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
-        AppDelegate.shared = spy
+    func testToolbarHostAcceptsFirstMouse() throws {
+        let host = try XCTUnwrap(window.toolbarPanel?.contentView as? ToolbarHostingView)
 
-        window.sendEvent(try XCTUnwrap(escapeEvent()))
-
-        XCTAssertTrue(spy.didToggleOverlay, "Escape keeps its usual meaning off the bar")
-    }
-
-    func testCanvasPressTakesFocusBackFromTheToolbarButAToolbarPressDoesNot() throws {
-        let host = try XCTUnwrap(window.toolbarHost)
-        try XCTSkipUnless(tabFocusToToolbar(), "Nothing to take focus back from")
-
-        sendMouse(.leftMouseDown, at: NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY))
         XCTAssertTrue(
-            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
-            "Clicking the bar itself must leave a tabbed-to chip focused")
-        sendMouse(.leftMouseUp, at: NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY))
-
-        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
-        XCTAssertFalse(
-            (window.firstResponder as? NSView)?.isDescendant(of: host) ?? false,
-            "Drawing on the canvas hands keyboard focus back to it")
-        sendMouse(.leftMouseUp, at: NSPoint(x: 100, y: 300))
-    }
-
-    func testToolbarHostAcceptsFirstMouse() {
-        XCTAssertTrue(
-            window.toolbarHost?.acceptsFirstMouse(for: nil) ?? false,
+            host.acceptsFirstMouse(for: nil),
             "Chips live in a nonactivating panel; the host must take the first click")
     }
 
@@ -320,9 +399,11 @@ final class ToolbarTests: XCTestCase {
             window.ignoresMouseEvents,
             "Always-On is a read-only overlay; every click belongs to the app underneath")
         XCTAssertTrue(window.overlayView.isReadOnlyMode)
-        XCTAssertTrue(
-            window.toolbarHost?.isHidden ?? false,
-            "Always-On carries no toolbar, so nothing on the overlay is clickable")
+        XCTAssertFalse(
+            window.toolbarPanel?.isAttached ?? true,
+            "A parent that ignores mouse events does not make a child click-through, so "
+                + "Always-On has to take the bar out of the window group entirely")
+        XCTAssertFalse(window.toolbarPanel?.isVisible ?? true)
 
         let canvasStart = NSPoint(x: 100, y: 300)
         let canvasEnd = NSPoint(x: 180, y: 360)
@@ -337,8 +418,8 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertFalse(window.ignoresMouseEvents)
         XCTAssertFalse(window.overlayView.isReadOnlyMode)
-        XCTAssertFalse(
-            window.toolbarHost?.isHidden ?? true,
+        XCTAssertTrue(
+            window.toolbarPanel?.isAttached ?? false,
             "Leaving Always-On restores the toolbar")
     }
 
@@ -351,20 +432,12 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertNil(window.overlayView.activeTextField)
         XCTAssertEqual(window.overlayView.textAnnotations.last?.text, "Keep me")
-
-        let host = try XCTUnwrap(window.toolbarHost)
-        let focused = window.firstResponder as? NSView
-        XCTAssertFalse(
-            focused?.isDescendant(of: host) ?? false,
-            "Ending text editing must not hand keyboard focus to a toolbar chip")
     }
 
     func testCanvasStrokeCrossingToolbarIsNotCaptured() throws {
         window.overlayView.currentTool = .pen
         let canvasStart = NSPoint(x: 100, y: 300)
         let overBar = NSPoint(x: window.toolbarFrame.midX, y: window.toolbarFrame.midY)
-        XCTAssertTrue(window.isPointInToolbar(overBar))
-        XCTAssertFalse(window.isPointInToolbar(canvasStart))
 
         sendMouse(.leftMouseDown, at: canvasStart)
         XCTAssertEqual(window.anchorPoint, canvasStart)
@@ -433,32 +506,6 @@ final class ToolbarTests: XCTestCase {
             characters: "\u{1b}",
             windowNumber: window.windowNumber
         )
-    }
-
-    /// Parks focus on the toolbar the way Tab does. The window only honors a focus request
-    /// while a Tab press is the current event, so pump one and retire it straight after:
-    /// NSApp.currentEvent outlives this test and would leak into every later one.
-    private func tabFocusToToolbar() -> Bool {
-        guard let host = window.toolbarHost else { return false }
-        pumpKey(type: .keyDown)
-        defer { pumpKey(type: .keyUp) }
-        guard NSApp.currentEvent?.type == .keyDown, NSApp.currentEvent?.keyCode == 48 else {
-            return false
-        }
-        return window.makeFirstResponder(host)
-    }
-
-    private func pumpKey(type: NSEvent.EventType) {
-        guard
-            let event = TestEvents.createKeyEvent(
-                type: type,
-                keyCode: 48,
-                characters: "\t",
-                windowNumber: window.windowNumber
-            )
-        else { return }
-        NSApp.postEvent(event, atStart: true)
-        _ = NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true)
     }
 
     private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {

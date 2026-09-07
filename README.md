@@ -33,7 +33,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
-- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with Option + Command + T.
+- 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with Option + Command + T. Drag it anywhere on screen; its position is remembered per display.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -336,7 +336,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Always-On Mode**: Set a global keyboard shortcut to keep Annotate active without auto-hide (requires modifier keys).
 - **Clear Drawings on Toggle**: Automatically clear all drawings when toggling the overlay off.
 - **Hide Tool Feedback**: Disable visual feedback when switching tools.
-- **Show toolbar**: Display the floating shortcut toolbar on annotation overlays.
+- **Show toolbar**: Display the floating shortcut toolbar on annotation overlays. Drag the bar to reposition it; each display remembers where you left it.
 - **Play sounds**: Play feedback sounds for overlay and clear actions.
 - **Sound Theme**: Choose between Chalk (default), Paper, Marker, Pencil, and Typewriter feedback sounds.
 - **Show in Dock**: Display Annotate icon in the Dock.
