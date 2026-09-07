@@ -562,10 +562,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 window.overlayView.selectedObjects.removeAll()
                 window.overlayView.needsDisplay = true
             }
-            // Save current tool as previous when switching TO text mode
-            if tool == .text && window.overlayView.currentTool != .text {
-                window.overlayView.previousTool = window.overlayView.currentTool
-            }
             window.overlayView.currentTool = tool
             window.showToolFeedback(tool)
             window.invalidateCursorRects(for: window.overlayView)

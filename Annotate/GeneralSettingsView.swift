@@ -14,8 +14,8 @@ struct GeneralSettingsView: View {
     private var soundsEnabled = UserDefaults.soundsEnabledDefault
     @AppStorage(UserDefaults.soundThemeKey)
     private var soundTheme: SoundTheme = UserDefaults.soundThemeDefault
-    @AppStorage(UserDefaults.returnToPreviousToolAfterTextKey)
-    private var returnToPreviousToolAfterText = false
+    @AppStorage(UserDefaults.selectAfterPlacingTextKey)
+    private var selectAfterPlacingText = false
     @AppStorage(UserDefaults.defaultToolKey)
     private var defaultToolOption: DefaultToolOption = .lastUsed
 
@@ -106,9 +106,9 @@ struct GeneralSettingsView: View {
                     AppDelegate.shared?.updateDockIconVisibility()
                 }
 
-                Toggle(isOn: $returnToPreviousToolAfterText) {
-                    Text("Return to previous tool after placing text")
-                    Text("After committing a label with Enter, switch back to the last tool")
+                Toggle(isOn: $selectAfterPlacingText) {
+                    Text("Switch to Select after placing text")
+                    Text("After committing a label, select it so you can move it right away")
                 }
 
                 Picker(selection: $defaultToolOption) {

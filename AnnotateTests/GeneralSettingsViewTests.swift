@@ -245,23 +245,20 @@ final class GeneralSettingsViewTests: XCTestCase {
         )
     }
 
-    // MARK: - Return to Previous Tool After Text Toggle Tests
+    // MARK: - Select After Placing Text Toggle Tests
 
-    func testReturnToPreviousToolAfterTextDefaultsToFalse() {
-        testDefaults.removeObject(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
+    func testSelectAfterPlacingTextDefaultsToFalse() {
+        testDefaults.removeObject(forKey: UserDefaults.selectAfterPlacingTextKey)
 
-        let defaultValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        XCTAssertFalse(defaultValue, "returnToPreviousToolAfterText should default to false")
+        XCTAssertFalse(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should default to false")
     }
 
-    func testReturnToPreviousToolAfterTextPersistsValue() {
-        testDefaults.set(true, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        let onValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        XCTAssertTrue(onValue, "returnToPreviousToolAfterText should be true after setting to true")
+    func testSelectAfterPlacingTextPersistsValue() {
+        testDefaults.selectAfterPlacingText = true
+        XCTAssertTrue(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should be true after setting to true")
 
-        testDefaults.set(false, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        let offValue = testDefaults.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        XCTAssertFalse(offValue, "returnToPreviousToolAfterText should be false after setting to false")
+        testDefaults.selectAfterPlacingText = false
+        XCTAssertFalse(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should be false after setting to false")
     }
 
     // MARK: - Edge Cases

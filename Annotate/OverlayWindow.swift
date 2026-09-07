@@ -905,7 +905,14 @@ class OverlayWindow: NSPanel {
         let shiftPressed = event.modifierFlags.contains(.shift)
 
         if let activeTextField = overlayView.activeTextField {
-            overlayView.finalizeTextAnnotation(activeTextField)
+            // Clicking away is how most labels get placed, so it commits through the same
+            // path as Enter and Esc. When that switches the tool, this click has already
+            // done its job and must not also start a gesture with the new tool.
+            let toolBeforeCommit = overlayView.currentTool
+            overlayView.commitTextField(activeTextField)
+            if overlayView.currentTool != toolBeforeCommit {
+                return
+            }
         }
         
         // Handle selection mode

@@ -9,14 +9,20 @@ final class OverlayViewTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            // A leaked AppDelegate.shared would redirect pickerUserDefaults into
+            // another suite's store and let commitTextField rewrite its windows.
+            AppDelegate.shared = nil
             overlayView = OverlayView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+            overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
         }
     }
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            overlayView?.pickerUserDefaultsOverride = nil
             overlayView = nil
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -938,16 +944,10 @@ final class OverlayViewTests: XCTestCase, Sendable {
     // MARK: - Text mode stickiness
 
     func testEnterCommitsLabelAndStaysInTextModeByDefault() throws {
-        try withReturnToPreviousToolAfterText(nil) {
+        try withSelectAfterPlacingText(nil) {
             overlayView.currentTool = .text
-            overlayView.previousTool = .pen
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "", position: NSPoint(x: 100, y: 100), color: .red,
-                fontSize: defaultTextAnnotationFontSize
-            )
-            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            seedNewTextField(text: "Hello")
             let textField = try XCTUnwrap(overlayView.activeTextField)
-            textField.stringValue = "Hello"
 
             let handled = overlayView.control(
                 textField,
@@ -963,17 +963,80 @@ final class OverlayViewTests: XCTestCase, Sendable {
         }
     }
 
-    func testEscapeCancelsFieldAndStaysInTextMode() throws {
-        try withReturnToPreviousToolAfterText(true) {
+    func testEnterSelectsThePlacedLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
             overlayView.currentTool = .text
-            overlayView.previousTool = .pen
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "", position: NSPoint(x: 100, y: 100), color: .red,
-                fontSize: defaultTextAnnotationFontSize
-            )
-            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            seedNewTextField(text: "Hello")
             let textField = try XCTUnwrap(overlayView.activeTextField)
-            textField.stringValue = "Draft"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(
+                overlayView.currentTool, .select,
+                "Enter should switch to Select when select after placing text is on"
+            )
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(
+                overlayView.selectedObjects, [.text(index: 0)],
+                "The label that was just placed should be the selection"
+            )
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEscapeCommitsLabelAndStaysInTextModeByDefault() throws {
+        try withSelectAfterPlacingText(nil) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "Draft")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.cancelOperation(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.currentTool, .text, "Esc should stay in text mode by default")
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(
+                overlayView.textAnnotations[0].text, "Draft",
+                "Esc on a field with text should place the label instead of discarding it"
+            )
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEscapeSelectsThePlacedLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "Draft")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.cancelOperation(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.currentTool, .select, "Esc commits like Enter, including the switch")
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(overlayView.selectedObjects, [.text(index: 0)])
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEscapeOnEmptyFieldDiscardsItAndStaysInTextMode() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
 
             let handled = overlayView.control(
                 textField,
@@ -984,24 +1047,65 @@ final class OverlayViewTests: XCTestCase, Sendable {
             XCTAssertTrue(handled)
             XCTAssertEqual(
                 overlayView.currentTool, .text,
-                "Esc should stay in text mode even when revert after placing text is on"
+                "An empty field is a cancel, so it never switches tools"
             )
-            XCTAssertTrue(overlayView.textAnnotations.isEmpty, "Esc should discard the uncommitted field")
+            XCTAssertTrue(overlayView.textAnnotations.isEmpty)
             XCTAssertNil(overlayView.activeTextField)
         }
     }
 
-    func testEnterRevertsToPreviousToolWhenOptedIn() throws {
-        try withReturnToPreviousToolAfterText(true) {
+    func testEscapeOnClearedEditKeepsTheOriginalLabel() throws {
+        try withSelectAfterPlacingText(true) {
             overlayView.currentTool = .text
-            overlayView.previousTool = .pen
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "", position: NSPoint(x: 100, y: 100), color: .red,
+            let original = TextAnnotation(
+                text: "Hi", position: NSPoint(x: 100, y: 100), color: .red,
                 fontSize: defaultTextAnnotationFontSize
             )
-            overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+            overlayView.textAnnotations = [original]
+            overlayView.editingTextAnnotationIndex = 0
+            overlayView.currentTextAnnotation = original
+            overlayView.createTextField(at: original.position, withText: original.text, width: 300)
             let textField = try XCTUnwrap(overlayView.activeTextField)
-            textField.stringValue = "Hello"
+            textField.stringValue = ""
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.cancelOperation(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.textAnnotations.count, 1, "Cancelling an edit must not delete the label")
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hi")
+            XCTAssertEqual(overlayView.currentTool, .text)
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testCommandReturnSelectsThePlacedLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "Hello")
+            let textField = try XCTUnwrap(overlayView.activeTextField as? AnnotationTextField)
+
+            textField.onCommandReturn?()
+
+            XCTAssertEqual(
+                overlayView.currentTool, .select,
+                "Cmd+Enter commits like Enter, including the switch"
+            )
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hello")
+            XCTAssertEqual(overlayView.selectedObjects, [.text(index: 0)])
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEnterOnEmptyFieldPlacesNothingAndStaysInTextModeWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
 
             let handled = overlayView.control(
                 textField,
@@ -1010,34 +1114,84 @@ final class OverlayViewTests: XCTestCase, Sendable {
             )
 
             XCTAssertTrue(handled)
+            XCTAssertTrue(overlayView.textAnnotations.isEmpty, "An empty field places no label")
             XCTAssertEqual(
-                overlayView.currentTool, .pen,
-                "Enter should restore the previous tool when revert after placing text is on"
+                overlayView.currentTool, .text,
+                "There is nothing to select, so the tool stays put"
             )
-            XCTAssertEqual(overlayView.textAnnotations.count, 1)
-            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hello")
+            XCTAssertTrue(overlayView.selectedObjects.isEmpty)
             XCTAssertNil(overlayView.activeTextField)
         }
     }
 
-    private func withReturnToPreviousToolAfterText(
+    func testEnterOnAnEditedLabelSelectsThatLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            let first = TextAnnotation(
+                text: "First", position: NSPoint(x: 100, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            let second = TextAnnotation(
+                text: "Second", position: NSPoint(x: 300, y: 300), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            overlayView.textAnnotations = [first, second]
+            overlayView.editingTextAnnotationIndex = 0
+            overlayView.currentTextAnnotation = first
+            overlayView.createTextField(at: first.position, withText: first.text, width: 300)
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = "Edited"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.textAnnotations.count, 2, "Editing must not add a label")
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Edited")
+            XCTAssertEqual(overlayView.textAnnotations[1].text, "Second")
+            XCTAssertEqual(
+                overlayView.selectedObjects, [.text(index: 0)],
+                "The edited label is the selection, not the last one in the array"
+            )
+            XCTAssertEqual(overlayView.currentTool, .select)
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    /// Opens a new-label field at a fixed point, seeded the way `OverlayWindow` seeds it on a
+    /// click, and types `text` into it.
+    private func seedNewTextField(text: String) {
+        let point = NSPoint(x: 100, y: 100)
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: point, withText: "", width: 100)
+        overlayView.activeTextField?.stringValue = text
+    }
+
+    private func withSelectAfterPlacingText(
         _ enabled: Bool?,
         body: () throws -> Void
     ) rethrows {
-        let key = UserDefaults.returnToPreviousToolAfterTextKey
-        let saved = UserDefaults.standard.object(forKey: key)
+        let defaults = overlayView.pickerUserDefaults
+        let key = UserDefaults.selectAfterPlacingTextKey
+        let saved = defaults.object(forKey: key)
         defer {
             if let saved {
-                UserDefaults.standard.set(saved, forKey: key)
+                defaults.set(saved, forKey: key)
             } else {
-                UserDefaults.standard.removeObject(forKey: key)
+                defaults.removeObject(forKey: key)
             }
         }
 
         if let enabled {
-            UserDefaults.standard.set(enabled, forKey: key)
+            defaults.selectAfterPlacingText = enabled
         } else {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         }
 
         try body()

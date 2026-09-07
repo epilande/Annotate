@@ -100,6 +100,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var dragOffset: NSPoint?
     var editingTextAnnotationIndex: Int?
 
+    /// Index of the label written by the last `finalizeTextAnnotation` call, or nil when that
+    /// call committed nothing. Lets `commitTextField` select what the user just placed.
+    private(set) var lastCommittedTextIndex: Int?
+
     var counterAnnotations: [CounterAnnotation] = []
     var nextCounterNumber: Int = 1
 
@@ -122,7 +126,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var currentTool: ToolType = .pen {
         didSet { notifyToolbarChanged() }
     }
-    var previousTool: ToolType = .pen
     var currentLineWidth: CGFloat = 3.0 {
         didSet { notifyToolbarChanged() }
     }
@@ -132,10 +135,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     let fadeDuration: CFTimeInterval = 1.25
 
+    /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
+    var pickerUserDefaultsOverride: UserDefaults?
+
     /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
     /// defaults through the same store.
     var pickerUserDefaults: UserDefaults {
-        AppDelegate.shared?.userDefaults ?? .standard
+        pickerUserDefaultsOverride ?? AppDelegate.shared?.userDefaults ?? .standard
     }
     var isReadOnlyMode: Bool = false
 
@@ -230,13 +236,24 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func undo() {
+        // An undone object leaves its index behind in the selection, which would draw a
+        // selection box over an object that is no longer there.
+        clearSelectionForHistoryStep()
         undoManager?.undo()
         startFadeLoopIfNeeded()
     }
 
     func redo() {
+        clearSelectionForHistoryStep()
         undoManager?.redo()
         startFadeLoopIfNeeded()
+    }
+
+    /// Drops the selection before an undo or redo reshuffles the annotation arrays.
+    private func clearSelectionForHistoryStep() {
+        guard !selectedObjects.isEmpty else { return }
+        selectedObjects.removeAll()
+        needsDisplay = true
     }
 
     func startFadeLoopIfNeeded() {
@@ -1783,7 +1800,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.cell = PaddedTextFieldCell()
         textField.onCommandReturn = { [weak self, weak textField] in
             guard let self = self, let textField = textField else { return }
-            self.finalizeTextAnnotation(textField)
+            self.commitTextField(textField)
         }
         textField.onFontSizeStep = { [weak self] direction in
             (self?.window as? OverlayWindow)?.stepTextFontSize(direction)
@@ -1813,7 +1830,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.stringValue = existingText
         textField.target = self
         textField.delegate = self
-        textField.action = #selector(finalizeTextAnnotation(_:))
+        textField.action = #selector(commitTextField(_:))
 
         textField.wantsLayer = true
         textField.layer?.cornerRadius = 6
@@ -1856,19 +1873,49 @@ class OverlayView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
-    func restorePreviousTool() {
-        if !UserDefaults.standard.bool(forKey: UserDefaults.returnToPreviousToolAfterTextKey) { return }
+    /// Commits the field, then honors the opt-in switch to Select so the label the user
+    /// just placed can be moved right away.
+    ///
+    /// The tool switch runs the per-window loop by hand instead of going through
+    /// `AppDelegate.switchTool(to:)`: that call toggles always-on mode, flashes the tool
+    /// feedback HUD, and persists the choice as the last used tool, none of which should
+    /// happen for an internal switch the user did not ask for.
+    ///
+    /// Only the gestures that mean "place this label" come through here: Enter, Cmd+Enter,
+    /// Esc on a field with text, and clicking away on the canvas. The other paths stay on
+    /// `finalizeTextAnnotation` on purpose, because none of them is the user finishing a
+    /// label: losing focus (`controlTextDidEndEditing`), pressing a toolbar button
+    /// (`OverlayWindow.performToolbarAction`), closing the overlay or flipping always-on
+    /// mode (`AppDelegate`), Shift+Enter chaining straight into the next label, and
+    /// `createTextField` closing whatever field is still open before it opens a new one.
+    @objc func commitTextField(_ textField: NSTextField) {
+        finalizeTextAnnotation(textField)
 
-        currentTool = previousTool
-        AppDelegate.shared?.overlayWindows.values.forEach { window in
-            window.overlayView.currentTool = previousTool
-            window.invalidateCursorRects(for: window.overlayView)
-            window.overlayView.updateCursor()
+        guard pickerUserDefaults.selectAfterPlacingText,
+              let committedIndex = lastCommittedTextIndex else { return }
+
+        // Only broadcast to the live overlay set when this view is one of those
+        // windows. A detached view (unit tests, previews) must not rewrite
+        // another suite's current tool or last-used menu.
+        if let appDelegate = AppDelegate.shared,
+            appDelegate.overlayWindows.values.contains(where: { $0.overlayView === self })
+        {
+            appDelegate.overlayWindows.values.forEach { window in
+                window.overlayView.currentTool = .select
+                window.invalidateCursorRects(for: window.overlayView)
+                window.overlayView.updateCursor()
+            }
+            appDelegate.updateCurrentToolMenuItem(to: ToolType.select.displayName)
+        } else {
+            currentTool = .select
         }
-        AppDelegate.shared?.updateCurrentToolMenuItem(to: previousTool.displayName)
+
+        selectedObjects = [.text(index: committedIndex)]
+        needsDisplay = true
     }
 
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
+        lastCommittedTextIndex = nil
         let typedText = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         // Account for PaddedTextFieldCell padding when storing position
         let position = NSPoint(
@@ -1904,11 +1951,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     registerUndo(action: .removeText(textAnnotations[editingIndex]))
                     textAnnotations[editingIndex] = finalAnnotation
                     registerUndo(action: .addText(finalAnnotation))
+                    lastCommittedTextIndex = editingIndex
                 }
                 editingTextAnnotationIndex = nil
             } else {
                 registerUndo(action: .addText(finalAnnotation))
                 textAnnotations.append(finalAnnotation)
+                lastCommittedTextIndex = textAnnotations.count - 1
             }
             if fadeMode {
                 (window as? OverlayWindow)?.startFadeLoop()
@@ -1930,7 +1979,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
         -> Bool
     {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            cancelTextAnnotation()
+            guard let textField = control as? NSTextField else {
+                cancelTextAnnotation()
+                return true
+            }
+
+            // Esc mirrors Enter for a field with text so a label is never lost by reflex,
+            // and still discards an empty field without leaving text mode.
+            let hasText = !textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasText {
+                commitTextField(textField)
+            } else {
+                cancelTextAnnotation()
+            }
             return true
         } else if commandSelector == #selector(insertNewline(_:)) {
             guard let textField = control as? NSTextField else { return false }
@@ -1943,8 +2004,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 createTextFieldForNewAnnotation(at: NSPoint(x: position.x, y: newY))
                 return true
             } else {
-                finalizeTextAnnotation(textField)
-                restorePreviousTool()
+                commitTextField(textField)
                 return true
             }
         }
