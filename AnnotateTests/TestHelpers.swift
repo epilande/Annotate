@@ -13,31 +13,34 @@ enum TestConstants {
 
 // MARK: - Test UserDefaults
 enum TestUserDefaults {
-    /// Every suite name `create()` has handed out, so `removeSuite()` knows what to delete.
-    /// UserDefaults does not expose the suite name of an instance, and each name is unique,
-    /// so without this registry the cleanup has nothing to remove. XCTest runs the classes
-    /// inside one process serially and splits parallel work across processes, so a process
-    /// only ever drains the suites it created itself.
-    private static var createdSuiteNames: [String] = []
+    /// One suite per test process. Xcode's parallel testing isolates classes by process, so
+    /// parallel runs cannot clobber each other, and inside one process tests run serially
+    /// and `create()` clears the suite before handing it out. A per-call UUID would isolate
+    /// just as well, but the preferences daemon keeps an empty plist for every suite name
+    /// it has ever seen, which added over a hundred files to the app container per run.
+    private static let suiteName =
+        "\(TestConstants.testSuiteName).\(ProcessInfo.processInfo.processIdentifier)"
 
     /// Creates a fresh isolated UserDefaults instance for testing
-    /// - Returns: A new UserDefaults suite completely isolated from production data
+    /// - Returns: An empty UserDefaults suite completely isolated from production data
     static func create() -> UserDefaults {
-        // Unique suite per call so parallel XCTest classes cannot wipe
-        // LastUsedTool / DefaultTool out from under each other. A brand new suite is
-        // already empty, so there is nothing to clear here.
-        let suiteName = "\(TestConstants.testSuiteName).\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
-        createdSuiteNames.append(suiteName)
+        clear(suite)
         return suite
     }
 
-    /// Completely removes every test suite created in this process, so no test value is
-    /// left behind in the app container.
+    /// Clears all data from a test UserDefaults suite
+    static func clear(_ userDefaults: UserDefaults) {
+        userDefaults.dictionaryRepresentation().keys.forEach { key in
+            userDefaults.removeObject(forKey: key)
+        }
+        userDefaults.synchronize()
+    }
+
+    /// Completely removes this process's test suite so no test value is left behind in the
+    /// app container.
     static func removeSuite() {
-        let suiteNames = createdSuiteNames
-        createdSuiteNames.removeAll()
-        suiteNames.forEach { UserDefaults.standard.removePersistentDomain(forName: $0) }
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
         UserDefaults.standard.synchronize()
     }
 }
