@@ -13,28 +13,31 @@ enum TestConstants {
 
 // MARK: - Test UserDefaults
 enum TestUserDefaults {
+    /// Every suite name `create()` has handed out, so `removeSuite()` knows what to delete.
+    /// UserDefaults does not expose the suite name of an instance, and each name is unique,
+    /// so without this registry the cleanup has nothing to remove. XCTest runs the classes
+    /// inside one process serially and splits parallel work across processes, so a process
+    /// only ever drains the suites it created itself.
+    private static var createdSuiteNames: [String] = []
+
     /// Creates a fresh isolated UserDefaults instance for testing
     /// - Returns: A new UserDefaults suite completely isolated from production data
     static func create() -> UserDefaults {
         // Unique suite per call so parallel XCTest classes cannot wipe
-        // LastUsedTool / DefaultTool out from under each other.
+        // LastUsedTool / DefaultTool out from under each other. A brand new suite is
+        // already empty, so there is nothing to clear here.
         let suiteName = "\(TestConstants.testSuiteName).\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
-        clear(suite)
+        createdSuiteNames.append(suiteName)
         return suite
     }
 
-    /// Clears all data from a test UserDefaults suite
-    static func clear(_ userDefaults: UserDefaults) {
-        userDefaults.dictionaryRepresentation().keys.forEach { key in
-            userDefaults.removeObject(forKey: key)
-        }
-        userDefaults.synchronize()
-    }
-
-    /// Completely removes the test suite from the system
+    /// Completely removes every test suite created in this process, so no test value is
+    /// left behind in the app container.
     static func removeSuite() {
-        UserDefaults.standard.removePersistentDomain(forName: TestConstants.testSuiteName)
+        let suiteNames = createdSuiteNames
+        createdSuiteNames.removeAll()
+        suiteNames.forEach { UserDefaults.standard.removePersistentDomain(forName: $0) }
         UserDefaults.standard.synchronize()
     }
 }

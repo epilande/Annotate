@@ -27,9 +27,11 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         MainActor.assumeIsolated {
             window.cancelQuickPicker()
             window.stopFadeLoop()
+            window.overlayView.pickerUserDefaultsOverride = nil
             window = nil
             NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -1630,6 +1632,84 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertFalse(window.performKeyEquivalent(with: cmdB))
         XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+    }
+
+    // MARK: - Committing a label by clicking away
+
+    func testClickingAwayPlacesTheLabelAndSwitchesToSelectWhenOptedIn() throws {
+        try seedLabelInProgress(text: "Hello", selectAfterPlacing: true)
+
+        window.mouseDown(
+            with: try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown,
+                    location: NSPoint(x: 400, y: 400)
+                )))
+
+        XCTAssertEqual(window.overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(window.overlayView.textAnnotations[0].text, "Hello")
+        XCTAssertEqual(
+            window.overlayView.currentTool, .select,
+            "Clicking away is a commit, so it honors the switch to Select"
+        )
+        XCTAssertEqual(window.overlayView.selectedObjects, [.text(index: 0)])
+        XCTAssertNil(
+            window.overlayView.activeTextField,
+            "The click that finished the label must not open another field"
+        )
+    }
+
+    func testClickingAwayStaysInTextModeByDefault() throws {
+        try seedLabelInProgress(text: "Hello", selectAfterPlacing: false)
+
+        window.mouseDown(
+            with: try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown,
+                    location: NSPoint(x: 400, y: 400)
+                )))
+
+        XCTAssertEqual(window.overlayView.textAnnotations.count, 1)
+        XCTAssertEqual(window.overlayView.currentTool, .text)
+        XCTAssertTrue(window.overlayView.selectedObjects.isEmpty)
+        XCTAssertNotNil(
+            window.overlayView.activeTextField,
+            "With the setting off the click still opens the next label"
+        )
+    }
+
+    func testUndoAfterPlacingALabelClearsTheSelection() throws {
+        let textField = try seedLabelInProgress(text: "Hello", selectAfterPlacing: true)
+        window.overlayView.commitTextField(textField)
+        XCTAssertEqual(window.overlayView.selectedObjects, [.text(index: 0)])
+
+        window.overlayView.undo()
+
+        XCTAssertTrue(window.overlayView.textAnnotations.isEmpty)
+        XCTAssertTrue(
+            window.overlayView.selectedObjects.isEmpty,
+            "Undo must not leave the removed label selected"
+        )
+    }
+
+    /// Opens a text field with `text` typed into it, with the select-after-placing setting
+    /// pinned for the store the overlay view reads.
+    @discardableResult
+    private func seedLabelInProgress(text: String, selectAfterPlacing: Bool) throws -> NSTextField {
+        let defaults = TestUserDefaults.create()
+        defaults.selectAfterPlacingText = selectAfterPlacing
+        window.overlayView.pickerUserDefaultsOverride = defaults
+
+        let point = NSPoint(x: 100, y: 100)
+        window.overlayView.currentTool = .text
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        window.overlayView.createTextField(at: point, withText: "", width: 100)
+        let textField = try XCTUnwrap(window.overlayView.activeTextField)
+        textField.stringValue = text
+        return textField
     }
 }
 

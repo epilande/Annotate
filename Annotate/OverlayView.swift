@@ -236,13 +236,24 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func undo() {
+        // An undone object leaves its index behind in the selection, which would draw a
+        // selection box over an object that is no longer there.
+        clearSelectionForHistoryStep()
         undoManager?.undo()
         startFadeLoopIfNeeded()
     }
 
     func redo() {
+        clearSelectionForHistoryStep()
         undoManager?.redo()
         startFadeLoopIfNeeded()
+    }
+
+    /// Drops the selection before an undo or redo reshuffles the annotation arrays.
+    private func clearSelectionForHistoryStep() {
+        guard !selectedObjects.isEmpty else { return }
+        selectedObjects.removeAll()
+        needsDisplay = true
     }
 
     func startFadeLoopIfNeeded() {
@@ -1819,7 +1830,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.stringValue = existingText
         textField.target = self
         textField.delegate = self
-        textField.action = #selector(finalizeTextAnnotation(_:))
+        textField.action = #selector(commitTextField(_:))
 
         textField.wantsLayer = true
         textField.layer?.cornerRadius = 6
@@ -1869,13 +1880,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// `AppDelegate.switchTool(to:)`: that call toggles always-on mode, flashes the tool
     /// feedback HUD, and persists the choice as the last used tool, none of which should
     /// happen for an internal switch the user did not ask for.
-    func commitTextField(_ textField: NSTextField) {
+    ///
+    /// Only the gestures that mean "place this label" come through here: Enter, Cmd+Enter,
+    /// Esc on a field with text, and clicking away on the canvas. The other paths stay on
+    /// `finalizeTextAnnotation` on purpose, because none of them is the user finishing a
+    /// label: losing focus (`controlTextDidEndEditing`), pressing a toolbar button
+    /// (`OverlayWindow.performToolbarAction`), closing the overlay or flipping always-on
+    /// mode (`AppDelegate`), Shift+Enter chaining straight into the next label, and
+    /// `createTextField` closing whatever field is still open before it opens a new one.
+    @objc func commitTextField(_ textField: NSTextField) {
         finalizeTextAnnotation(textField)
 
         guard pickerUserDefaults.selectAfterPlacingText,
               let committedIndex = lastCommittedTextIndex else { return }
 
-        currentTool = .select
         // Only broadcast to the live overlay set when this view is one of those
         // windows. A detached view (unit tests, previews) must not rewrite
         // another suite's current tool or last-used menu.
@@ -1888,6 +1906,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 window.overlayView.updateCursor()
             }
             appDelegate.updateCurrentToolMenuItem(to: ToolType.select.displayName)
+        } else {
+            currentTool = .select
         }
 
         selectedObjects = [.text(index: committedIndex)]

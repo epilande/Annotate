@@ -22,6 +22,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
             overlayView?.pickerUserDefaultsOverride = nil
             overlayView = nil
         }
+        TestUserDefaults.removeSuite()
         super.tearDown()
     }
 
@@ -1077,6 +1078,85 @@ final class OverlayViewTests: XCTestCase, Sendable {
             XCTAssertEqual(overlayView.textAnnotations.count, 1, "Cancelling an edit must not delete the label")
             XCTAssertEqual(overlayView.textAnnotations[0].text, "Hi")
             XCTAssertEqual(overlayView.currentTool, .text)
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testCommandReturnSelectsThePlacedLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "Hello")
+            let textField = try XCTUnwrap(overlayView.activeTextField as? AnnotationTextField)
+
+            textField.onCommandReturn?()
+
+            XCTAssertEqual(
+                overlayView.currentTool, .select,
+                "Cmd+Enter commits like Enter, including the switch"
+            )
+            XCTAssertEqual(overlayView.textAnnotations.count, 1)
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Hello")
+            XCTAssertEqual(overlayView.selectedObjects, [.text(index: 0)])
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEnterOnEmptyFieldPlacesNothingAndStaysInTextModeWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            seedNewTextField(text: "")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertTrue(overlayView.textAnnotations.isEmpty, "An empty field places no label")
+            XCTAssertEqual(
+                overlayView.currentTool, .text,
+                "There is nothing to select, so the tool stays put"
+            )
+            XCTAssertTrue(overlayView.selectedObjects.isEmpty)
+            XCTAssertNil(overlayView.activeTextField)
+        }
+    }
+
+    func testEnterOnAnEditedLabelSelectsThatLabelWhenOptedIn() throws {
+        try withSelectAfterPlacingText(true) {
+            overlayView.currentTool = .text
+            let first = TextAnnotation(
+                text: "First", position: NSPoint(x: 100, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            let second = TextAnnotation(
+                text: "Second", position: NSPoint(x: 300, y: 300), color: .red,
+                fontSize: defaultTextAnnotationFontSize
+            )
+            overlayView.textAnnotations = [first, second]
+            overlayView.editingTextAnnotationIndex = 0
+            overlayView.currentTextAnnotation = first
+            overlayView.createTextField(at: first.position, withText: first.text, width: 300)
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = "Edited"
+
+            let handled = overlayView.control(
+                textField,
+                textView: NSTextView(),
+                doCommandBy: #selector(NSResponder.insertNewline(_:))
+            )
+
+            XCTAssertTrue(handled)
+            XCTAssertEqual(overlayView.textAnnotations.count, 2, "Editing must not add a label")
+            XCTAssertEqual(overlayView.textAnnotations[0].text, "Edited")
+            XCTAssertEqual(overlayView.textAnnotations[1].text, "Second")
+            XCTAssertEqual(
+                overlayView.selectedObjects, [.text(index: 0)],
+                "The edited label is the selection, not the last one in the array"
+            )
+            XCTAssertEqual(overlayView.currentTool, .select)
             XCTAssertNil(overlayView.activeTextField)
         }
     }
