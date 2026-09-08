@@ -84,6 +84,9 @@ class OverlayWindow: NSPanel {
         self.hasShadow = false
         self.ignoresMouseEvents = false
         self.isRestorable = false
+        // Stated explicitly rather than left to the panel default, because closing an overlay is
+        // now a normal part of a display being unplugged and the reference must survive it.
+        self.isReleasedWhenClosed = false
         self.collectionBehavior = [.canJoinAllSpaces, .transient]
         self.setFrame(windowRect, display: true)
 
@@ -114,11 +117,12 @@ class OverlayWindow: NSPanel {
             self?.performToolbarAction(action)
         }
         toolbarPanel = panel
-        // Seed the model before placing the bar: the chips carry the user's shortcut keycaps,
+        // Seed the model before the bar is placed: the chips carry the user's shortcut keycaps,
         // and a later width change would otherwise slide the restored position sideways.
+        // `refreshToolbarShortcuts` measures the bar, and attaching it restores the saved
+        // position, so the size is known by the time the placement runs.
         refreshToolbar()
         refreshToolbarShortcuts()
-        panel.restoreSavedPosition()
         updateToolbarVisibility()
         NotificationCenter.default.addObserver(
             self,
@@ -194,9 +198,10 @@ class OverlayWindow: NSPanel {
             size: panel.frame.size)
     }
 
-    /// The strip along the bottom of the overlay that the tool-feedback pill occupies: its
-    /// tallest form is 80 pt tall and it sits 20 pt off the bottom edge.
-    static let feedbackBandTop: CGFloat = 100
+    /// The strip along the bottom of the overlay that the tool-feedback pill occupies: it sits
+    /// 20 pt off the bottom edge, its tallest form is 80 pt tall, and a pill that carries a line
+    /// preview is lifted by half that line's width on top of that.
+    static let feedbackBandTop: CGFloat = 20 + 80 + (QuickPickerView.widthOptions.max() ?? 0) / 2
 
     /// How far the feedback pill has to be lifted to clear the bar. The bar only pushes it up
     /// while it actually sits in the band the pill uses; parked anywhere else it costs nothing.
@@ -229,7 +234,9 @@ class OverlayWindow: NSPanel {
                 x: bounds.minX, y: bounds.minY,
                 width: bar.minX - gap - bounds.minX, height: bounds.height),
         ]
-        let usable = slabs.filter { $0.width > 0 && $0.height > 0 }
+        // Measured through `size`, not `width`/`height`: those are standardized, so a slab the
+        // bar left no room for reports its negative extent as a positive one and wins on area.
+        let usable = slabs.filter { $0.size.width > 0 && $0.size.height > 0 }
         return usable.max { $0.width * $0.height < $1.width * $1.height } ?? bounds
     }
 
@@ -245,9 +252,7 @@ class OverlayWindow: NSPanel {
         // stale picker stays on screen behind the bar.
         cancelQuickPicker()
         if let activeField = overlayView.activeTextField {
-            // Commit through the same path as Enter, Esc, and clicking away so the
-            // "switch to Select after placing text" preference is honored here too.
-            overlayView.commitTextField(activeField)
+            overlayView.finalizeTextAnnotation(activeField)
         }
         switch action {
         case .tool(let tool):

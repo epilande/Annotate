@@ -116,9 +116,6 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testMovingTheOverlayDoesNotPersistAPositionTheUserNeverChose() throws {
-        let screen = try XCTUnwrap(NSScreen.main)
-        appDelegate.overlayWindows[screen] = window
-
         window.setFrame(NSRect(x: 0, y: 0, width: 1_000, height: 700), display: false)
 
         XCTAssertNil(
@@ -156,6 +153,23 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertEqual(reopened.toolbarFrame.maxX, 1_200, accuracy: 0.5)
         XCTAssertEqual(reopened.toolbarFrame.maxY, 800, accuracy: 0.5)
+    }
+
+    func testReShowingTheBarAfterAResizeRestoresTheSavedOffset() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        appDelegate.overlayWindows[screen] = window
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        defaults.set([key: [20.0, 300.0]], forKey: UserDefaults.toolbarPositionsKey)
+
+        appDelegate.setToolbarVisible(false)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1_000, height: 700), display: false)
+        appDelegate.setToolbarVisible(true)
+
+        XCTAssertEqual(
+            window.toolbarFrame.minX, 20, accuracy: 0.5,
+            "A hidden bar is not carried along by the overlay, so showing it has to place it "
+                + "from the saved offset rather than from wherever it was left")
+        XCTAssertEqual(window.toolbarFrame.minY, 300, accuracy: 0.5)
     }
 
     func testAnUnreadableSavedPositionFallsBackToTheDefaultPlacement() throws {
@@ -482,6 +496,62 @@ final class ToolbarTests: XCTestCase {
         XCTAssertGreaterThan(
             narrowFrame.height, wideFrame.height,
             "Narrow height \(narrowFrame.height) must exceed wide height \(wideFrame.height)")
+    }
+
+    func testPlacementBoundsPicksTheLargestSlabLeftByTheBar() {
+        let bounds = NSRect(x: 0, y: 0, width: 1_200, height: 800)
+        let gap: CGFloat = 8
+        let cases: [(name: String, bar: NSRect, expected: NSRect)] = [
+            (
+                "a bar resting at the bottom leaves the canvas above it",
+                NSRect(x: 400, y: 20, width: 400, height: 60),
+                NSRect(x: 0, y: 88, width: 1_200, height: 712)
+            ),
+            (
+                "a bar parked at the top leaves the canvas below it",
+                NSRect(x: 400, y: 720, width: 400, height: 60),
+                NSRect(x: 0, y: 0, width: 1_200, height: 712)
+            ),
+            (
+                "a bar against the left edge leaves the canvas to its right",
+                NSRect(x: 0, y: 300, width: 200, height: 60),
+                NSRect(x: 208, y: 0, width: 992, height: 800)
+            ),
+            (
+                "a bar against the right edge leaves the canvas to its left",
+                NSRect(x: 1_000, y: 300, width: 200, height: 60),
+                NSRect(x: 0, y: 0, width: 992, height: 800)
+            ),
+            (
+                "a bar somewhere else entirely costs the bounds nothing",
+                NSRect(x: 2_000, y: 2_000, width: 400, height: 60),
+                bounds
+            ),
+            ("a hidden bar costs the bounds nothing", .zero, bounds),
+            ("a bar that covers everything leaves the bounds as they were", bounds, bounds),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                OverlayWindow.placementBounds(bounds, clearing: testCase.bar, gap: gap),
+                testCase.expected,
+                testCase.name)
+        }
+    }
+
+    func testAToolbarActionNeverSwitchesToSelectAfterCommittingText() throws {
+        defaults.selectAfterPlacingText = true
+        let field = try XCTUnwrap(startEditingAnnotationText())
+        field.stringValue = "Keep me"
+        field.currentEditor()?.string = "Keep me"
+
+        window.performToolbarAction(.undo)
+
+        XCTAssertNil(window.overlayView.activeTextField)
+        XCTAssertEqual(
+            window.overlayView.currentTool, .text,
+            "Pressing a toolbar button is not the user finishing a label, so the opt-in switch "
+                + "to Select must not fire here")
     }
 
     private func toolbarToggleEvent(

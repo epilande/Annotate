@@ -30,6 +30,11 @@ final class ToolbarPanel: NSPanel {
     /// child window along when its parent moves, preserving the offset, so a reported move that
     /// still matches this one is the overlay shifting rather than the user dragging the bar.
     private var lastKnownOffset: NSPoint?
+    /// True between the mouse-down on the bar and the matching mouse-up. A drag reports a move
+    /// per frame, so the writes are held back and folded into one at the end of the gesture.
+    private var isUserDragging = false
+    /// A move seen during a drag that still has to be written down when the drag ends.
+    private var hasPendingSave = false
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
@@ -49,7 +54,6 @@ final class ToolbarPanel: NSPanel {
         isOpaque = false
         hasShadow = false
         isMovableByWindowBackground = true
-        becomesKeyOnlyIfNeeded = true
         hidesOnDeactivate = false
         isRestorable = false
         isReleasedWhenClosed = false
@@ -76,7 +80,16 @@ final class ToolbarPanel: NSPanel {
     /// on its own for real drags, but a nonactivating panel in an inactive app does not always
     /// get that far, so start the drag explicitly.
     override func mouseDown(with event: NSEvent) {
+        isUserDragging = true
         performDrag(with: event)
+        isUserDragging = false
+        // `performDrag` blocks until the mouse comes up, so this is the end of the gesture and
+        // the one place the drag has to be written down. A click that moved nothing leaves the
+        // flag clear, so it never records a position the user did not choose.
+        if hasPendingSave {
+            hasPendingSave = false
+            savePosition()
+        }
     }
 
     // MARK: - Attachment
@@ -85,9 +98,13 @@ final class ToolbarPanel: NSPanel {
     /// in which it can be on screen.
     var isAttached: Bool { parent != nil }
 
+    /// Joins the overlay's window group and puts the bar back where the user left it. A detached
+    /// bar is not carried along when the overlay moves or resizes, so its frame has gone stale by
+    /// the time it is shown again and has to be rebuilt from the saved offset.
     func attach(to overlay: OverlayWindow) {
         guard parent == nil else { return }
         overlay.addChildWindow(self, ordered: .above)
+        restoreSavedPosition()
     }
 
     func detach() {
@@ -124,12 +141,18 @@ final class ToolbarPanel: NSPanel {
     /// carries a child window along with its parent, so only the width the bar may occupy and
     /// the clamp against the new frame need redoing. The move is bracketed so the bar being
     /// dragged along by its parent is never mistaken for the user parking it somewhere.
+    ///
+    /// A detached bar is not carried along, so its frame is a stale absolute position that is
+    /// worth neither clamping nor recording as an offset. It is still measured, because its size
+    /// has to be right before `attach` places it from the saved offset.
     func aroundOverlayFrameChange(_ body: () -> Void) {
+        let wasPlacing = isPlacingProgrammatically
         isPlacingProgrammatically = true
         body()
-        isPlacingProgrammatically = false
+        isPlacingProgrammatically = wasPlacing
 
         fitToContent()
+        guard isAttached else { return }
         place(frame)
     }
 
@@ -179,18 +202,27 @@ final class ToolbarPanel: NSPanel {
 
     // MARK: - Persistence
 
+    /// Two paths reach this. A drag the panel started itself only notes that there is something
+    /// to save, because `mouseDown` writes it once when the gesture ends rather than on every
+    /// one of its 60-plus frames. A move AppKit made on its own, through
+    /// `isMovableByWindowBackground`, has no such end to wait for, so it is written on every
+    /// frame of that drag, as it always has been.
     @objc private func panelDidMove() {
         guard !isPlacingProgrammatically else { return }
         guard let offset = currentOffset, offset != lastKnownOffset else { return }
         lastKnownOffset = offset
-        savePosition()
+        if isUserDragging {
+            hasPendingSave = true
+        } else {
+            savePosition()
+        }
     }
 
     /// Stores the bar's offset from the overlay origin, keyed by display. Absolute screen
     /// coordinates would not survive a resolution change or a display being unplugged, and
     /// `setFrameAutosaveName` would both store them and write to `UserDefaults.standard`
     /// instead of the suite the app was given.
-    func savePosition() {
+    private func savePosition() {
         guard let overlay, let key = Self.displayKey(for: overlay) else { return }
         let offset = [
             Double(frame.minX - overlay.frame.minX),
