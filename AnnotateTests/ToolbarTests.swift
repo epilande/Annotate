@@ -99,6 +99,38 @@ final class ToolbarTests: XCTestCase {
             "An offset, not a screen coordinate, so it survives a resolution change")
     }
 
+    func testADragWritesOnceAtTheEndRatherThanOnEveryFrame() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        // Below the bar in the panel's own coordinates, so the synthetic press cannot reach
+        // the hosting view and start a real drag. Only the panel's event bookkeeping runs.
+        let miss = NSPoint(x: panel.frame.width / 2, y: -50)
+
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown, location: miss, windowNumber: panel.windowNumber)))
+
+        panel.setFrameOrigin(NSPoint(x: window.frame.minX + 100, y: window.frame.minY + 300))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+        panel.setFrameOrigin(NSPoint(x: window.frame.minX + 200, y: window.frame.minY + 350))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        XCTAssertNil(
+            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+            "A drag reports a move per frame; none of them is worth a write of its own")
+
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
+
+        let stored = try XCTUnwrap(
+            defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            "Letting go of the bar is what records where the user parked it")
+        XCTAssertEqual(stored, [200, 350])
+    }
+
     func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
         defaults.set([key: [140.0, 500.0]], forKey: UserDefaults.toolbarPositionsKey)
@@ -186,6 +218,50 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertEqual(reopened.toolbarFrame.minY, 20, accuracy: 0.5)
         XCTAssertEqual(reopened.toolbarFrame.midX, 600, accuracy: 0.5)
+    }
+
+    func testABarWithNoAppBehindItNeitherReadsNorWritesTheStandardSuite() throws {
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        let standard = UserDefaults.standard
+        let saved = standard.object(forKey: UserDefaults.toolbarPositionsKey)
+        defer {
+            if let saved {
+                standard.set(saved, forKey: UserDefaults.toolbarPositionsKey)
+            } else {
+                standard.removeObject(forKey: UserDefaults.toolbarPositionsKey)
+            }
+            AppDelegate.shared = appDelegate
+        }
+
+        let planted = [key: [140.0, 500.0]]
+        standard.set(planted, forKey: UserDefaults.toolbarPositionsKey)
+        AppDelegate.shared = nil
+
+        let detachedFromAnyApp = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { detachedFromAnyApp.close() }
+        // Whether the bar starts attached is read from a suite this test does not own, so ask
+        // for it rather than assuming it. Attaching is also what places it from a saved offset.
+        let panel = try XCTUnwrap(detachedFromAnyApp.toolbarPanel)
+        panel.attach(to: detachedFromAnyApp)
+
+        XCTAssertEqual(
+            detachedFromAnyApp.toolbarFrame.minY, 20, accuracy: 0.5,
+            "With no app behind it the bar has no stored position to honor, so it takes the "
+                + "default placement rather than the developer's own")
+        XCTAssertEqual(detachedFromAnyApp.toolbarFrame.midX, 600, accuracy: 0.5)
+
+        panel.setFrameOrigin(NSPoint(x: 300, y: 400))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        XCTAssertEqual(
+            standard.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            [140, 500],
+            "A bar with no user behind it must not rewrite the developer's own suite")
     }
 
     func testVisibilityPersistsAndUpdatesEveryOverlay() throws {

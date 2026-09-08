@@ -75,6 +75,23 @@ final class ToolbarPanel: NSPanel {
 
     override var canBecomeMain: Bool { false }
 
+    /// Marks the whole press as a user gesture, whichever way AppKit ends up moving the bar.
+    /// `isMovableByWindowBackground` can swallow the press before `mouseDown` ever runs, and a
+    /// native move like that reports a move per frame of the drag, so the flag has to be set
+    /// here rather than in `mouseDown` alone or those frames would each be written down.
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            isUserDragging = true
+            super.sendEvent(event)
+        case .leftMouseUp:
+            super.sendEvent(event)
+            endUserDrag()
+        default:
+            super.sendEvent(event)
+        }
+    }
+
     /// A press the SwiftUI chips did not consume falls through to the window, which is the
     /// signal that the user grabbed the bar itself. `isMovableByWindowBackground` covers this
     /// on its own for real drags, but a nonactivating panel in an inactive app does not always
@@ -82,14 +99,22 @@ final class ToolbarPanel: NSPanel {
     override func mouseDown(with event: NSEvent) {
         isUserDragging = true
         performDrag(with: event)
+        // `performDrag` may swallow the whole gesture, mouse-up included, in which case
+        // `sendEvent` never sees the end of it and this is the only place left to close it.
+        // The button being back up is what tells the two apart: if it is still down the drag
+        // is still running, so leave the gesture open for the mouse-up to close.
+        guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        endUserDrag()
+    }
+
+    /// Closes a user gesture and writes down the move it made, if it made one. A click that
+    /// moved nothing leaves the pending flag clear, so it never records a position the user
+    /// did not choose. Safe to call more than once for the same gesture.
+    private func endUserDrag() {
         isUserDragging = false
-        // `performDrag` blocks until the mouse comes up, so this is the end of the gesture and
-        // the one place the drag has to be written down. A click that moved nothing leaves the
-        // flag clear, so it never records a position the user did not choose.
-        if hasPendingSave {
-            hasPendingSave = false
-            savePosition()
-        }
+        guard hasPendingSave else { return }
+        hasPendingSave = false
+        savePosition()
     }
 
     // MARK: - Attachment
@@ -202,11 +227,12 @@ final class ToolbarPanel: NSPanel {
 
     // MARK: - Persistence
 
-    /// Two paths reach this. A drag the panel started itself only notes that there is something
-    /// to save, because `mouseDown` writes it once when the gesture ends rather than on every
-    /// one of its 60-plus frames. A move AppKit made on its own, through
-    /// `isMovableByWindowBackground`, has no such end to wait for, so it is written on every
-    /// frame of that drag, as it always has been.
+    /// A move made during a user gesture only notes that there is something to save, because
+    /// the end of the gesture writes it once rather than on every one of its 60-plus frames.
+    /// Both drag paths are covered: `sendEvent` sees the press whether AppKit moves the bar
+    /// itself or hands the drag to `mouseDown`. What is left to write immediately is a move
+    /// with no gesture behind it, which is code placing the bar somewhere the user should
+    /// find it again.
     @objc private func panelDidMove() {
         guard !isPlacingProgrammatically else { return }
         guard let offset = currentOffset, offset != lastKnownOffset else { return }
@@ -223,23 +249,32 @@ final class ToolbarPanel: NSPanel {
     /// `setFrameAutosaveName` would both store them and write to `UserDefaults.standard`
     /// instead of the suite the app was given.
     private func savePosition() {
-        guard let overlay, let key = Self.displayKey(for: overlay) else { return }
+        guard let defaults = Self.defaults,
+            let overlay, let key = Self.displayKey(for: overlay)
+        else { return }
         let offset = [
             Double(frame.minX - overlay.frame.minX),
             Double(frame.minY - overlay.frame.minY),
         ]
-        var stored = Self.defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey) ?? [:]
+        var stored = defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey) ?? [:]
         guard stored[key] as? [Double] != offset else { return }
         stored[key] = offset
-        Self.defaults.set(stored, forKey: UserDefaults.toolbarPositionsKey)
+        defaults.set(stored, forKey: UserDefaults.toolbarPositionsKey)
     }
 
-    private static var defaults: UserDefaults {
-        AppDelegate.shared?.userDefaults ?? .standard
+    /// The suite the app was given, and nothing when there is no app behind the bar. A bar
+    /// standing on its own (unit tests, previews) has no user whose position it could be
+    /// remembering, so it must neither read nor rewrite the developer's own standard suite:
+    /// falling back to it would let a real toolbar position leak into a test and would let a
+    /// test write one back out. Same reasoning as `OverlayView.commitTextField`, which only
+    /// broadcasts when the view belongs to a live overlay set.
+    private static var defaults: UserDefaults? {
+        AppDelegate.shared?.userDefaults
     }
 
     private static func savedOffset(for overlay: OverlayWindow) -> NSPoint? {
-        guard let key = displayKey(for: overlay),
+        guard let defaults,
+            let key = displayKey(for: overlay),
             let stored = defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key]
                 as? [Double],
             stored.count == 2,
