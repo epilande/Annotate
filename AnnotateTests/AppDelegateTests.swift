@@ -457,39 +457,6 @@ final class AppDelegateTests: XCTestCase, Sendable {
         CursorHighlightManager.shared = CursorHighlightManager()
     }
 
-    // MARK: - Previous Tool Tracking Tests
-
-    func testSwitchToolSavesPreviousToolForTextMode() {
-        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
-            XCTFail("No overlay window available")
-            return
-        }
-
-        appDelegate.enableArrowMode(NSMenuItem())
-        XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
-
-        appDelegate.enableTextMode(NSMenuItem())
-
-        XCTAssertEqual(overlayWindow.overlayView.currentTool, .text)
-        XCTAssertEqual(overlayWindow.overlayView.previousTool, .arrow, "previousTool should be .arrow after switching from arrow to text")
-    }
-
-    func testSwitchToolDoesNotSavePreviousToolForOtherModes() {
-        guard let overlayWindow = appDelegate.overlayWindows.values.first else {
-            XCTFail("No overlay window available")
-            return
-        }
-
-        overlayWindow.overlayView.previousTool = .pen
-        appDelegate.enableArrowMode(NSMenuItem())
-
-        let previousToolBefore = overlayWindow.overlayView.previousTool
-        appDelegate.enableLineMode(NSMenuItem())
-
-        XCTAssertEqual(overlayWindow.overlayView.currentTool, .line)
-        XCTAssertEqual(overlayWindow.overlayView.previousTool, previousToolBefore, "previousTool should remain unchanged when not switching to text mode")
-    }
-
     // MARK: - Default Tool Tests
 
     func testSwitchToolPersistsLastUsedTool() {
@@ -599,34 +566,31 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
-    func testInternalToolRestoreDoesNotOverwriteLastUsedTool() {
+    func testInternalToolSwitchDoesNotOverwriteLastUsedTool() throws {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window available")
             return
         }
 
-        // restorePreviousTool reads the opt-in revert flag from UserDefaults.standard, so
-        // enable it for this test and restore whatever was there afterwards.
-        let savedRevertAfterText = UserDefaults.standard.object(
-            forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        UserDefaults.standard.set(true, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-        defer {
-            if let saved = savedRevertAfterText {
-                UserDefaults.standard.set(saved, forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: UserDefaults.returnToPreviousToolAfterTextKey)
-            }
-        }
+        appDelegate.userDefaults.selectAfterPlacingText = true
 
         appDelegate.enablePenMode(NSMenuItem())
         appDelegate.enableTextMode(NSMenuItem())
         XCTAssertEqual(testDefaults.lastUsedTool, .text, "Explicitly switching to text should persist it as last used")
-        XCTAssertEqual(overlayWindow.overlayView.previousTool, .pen)
 
-        overlayWindow.overlayView.restorePreviousTool()
+        let overlayView: OverlayView = try XCTUnwrap(overlayWindow.overlayView)
+        let point = NSPoint(x: 100, y: 100)
+        overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red,
+            fontSize: defaultTextAnnotationFontSize
+        )
+        overlayView.createTextField(at: point, withText: "", width: 100)
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        textField.stringValue = "Hello"
+        overlayView.commitTextField(textField)
 
-        XCTAssertEqual(overlayWindow.overlayView.currentTool, .pen, "Finishing a text annotation should restore the previous tool")
-        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Internal tool restores should not overwrite the persisted last-used tool")
+        XCTAssertEqual(overlayView.currentTool, .select, "Committing a label should switch to Select")
+        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Internal tool switches should not overwrite the persisted last-used tool")
     }
 }
 

@@ -13,10 +13,18 @@ enum TestConstants {
 
 // MARK: - Test UserDefaults
 enum TestUserDefaults {
+    /// One suite per test process. Xcode's parallel testing isolates classes by process, so
+    /// parallel runs cannot clobber each other, and inside one process tests run serially
+    /// and `create()` clears the suite before handing it out. A per-call UUID would isolate
+    /// just as well, but the preferences daemon keeps an empty plist for every suite name
+    /// it has ever seen, which added over a hundred files to the app container per run.
+    private static let suiteName =
+        "\(TestConstants.testSuiteName).\(ProcessInfo.processInfo.processIdentifier)"
+
     /// Creates a fresh isolated UserDefaults instance for testing
-    /// - Returns: A new UserDefaults suite completely isolated from production data
+    /// - Returns: An empty UserDefaults suite completely isolated from production data
     static func create() -> UserDefaults {
-        let suite = UserDefaults(suiteName: TestConstants.testSuiteName)!
+        let suite = UserDefaults(suiteName: suiteName)!
         clear(suite)
         return suite
     }
@@ -29,9 +37,10 @@ enum TestUserDefaults {
         userDefaults.synchronize()
     }
 
-    /// Completely removes the test suite from the system
+    /// Completely removes this process's test suite so no test value is left behind in the
+    /// app container.
     static func removeSuite() {
-        UserDefaults.standard.removePersistentDomain(forName: TestConstants.testSuiteName)
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
         UserDefaults.standard.synchronize()
     }
 }
