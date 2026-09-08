@@ -20,7 +20,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.epilande.Annotate
-        MARKETING_VERSION: "1.4.1"
+        MARKETING_VERSION: "1.5.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_ENTITLEMENTS: Annotate/Annotate.entitlements
         SWIFT_VERSION: "5.0"
