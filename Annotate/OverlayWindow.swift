@@ -245,7 +245,9 @@ class OverlayWindow: NSPanel {
         // stale picker stays on screen behind the bar.
         cancelQuickPicker()
         if let activeField = overlayView.activeTextField {
-            overlayView.finalizeTextAnnotation(activeField)
+            // Commit through the same path as Enter, Esc, and clicking away so the
+            // "switch to Select after placing text" preference is honored here too.
+            overlayView.commitTextField(activeField)
         }
         switch action {
         case .tool(let tool):
