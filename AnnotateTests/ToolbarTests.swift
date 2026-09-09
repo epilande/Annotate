@@ -131,6 +131,90 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(stored, [200, 350])
     }
 
+    func testADragDoesNotChangeTheToolEvenWhenThePointerStaysOnTheChip() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+
+        // Same miss as the persistence drag test: inside-panel coordinates would reach the
+        // hosting view and start a real performDrag. The bookkeeping is what we need here.
+        let miss = NSPoint(x: panel.frame.width / 2, y: -50)
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown, location: miss, windowNumber: panel.windowNumber)))
+
+        let origin = panel.frame.origin
+        panel.setFrameOrigin(NSPoint(x: origin.x + 80, y: origin.y + 50))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        XCTAssertTrue(
+            panel.isSuppressingChipAction,
+            "The bar moved with the press; a chip mouse-up must not count as choosing a tool")
+        panel.performChipAction(.tool(.highlighter))
+        XCTAssertNil(
+            spy.selectedTool,
+            "A drag that started on a chip must not switch tools — the chip rides with the pointer")
+
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
+
+        XCTAssertFalse(panel.isSuppressingChipAction)
+        panel.performChipAction(.tool(.highlighter))
+        XCTAssertEqual(
+            spy.selectedTool, .highlighter,
+            "A chip click after the drag has ended must still switch tools")
+    }
+
+    func testPointerTravelPastTheThresholdSuppressesTheChipWithoutMovingTheBar() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+
+        let start = NSPoint(x: panel.frame.width / 2, y: -50)
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown, location: start, windowNumber: panel.windowNumber)))
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDragged,
+                    location: NSPoint(x: start.x + ToolbarPress.dragThreshold + 1, y: start.y),
+                    windowNumber: panel.windowNumber)))
+
+        XCTAssertTrue(
+            panel.isSuppressingChipAction,
+            "A clamped bar that cannot follow the pointer still has to treat this as a drag")
+        panel.performChipAction(.tool(.rectangle))
+        XCTAssertNil(spy.selectedTool)
+    }
+
+    func testAChipClickWithoutADragStillChangesTheTool() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+
+        let miss = NSPoint(x: panel.frame.width / 2, y: -50)
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseDown, location: miss, windowNumber: panel.windowNumber)))
+        panel.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
+
+        XCTAssertFalse(panel.isSuppressingChipAction)
+        panel.performChipAction(.tool(.arrow))
+        XCTAssertEqual(spy.selectedTool, .arrow)
+    }
+
     func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
         defaults.set([key: [140.0, 500.0]], forKey: UserDefaults.toolbarPositionsKey)
@@ -700,5 +784,72 @@ private final class ToolbarAppDelegateSpy: AppDelegate {
 
     override func toggleFadeMode(_ sender: Any?) {
         didToggleFade = true
+    }
+}
+
+@MainActor
+final class ToolbarPressTests: XCTestCase {
+    func testAStationaryPressIsAClick() {
+        let press = ToolbarPress()
+        press.begin(screenPoint: NSPoint(x: 100, y: 80), windowOrigin: NSPoint(x: 40, y: 20))
+        press.consider(screenPoint: NSPoint(x: 100, y: 80), windowOrigin: NSPoint(x: 40, y: 20))
+        XCTAssertFalse(press.isDrag)
+    }
+
+    func testPointerTravelAtTheThresholdIsADrag() {
+        let press = ToolbarPress()
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.consider(
+            screenPoint: NSPoint(x: ToolbarPress.dragThreshold, y: 0), windowOrigin: .zero)
+        XCTAssertTrue(press.isDrag)
+    }
+
+    func testPointerTravelJustBelowTheThresholdIsAClick() {
+        let press = ToolbarPress()
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.consider(
+            screenPoint: NSPoint(x: ToolbarPress.dragThreshold - 0.5, y: 0), windowOrigin: .zero)
+        XCTAssertFalse(press.isDrag)
+    }
+
+    func testTheBarMovingAtTheThresholdIsADragEvenIfThePointerStaysInTheChip() {
+        let press = ToolbarPress()
+        let pointer = NSPoint(x: 50, y: 20)
+        press.begin(screenPoint: pointer, windowOrigin: NSPoint(x: 100, y: 80))
+        press.consider(
+            screenPoint: pointer,
+            windowOrigin: NSPoint(x: 100 + ToolbarPress.dragThreshold, y: 80))
+        XCTAssertTrue(
+            press.isDrag,
+            "The chip rides with the bar, so a drag cannot be judged by the pointer staying inside it")
+    }
+
+    func testEndClearsTheDragSoTheNextClickCanFire() {
+        let press = ToolbarPress()
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.consider(screenPoint: NSPoint(x: 40, y: 0), windowOrigin: .zero)
+        XCTAssertTrue(press.isDrag)
+
+        press.end()
+        XCTAssertFalse(press.isDrag)
+
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.consider(screenPoint: .zero, windowOrigin: .zero)
+        XCTAssertFalse(press.isDrag)
+    }
+
+    func testDeliverSkipsTheActionDuringADragAndRunsItOnAClick() {
+        let press = ToolbarPress()
+        var delivered: ToolType?
+
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.consider(screenPoint: NSPoint(x: 40, y: 0), windowOrigin: .zero)
+        press.deliver { delivered = .highlighter }
+        XCTAssertNil(delivered)
+
+        press.end()
+        press.begin(screenPoint: .zero, windowOrigin: .zero)
+        press.deliver { delivered = .arrow }
+        XCTAssertEqual(delivered, .arrow)
     }
 }
