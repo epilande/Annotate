@@ -364,10 +364,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func screenParametersChanged() {
-        // Remove windows for screens that no longer exist
+        // Remove windows for screens that no longer exist. Dropping them from the dictionary is
+        // not enough: the toolbar is a child window of its own, and only `close()` tears it down.
+        let removedWindows = overlayWindows.filter { screen, _ in
+            !NSScreen.screens.contains(screen)
+        }.values
         overlayWindows = overlayWindows.filter { screen, _ in
             NSScreen.screens.contains(screen)
         }
+        removedWindows.forEach { $0.close() }
 
         // Add new overlays for newly added screens
         for screen in NSScreen.screens {

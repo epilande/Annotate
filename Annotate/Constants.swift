@@ -17,6 +17,9 @@ extension UserDefaults {
     static let hideToolFeedbackKey = "HideToolFeedback"
     static let toolbarVisibleKey = "ToolbarVisible"
     static let toolbarVisibleDefault = true
+    /// Where the user parked the floating toolbar, per display: display number to the bar's
+    /// [x, y] offset from its overlay window's origin.
+    static let toolbarPositionsKey = "ToolbarPositions"
     static let soundsEnabledKey = "SoundsEnabled"
     static let soundsEnabledDefault = false
     static let soundThemeKey = "SoundTheme"
