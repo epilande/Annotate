@@ -187,7 +187,6 @@ private extension View {
     func toolbarSegment() -> some View {
         padding(5)
             .toolbarGlassSegment()
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 5)
             .fixedSize()
     }
 
