@@ -32,8 +32,7 @@ final class ToolbarModel: ObservableObject {
 struct ToolbarView: View {
     @ObservedObject var model: ToolbarModel
     let perform: (ToolbarAction) -> Void
-
-    private static let chipCornerRadius: CGFloat = 11
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let spring = Animation.spring(response: 0.24, dampingFraction: 0.72)
 
@@ -52,29 +51,38 @@ struct ToolbarView: View {
                 }
             }
         }
-        .animation(spring, value: model.activeTool)
+        .animation(reduceMotion ? nil : spring, value: model.activeTool)
         .animation(spring, value: model.currentColor)
         .animation(spring, value: model.currentWidth)
         .animation(spring, value: model.fadeMode)
     }
 
     private var toolsSegment: some View {
-        segment {
+        HStack(spacing: 2) {
             ForEach(ToolType.allCases, id: \.self) { tool in
                 toolbarButton(identifier: "toolbar.tool.\(tool.rawValue)", action: {
                     perform(.tool(tool))
                 }) {
                     let active = model.activeTool == tool
                     chip(symbol: tool.symbolName, keycap: shortcut(for: tool.shortcutKey), active: active)
-                        .background {
-                            if active {
-                                RoundedRectangle(cornerRadius: Self.chipCornerRadius)
-                                    .fill(Color(nsColor: model.currentColor))
-                            }
+                        .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
+                            active ? $0 : nil
                         }
                 }
             }
         }
+        .backgroundPreferenceValue(SelectedToolBounds.self) { anchor in
+            GeometryReader { proxy in
+                if let anchor {
+                    let bounds = proxy[anchor]
+                    ToolbarSelectionLens(tint: Color(nsColor: model.currentColor))
+                        .frame(width: bounds.width, height: bounds.height)
+                        .position(x: bounds.midX, y: bounds.midY)
+                        .animation(reduceMotion ? nil : spring, value: bounds)
+                }
+            }
+        }
+        .toolbarSegment()
     }
 
     private var stateSegment: some View {
@@ -104,8 +112,7 @@ struct ToolbarView: View {
                 chip(symbol: "circle.lefthalf.filled", keycap: "␣", active: model.fadeMode)
                     .background {
                         if model.fadeMode {
-                            RoundedRectangle(cornerRadius: Self.chipCornerRadius)
-                                .fill(Color.primary.opacity(0.14))
+                            ToolbarSelectionLens()
                         }
                     }
             }
@@ -128,10 +135,7 @@ struct ToolbarView: View {
 
     private func segment<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 2) { content() }
-            .padding(5)
-            .toolbarGlassSegment()
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 5)
-            .fixedSize()
+            .toolbarSegment()
     }
 
     private func toolbarButton<Label: View>(
@@ -147,20 +151,16 @@ struct ToolbarView: View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
-            keycap(text, lit: active, inverted: active)
+            keycap(text, lit: active)
         }
-        .foregroundStyle(active ? Color.white : Color.primary.opacity(0.76))
+        .foregroundStyle(Color.primary.opacity(active ? 1 : 0.76))
         .chipPadding()
     }
 
-    private func keycap(_ text: String, lit: Bool = false, inverted: Bool = false) -> some View {
+    private func keycap(_ text: String, lit: Bool = false) -> some View {
         Text(text.uppercased())
             .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(
-                inverted
-                    ? Color.white.opacity(0.95)
-                    : Color.primary.opacity(lit ? 0.95 : 0.58)
-            )
+            .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
             .fixedSize()
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
@@ -175,7 +175,22 @@ struct ToolbarView: View {
     }
 }
 
+private struct SelectedToolBounds: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 private extension View {
+    func toolbarSegment() -> some View {
+        padding(5)
+            .toolbarGlassSegment()
+            .shadow(color: .black.opacity(0.28), radius: 14, y: 5)
+            .fixedSize()
+    }
+
     func chipPadding() -> some View {
         padding(.horizontal, 9)
             .padding(.vertical, 7)
