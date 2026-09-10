@@ -117,10 +117,16 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    /// Whether the cursor spotlight is on. Turning it on resets background dimming
+    /// to the `spotlightAutoDimEnabled` preference so dimming never surprises the user.
     var cursorHighlightEnabled: Bool {
         get { userDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey) }
         set {
+            let turningOn = newValue && !cursorHighlightEnabled
             userDefaults.set(newValue, forKey: UserDefaults.cursorHighlightEnabledKey)
+            if turningOn {
+                userDefaults.set(spotlightAutoDimEnabled, forKey: UserDefaults.spotlightDimmingEnabledKey)
+            }
             notifyStateChanged()
         }
     }
@@ -140,6 +146,39 @@ class CursorHighlightManager: @unchecked Sendable {
         }
         set {
             userDefaults.set(Double(newValue), forKey: UserDefaults.spotlightSizeKey)
+            notifyStateChanged()
+        }
+    }
+
+    // MARK: - Background Dimming Settings
+
+    /// Whether the screen darkens around the spotlight, leaving a clear area at the cursor.
+    var spotlightDimmingEnabled: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.spotlightDimmingEnabledKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.spotlightDimmingEnabledKey)
+            notifyStateChanged()
+        }
+    }
+
+    /// When on, enabling the cursor spotlight also turns on background dimming.
+    /// Dimming otherwise starts off each time the spotlight is enabled.
+    var spotlightAutoDimEnabled: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.spotlightAutoDimKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.spotlightAutoDimKey)
+            notifyStateChanged()
+        }
+    }
+
+    /// How dark the dimmed background gets, 0-1. Defaults to 0.5.
+    var spotlightDimmingOpacity: CGFloat {
+        get {
+            let stored = userDefaults.double(forKey: UserDefaults.spotlightDimmingOpacityKey)
+            return stored > 0 ? CGFloat(stored) : 0.5
+        }
+        set {
+            userDefaults.set(Double(newValue), forKey: UserDefaults.spotlightDimmingOpacityKey)
             notifyStateChanged()
         }
     }
@@ -212,13 +251,19 @@ class CursorHighlightManager: @unchecked Sendable {
         cursorHighlightAvailable && !isMouseDown
     }
 
+    /// Dimming stays visible during clicks, unlike the glow which yields to the ring.
+    var shouldShowDimming: Bool {
+        cursorHighlightAvailable && spotlightDimmingEnabled
+    }
+
     var hasActiveAnimation: Bool {
         releaseAnimation.map { !$0.isExpired } ?? false
     }
 
     /// Whether the animation loop should continue running
     var needsAnimationLoop: Bool {
-        shouldShowCursorHighlight || shouldShowRing || hasActiveAnimation || shouldShowActiveCursorOnAnyScreen()
+        shouldShowCursorHighlight || shouldShowDimming || shouldShowRing || hasActiveAnimation
+            || shouldShowActiveCursorOnAnyScreen()
     }
 
     // MARK: - Per-Screen Active Cursor

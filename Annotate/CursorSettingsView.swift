@@ -8,6 +8,10 @@ struct CursorSettingsView: View {
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
+    @State private var spotlightDimmingEnabled: Bool = CursorHighlightManager.shared.spotlightDimmingEnabled
+    @State private var spotlightAutoDimEnabled: Bool = CursorHighlightManager.shared.spotlightAutoDimEnabled
+    @State private var spotlightDimmingOpacity: Double =
+        Double(CursorHighlightManager.shared.spotlightDimmingOpacity) * 100
     @State private var activeCursorStyle: ActiveCursorStyle = CursorHighlightManager.shared.activeCursorStyle
     @State private var activeCursorSize: Double = Double(CursorHighlightManager.shared.activeCursorSize)
 
@@ -84,6 +88,36 @@ struct CursorSettingsView: View {
                         }
                     }
 
+                    Toggle(isOn: $spotlightDimmingEnabled) {
+                        Text("Dim Background")
+                        Text("Darken the screen except around the cursor")
+                    }
+                    .onChange(of: spotlightDimmingEnabled) { _, _ in
+                        CursorHighlightManager.shared.spotlightDimmingEnabled = spotlightDimmingEnabled
+                    }
+
+                    if spotlightDimmingEnabled {
+                        SettingsSliderRow(
+                            title: "Dimming Amount",
+                            value: $spotlightDimmingOpacity,
+                            range: 20...90,
+                            boundsText: { "\(Int($0))%" }
+                        )
+                        .onChange(of: spotlightDimmingOpacity) { _, newValue in
+                            Task { @MainActor in
+                                CursorHighlightManager.shared.spotlightDimmingOpacity = CGFloat(newValue / 100)
+                            }
+                        }
+                    }
+
+                    Toggle(isOn: $spotlightAutoDimEnabled) {
+                        Text("Dim Automatically")
+                        Text("Turn on background dimming whenever the spotlight is enabled")
+                    }
+                    .onChange(of: spotlightAutoDimEnabled) { _, _ in
+                        CursorHighlightManager.shared.spotlightAutoDimEnabled = spotlightAutoDimEnabled
+                    }
+
                     Toggle(isOn: $spotlightRequiresOverlay) {
                         Text("Only Show While Annotating")
                         Text("Show the spotlight only while the overlay is active")
@@ -152,6 +186,8 @@ struct CursorSettingsView: View {
         }
     }
 
+    /// Pulls the current manager values into local state so external changes
+    /// (menu bar toggles, shortcuts) are reflected while the pane is open.
     private func syncState() {
         clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
         cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
@@ -159,6 +195,9 @@ struct CursorSettingsView: View {
         effectColor = Color(CursorHighlightManager.shared.effectColor)
         effectSize = Double(CursorHighlightManager.shared.effectSize)
         spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
+        spotlightDimmingEnabled = CursorHighlightManager.shared.spotlightDimmingEnabled
+        spotlightAutoDimEnabled = CursorHighlightManager.shared.spotlightAutoDimEnabled
+        spotlightDimmingOpacity = Double(CursorHighlightManager.shared.spotlightDimmingOpacity) * 100
         activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
         activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
     }
