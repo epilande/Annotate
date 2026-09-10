@@ -75,7 +75,7 @@ struct ToolbarView: View {
             GeometryReader { proxy in
                 if let anchor {
                     let bounds = proxy[anchor]
-                    ToolbarSelectionLens(tint: Color(nsColor: model.currentColor))
+                    ToolbarSelectionLens()
                         .frame(width: bounds.width, height: bounds.height)
                         .position(x: bounds.midX, y: bounds.midY)
                         .animation(reduceMotion ? nil : spring, value: bounds)
