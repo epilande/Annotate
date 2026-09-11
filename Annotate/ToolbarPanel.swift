@@ -35,10 +35,17 @@ final class ToolbarPanel: NSPanel {
     private var isUserDragging = false
     /// A move seen during a drag that still has to be written down when the drag ends.
     private var hasPendingSave = false
+    /// Tells a chip click from a drag of the bar. Shared with the SwiftUI action closure so a
+    /// Button mouse-up that lands after the bar has moved can still be refused.
+    private let press: ToolbarPress
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
-        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: perform))
+        let press = ToolbarPress()
+        self.press = press
+        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: { action in
+            press.deliver { perform(action) }
+        }))
         measurer = NSHostingController(rootView: ToolbarView(model: model) { _ in })
 
         super.init(
@@ -79,12 +86,22 @@ final class ToolbarPanel: NSPanel {
     /// `isMovableByWindowBackground` can swallow the press before `mouseDown` ever runs, and a
     /// native move like that reports a move per frame of the drag, so the flag has to be set
     /// here rather than in `mouseDown` alone or those frames would each be written down.
+    ///
+    /// Chip actions are judged here too. SwiftUI's `Button` fires on mouse-up if the pointer is
+    /// still inside the control; the bar travels with the pointer, so that test is always true
+    /// during a drag. Screen-space travel (and the bar's own origin, when AppKit swallows the
+    /// dragged events) is what actually tells a click from a drag.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown:
             isUserDragging = true
+            press.begin(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
+            super.sendEvent(event)
+        case .leftMouseDragged:
+            press.consider(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
             super.sendEvent(event)
         case .leftMouseUp:
+            press.consider(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
             super.sendEvent(event)
             endUserDrag()
         default:
@@ -99,6 +116,9 @@ final class ToolbarPanel: NSPanel {
     override func mouseDown(with event: NSEvent) {
         isUserDragging = true
         performDrag(with: event)
+        // `performDrag` swallows dragged events, so judge the gesture against the bar's origin
+        // before closing it. Chip actions are refused while `press.isDrag` is still set.
+        press.consider(windowOrigin: frame.origin)
         // `performDrag` may swallow the whole gesture, mouse-up included, in which case
         // `sendEvent` never sees the end of it and this is the only place left to close it.
         // The button being back up is what tells the two apart: if it is still down the drag
@@ -112,9 +132,18 @@ final class ToolbarPanel: NSPanel {
     /// did not choose. Safe to call more than once for the same gesture.
     private func endUserDrag() {
         isUserDragging = false
+        press.end()
         guard hasPendingSave else { return }
         hasPendingSave = false
         savePosition()
+    }
+
+    /// True between mouse-down and mouse-up once the press has moved far enough to count as a
+    /// drag rather than a chip click.
+    var isSuppressingChipAction: Bool { press.isDrag }
+
+    private func screenPoint(for event: NSEvent) -> NSPoint {
+        convertToScreen(NSRect(origin: event.locationInWindow, size: .zero)).origin
     }
 
     // MARK: - Attachment
@@ -239,6 +268,7 @@ final class ToolbarPanel: NSPanel {
         lastKnownOffset = offset
         if isUserDragging {
             hasPendingSave = true
+            press.consider(windowOrigin: frame.origin)
         } else {
             savePosition()
         }
@@ -292,6 +322,52 @@ final class ToolbarPanel: NSPanel {
                 as? NSNumber
         else { return nil }
         return number.stringValue
+    }
+}
+
+/// Distinguishes a chip click from a drag of the floating bar.
+///
+/// SwiftUI's `Button` fires on mouse-up when the pointer is still inside the control. The bar
+/// travels with the pointer, so that test is always true during a drag. The press has to be
+/// judged in screen space instead, and against the bar's own origin when AppKit swallows the
+/// dragged events (the `performDrag` fallback).
+final class ToolbarPress {
+    static let dragThreshold: CGFloat = 4
+
+    private var startScreenPoint: NSPoint?
+    private var startWindowOrigin: NSPoint?
+    private(set) var isDrag = false
+
+    func begin(screenPoint: NSPoint, windowOrigin: NSPoint) {
+        startScreenPoint = screenPoint
+        startWindowOrigin = windowOrigin
+        isDrag = false
+    }
+
+    func consider(screenPoint: NSPoint? = nil, windowOrigin: NSPoint? = nil) {
+        guard !isDrag else { return }
+        if let start = startScreenPoint, let point = screenPoint,
+            hypot(point.x - start.x, point.y - start.y) >= Self.dragThreshold
+        {
+            isDrag = true
+            return
+        }
+        if let start = startWindowOrigin, let origin = windowOrigin,
+            hypot(origin.x - start.x, origin.y - start.y) >= Self.dragThreshold
+        {
+            isDrag = true
+        }
+    }
+
+    func end() {
+        startScreenPoint = nil
+        startWindowOrigin = nil
+        isDrag = false
+    }
+
+    func deliver(_ body: () -> Void) {
+        guard !isDrag else { return }
+        body()
     }
 }
 
