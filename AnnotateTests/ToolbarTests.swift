@@ -133,6 +133,7 @@ final class ToolbarTests: XCTestCase {
 
     func testADragDoesNotChangeTheToolEvenWhenThePointerStaysOnTheChip() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
+        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -152,7 +153,7 @@ final class ToolbarTests: XCTestCase {
         XCTAssertTrue(
             panel.isSuppressingChipAction,
             "The bar moved with the press; a chip mouse-up must not count as choosing a tool")
-        panel.performChipAction(.tool(.highlighter))
+        host.rootView.perform(.tool(.highlighter))
         XCTAssertNil(
             spy.selectedTool,
             "A drag that started on a chip must not switch tools — the chip rides with the pointer")
@@ -163,7 +164,7 @@ final class ToolbarTests: XCTestCase {
                     type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
 
         XCTAssertFalse(panel.isSuppressingChipAction)
-        panel.performChipAction(.tool(.highlighter))
+        host.rootView.perform(.tool(.highlighter))
         XCTAssertEqual(
             spy.selectedTool, .highlighter,
             "A chip click after the drag has ended must still switch tools")
@@ -171,6 +172,7 @@ final class ToolbarTests: XCTestCase {
 
     func testPointerTravelPastTheThresholdSuppressesTheChipWithoutMovingTheBar() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
+        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -190,12 +192,13 @@ final class ToolbarTests: XCTestCase {
         XCTAssertTrue(
             panel.isSuppressingChipAction,
             "A clamped bar that cannot follow the pointer still has to treat this as a drag")
-        panel.performChipAction(.tool(.rectangle))
+        host.rootView.perform(.tool(.rectangle))
         XCTAssertNil(spy.selectedTool)
     }
 
     func testAChipClickWithoutADragStillChangesTheTool() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
+        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -211,7 +214,7 @@ final class ToolbarTests: XCTestCase {
                     type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
 
         XCTAssertFalse(panel.isSuppressingChipAction)
-        panel.performChipAction(.tool(.arrow))
+        host.rootView.perform(.tool(.arrow))
         XCTAssertEqual(spy.selectedTool, .arrow)
     }
 

@@ -38,11 +38,9 @@ final class ToolbarPanel: NSPanel {
     /// Tells a chip click from a drag of the bar. Shared with the SwiftUI action closure so a
     /// Button mouse-up that lands after the bar has moved can still be refused.
     private let press: ToolbarPress
-    private let performAction: (ToolbarAction) -> Void
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
-        self.performAction = perform
         let press = ToolbarPress()
         self.press = press
         host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: { action in
@@ -138,12 +136,6 @@ final class ToolbarPanel: NSPanel {
         guard hasPendingSave else { return }
         hasPendingSave = false
         savePosition()
-    }
-
-    /// Chip actions from the SwiftUI bar. Refuses the action when the in-flight press has
-    /// already turned into a drag, so moving the bar cannot change the tool.
-    func performChipAction(_ action: ToolbarAction) {
-        press.deliver { performAction(action) }
     }
 
     /// True between mouse-down and mouse-up once the press has moved far enough to count as a
