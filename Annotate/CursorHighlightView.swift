@@ -56,6 +56,7 @@ class CursorHighlightView: NSView {
     private func setupLayers() {
         // Dimming layer (darkens everything except a hole around the cursor)
         let dimming = CAShapeLayer()
+        dimming.name = "dimming"
         dimming.fillRule = .evenOdd
         dimming.fillColor = Self.blackCG
         dimming.lineWidth = 0
@@ -65,6 +66,7 @@ class CursorHighlightView: NSView {
 
         // Spotlight layer (follows cursor when enabled)
         let spotlight = CAShapeLayer()
+        spotlight.name = "spotlight"
         spotlight.lineWidth = 0
         spotlight.opacity = 0
         layer?.addSublayer(spotlight)
