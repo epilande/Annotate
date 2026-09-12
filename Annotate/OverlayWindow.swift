@@ -721,6 +721,10 @@ class OverlayWindow: NSPanel {
             if performToolShortcut(mappedTo: key) {
                 return true
             }
+            if key == ShortcutManager.shared.getShortcut(for: .toggleBackgroundDimming) {
+                toggleBackgroundDimming(with: event)
+                return true
+            }
             stepActiveLadder(key == "[" ? -1 : 1)
             return true
         }
@@ -1585,14 +1589,7 @@ class OverlayWindow: NSPanel {
                 return
             case ShortcutManager.shared.getShortcut(for: .toggleBackgroundDimming):
                 if isEditingAnnotationText { break }
-                if !event.isARepeat {
-                    let manager = CursorHighlightManager.shared
-                    manager.toggleSpotlightDimming()
-                    showToggleFeedback(
-                        manager.spotlightDimmingEnabled ? "Dimming On" : "Dimming Off",
-                        icon: manager.spotlightDimmingEnabled ? "🌘" : "☀️"
-                    )
-                }
+                toggleBackgroundDimming(with: event)
                 return
             default:
                 break
@@ -1942,6 +1939,16 @@ class OverlayWindow: NSPanel {
                 direction: direction))
     }
     
+    private func toggleBackgroundDimming(with event: NSEvent) {
+        guard !event.isARepeat else { return }
+        let manager = CursorHighlightManager.shared
+        manager.toggleSpotlightDimming()
+        showToggleFeedback(
+            manager.spotlightDimmingEnabled ? "Dimming On" : "Dimming Off",
+            icon: manager.spotlightDimmingEnabled ? "🌘" : "☀️"
+        )
+    }
+
     func showToggleFeedback(_ text: String, icon: String) {
         let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
         guard !hideToolFeedback else { return }

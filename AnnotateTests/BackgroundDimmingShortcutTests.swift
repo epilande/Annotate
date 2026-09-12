@@ -18,6 +18,7 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
         window = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
             styleMask: .borderless, backing: .buffered, defer: false)
+        window.overlayView.pickerUserDefaultsOverride = defaults
     }
 
     override func tearDown() {
@@ -57,6 +58,47 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
         XCTAssertFalse(CursorHighlightManager.shared.spotlightDimmingEnabled)
     }
 
+    func testBracketBindingsTakePrecedenceOverSizeStepping() throws {
+        let manager = CursorHighlightManager.shared
+        window.overlayView.currentTool = .pen
+
+        for (characters, keyCode): (String, UInt16) in [("[", 33), ("]", 30)] {
+            ShortcutManager.shared.setShortcut(characters, for: .toggleBackgroundDimming)
+            for useSendEvent in [false, true] {
+                manager.cursorHighlightEnabled = false
+                manager.spotlightDimmingEnabled = false
+                window.overlayView.currentLineWidth = 3
+                let key = try XCTUnwrap(TestEvents.createKeyEvent(
+                    type: .keyDown, keyCode: keyCode, characters: characters,
+                    windowNumber: window.windowNumber))
+                let repeatKey = try XCTUnwrap(TestEvents.createKeyEvent(
+                    type: .keyDown, keyCode: keyCode, characters: characters,
+                    windowNumber: window.windowNumber, isARepeat: true))
+
+                if useSendEvent {
+                    window.sendEvent(key)
+                    window.sendEvent(repeatKey)
+                } else {
+                    window.keyDown(with: key)
+                    window.keyDown(with: repeatKey)
+                }
+
+                XCTAssertTrue(manager.cursorHighlightEnabled)
+                XCTAssertTrue(manager.spotlightDimmingEnabled)
+                XCTAssertEqual(window.overlayView.currentLineWidth, 3)
+
+                if useSendEvent {
+                    window.sendEvent(key)
+                } else {
+                    window.keyDown(with: key)
+                }
+                XCTAssertFalse(manager.spotlightDimmingEnabled)
+                XCTAssertTrue(manager.cursorHighlightEnabled)
+                XCTAssertEqual(window.overlayView.currentLineWidth, 3)
+            }
+        }
+    }
+
     func testRepeatsAndModifiedKeysDoNotToggleDimming() throws {
         ShortcutManager.shared.setShortcut("j", for: .toggleBackgroundDimming)
         let repeatKey = try XCTUnwrap(TestEvents.createKeyEvent(
@@ -73,13 +115,16 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
     }
 
     func testShortcutDoesNotToggleWhileEditingAnnotationText() throws {
-        ShortcutManager.shared.setShortcut("j", for: .toggleBackgroundDimming)
         window.overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Label")
         XCTAssertNotNil(window.overlayView.activeTextField)
-        let key = try XCTUnwrap(TestEvents.createKeyEvent(type: .keyDown, keyCode: 38, characters: "j"))
+        for (characters, keyCode): (String, UInt16) in [("j", 38), ("[", 33), ("]", 30)] {
+            ShortcutManager.shared.setShortcut(characters, for: .toggleBackgroundDimming)
+            let key = try XCTUnwrap(TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: keyCode, characters: characters))
 
-        window.keyDown(with: key)
+            window.keyDown(with: key)
 
-        XCTAssertFalse(CursorHighlightManager.shared.spotlightDimmingEnabled)
+            XCTAssertFalse(CursorHighlightManager.shared.spotlightDimmingEnabled)
+        }
     }
 }
