@@ -12,8 +12,9 @@ enum ShortcutSettingAction {
     @MainActor
     func perform(
         tool: ShortcutKey,
-        manager: ShortcutManager = .shared
+        manager: ShortcutManager? = nil
     ) -> ShortcutSettingActionResult {
+        let manager = manager ?? .shared
         let restoreConflict: Bool
         switch self {
         case .clear:
