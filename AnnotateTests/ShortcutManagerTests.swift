@@ -137,6 +137,52 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
 
     // MARK: - Default Shortcut Tests
 
+    func testClearShortcutUnbindsWithoutRestoringDefault() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        XCTAssertEqual(manager.getShortcut(for: .pen), "p")
+        manager.setShortcut("f", for: .pen)
+        manager.clearShortcut(tool: .pen)
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+        XCTAssertFalse(manager.isShortcutTaken("", excluding: .arrow))
+        XCTAssertFalse(manager.matches("p", tool: .pen))
+        XCTAssertFalse(manager.matches("", tool: .pen))
+
+        manager.setShortcut("p", for: .arrow)
+        XCTAssertEqual(manager.getShortcut(for: .arrow), "p")
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+    }
+
+    func testResetToDefaultRestoresLetterAfterClear() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        manager.clearShortcut(tool: .pen)
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+        manager.resetToDefault(tool: .pen)
+        XCTAssertEqual(manager.getShortcut(for: .pen), ShortcutKey.pen.defaultKey)
+        XCTAssertTrue(manager.matches("p", tool: .pen))
+    }
+
+    func testResetAllRestoresLetterDefaultsAndLeavesDimmingUnset() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        manager.clearShortcut(tool: .pen)
+        manager.setShortcut("y", for: .arrow)
+        manager.setShortcut("j", for: .toggleBackgroundDimming)
+        manager.resetAllToDefault()
+
+        XCTAssertEqual(manager.getShortcut(for: .pen), "p")
+        XCTAssertEqual(manager.getShortcut(for: .arrow), "a")
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+        XCTAssertEqual(ShortcutKey.toggleBackgroundDimming.defaultKey, "")
+    }
+
     func testDimmingShortcutIsUnassignedUntilConfiguredAndCanBeCleared() {
         let defaults = TestUserDefaults.create()
         defer { TestUserDefaults.removeSuite() }
@@ -150,11 +196,29 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         manager.setShortcut("p", for: .toggleBackgroundDimming)
         XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "j", "Pen already uses p")
 
+        manager.clearShortcut(tool: .toggleBackgroundDimming)
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+        manager.setShortcut("j", for: .toggleBackgroundDimming)
         manager.resetToDefault(tool: .toggleBackgroundDimming)
         XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
         manager.setShortcut("j", for: .toggleBackgroundDimming)
         manager.resetAllToDefault()
         XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+    }
+
+    func testMatchesIgnoresEmptyBindingsAndEmptyKeys() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        XCTAssertTrue(manager.matches("p", tool: .pen))
+        XCTAssertFalse(manager.matches("", tool: .pen))
+        XCTAssertFalse(manager.matches("p", tool: .arrow))
+
+        manager.clearShortcut(tool: .pen)
+        XCTAssertFalse(manager.matches("p", tool: .pen))
+        XCTAssertFalse(manager.matches("", tool: .pen))
+        XCTAssertFalse(manager.matches("", tool: .toggleBackgroundDimming))
     }
 
     func testUnassignedShortcutsDoNotConflict() {

@@ -46,7 +46,7 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
         XCTAssertFalse(manager.spotlightDimmingEnabled)
         XCTAssertTrue(manager.cursorHighlightEnabled)
 
-        ShortcutManager.shared.resetToDefault(tool: .toggleBackgroundDimming)
+        ShortcutManager.shared.clearShortcut(tool: .toggleBackgroundDimming)
         window.keyDown(with: key)
         XCTAssertFalse(manager.spotlightDimmingEnabled)
     }

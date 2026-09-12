@@ -172,6 +172,28 @@ final class ShortcutFieldTests: XCTestCase {
         XCTAssertEqual(afterShortcut, initialShortcut, "Empty key should not change shortcut")
     }
 
+    func testEscapeCancelsRecordingWithoutClearing() {
+        var editingShortcut: ShortcutKey? = .pen
+        let before = ShortcutManager.shared.getShortcut(for: .pen)
+        XCTAssertEqual(before, "p")
+
+        editingShortcut = nil
+
+        XCTAssertNil(editingShortcut, "Escape should cancel recording")
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .pen), before,
+            "Canceling recording must leave the shortcut unchanged")
+    }
+
+    func testClearButtonUnbindsWithoutRecording() {
+        ShortcutManager.shared.setShortcut("f", for: .pen)
+        ShortcutManager.shared.clearShortcut(tool: .pen)
+
+        XCTAssertEqual(
+            ShortcutManager.shared.getShortcut(for: .pen), "",
+            "The clear button should unbind without recording a key")
+    }
+
     func testLowercaseConversion() {
         ShortcutManager.shared.setShortcut("F", for: .pen)
 
