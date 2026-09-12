@@ -379,7 +379,7 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Advanced Tools**: Counter, Text, Select, Eraser
 - **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming
 
-**Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating, or clear it with the reset button. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
+**Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores every letter default and leaves dimming unset. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/0dcdd2c2-a26d-4fd4-9860-8f7340554ada">
