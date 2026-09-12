@@ -46,6 +46,45 @@ final class CursorHighlightManagerTests: XCTestCase {
 
     // MARK: - Background Dimming Tests
 
+    func testToggleDimmingEnablesSpotlightAndLeavesItEnabledWhenDimmingTurnsOff() {
+        for autoDim in [false, true] {
+            manager.cursorHighlightEnabled = false
+            manager.spotlightDimmingEnabled = false
+            manager.spotlightAutoDimEnabled = autoDim
+
+            manager.toggleSpotlightDimming()
+
+            XCTAssertTrue(manager.cursorHighlightEnabled)
+            XCTAssertTrue(manager.shouldShowDimming)
+
+            manager.toggleSpotlightDimming()
+
+            XCTAssertTrue(manager.cursorHighlightEnabled)
+            XCTAssertFalse(manager.shouldShowDimming)
+            XCTAssertEqual(manager.spotlightAutoDimEnabled, autoDim)
+        }
+    }
+
+    func testToggleDimmingEnablesDimmingWhenDisabledSpotlightHasStoredDimmingOn() {
+        manager.spotlightDimmingEnabled = true
+        manager.cursorHighlightEnabled = false
+
+        manager.toggleSpotlightDimming()
+
+        XCTAssertTrue(manager.cursorHighlightEnabled)
+        XCTAssertTrue(manager.shouldShowDimming)
+    }
+
+    func testToggleDimmingDoesNotChangeClickEffects() {
+        for clickEffects in [false, true] {
+            manager.clickEffectsEnabled = clickEffects
+            manager.toggleSpotlightDimming()
+            XCTAssertEqual(manager.clickEffectsEnabled, clickEffects)
+            manager.toggleSpotlightDimming()
+            XCTAssertEqual(manager.clickEffectsEnabled, clickEffects)
+        }
+    }
+
     /// Dimming is off out of the box.
     func testSpotlightDimmingEnabledDefaultsToFalse() {
         XCTAssertFalse(manager.spotlightDimmingEnabled, "spotlightDimmingEnabled should default to false")

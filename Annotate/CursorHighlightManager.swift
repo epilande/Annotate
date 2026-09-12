@@ -152,6 +152,16 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Background Dimming Settings
 
+    /// Enables the spotlight if needed, then toggles dimming without changing click effects.
+    func toggleSpotlightDimming() {
+        if !cursorHighlightEnabled {
+            cursorHighlightEnabled = true
+            spotlightDimmingEnabled = true
+        } else {
+            spotlightDimmingEnabled.toggle()
+        }
+    }
+
     /// Whether the screen darkens around the spotlight, leaving a clear area at the cursor.
     var spotlightDimmingEnabled: Bool {
         get { userDefaults.bool(forKey: UserDefaults.spotlightDimmingEnabledKey) }

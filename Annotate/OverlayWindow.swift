@@ -1536,6 +1536,7 @@ class OverlayWindow: NSPanel {
         
         // Handle single-key shortcuts if no modifiers are pressed
         if !cmdPressed
+            && !key.isEmpty
             && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
         {
             switch key {
@@ -1581,6 +1582,17 @@ class OverlayWindow: NSPanel {
                 return
             case ShortcutManager.shared.getShortcut(for: .toggleClickEffects):
                 AppDelegate.shared?.toggleClickEffects(nil)
+                return
+            case ShortcutManager.shared.getShortcut(for: .toggleBackgroundDimming):
+                if isEditingAnnotationText { break }
+                if !event.isARepeat {
+                    let manager = CursorHighlightManager.shared
+                    manager.toggleSpotlightDimming()
+                    showToggleFeedback(
+                        manager.spotlightDimmingEnabled ? "Dimming On" : "Dimming Off",
+                        icon: manager.spotlightDimmingEnabled ? "🌘" : "☀️"
+                    )
+                }
                 return
             default:
                 break
