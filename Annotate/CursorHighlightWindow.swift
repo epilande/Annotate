@@ -8,6 +8,7 @@ class CursorHighlightWindow: NSPanel {
     // Track previous frame state to ensure update functions run one extra frame
     // when transitioning to inactive (needed to set layer opacity to 0)
     private var wasShowingSpotlight = false
+    private var wasShowingDimming = false
     private var wasShowingRing = false
     private var wasShowingReleaseAnimation = false
     private var wasShowingActiveCursor = false
@@ -79,6 +80,8 @@ class CursorHighlightWindow: NSPanel {
         animationDisplayLink = nil
     }
 
+    /// Per-frame update: refreshes each effect that is visible, plus one extra
+    /// frame after it turns off so its layer opacity can be zeroed.
     @objc private func updateAnimation(_: CADisplayLink) {
         let manager = CursorHighlightManager.shared
 
@@ -88,6 +91,12 @@ class CursorHighlightWindow: NSPanel {
             highlightView.updateSpotlightPosition()
         }
         wasShowingSpotlight = showingSpotlight
+
+        let showingDimming = manager.shouldShowDimming
+        if showingDimming || wasShowingDimming {
+            highlightView.updateDimming()
+        }
+        wasShowingDimming = showingDimming
 
         let showingRing = manager.shouldShowRing
         if showingRing || wasShowingRing {
@@ -117,12 +126,15 @@ class CursorHighlightWindow: NSPanel {
 
     // MARK: - Visibility
 
+    /// Orders the window in or out based on which effects are enabled, applying
+    /// the current spotlight/dimming state immediately rather than waiting for a frame.
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
         // Apply the current show/hide state immediately. CADisplayLink may not
         // fire until the next click, so toggling spotlight off cannot wait for a frame.
         highlightView.updateSpotlightPosition()
+        highlightView.updateDimming()
         highlightView.updateHoldRingPosition()
 
         if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {

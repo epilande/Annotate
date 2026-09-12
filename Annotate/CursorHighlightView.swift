@@ -7,6 +7,7 @@ class CursorHighlightView: NSView {
     private var holdRingLayer: CAShapeLayer?
     private var releaseRingLayer: CAShapeLayer?
     private var spotlightLayer: CAShapeLayer?
+    private var dimmingLayer: CAShapeLayer?
     private var activeCursorLayer: CAShapeLayer?
     private var activeCursorOutlineLayer: CAShapeLayer?
 
@@ -14,6 +15,10 @@ class CursorHighlightView: NSView {
 
     private var cachedSpotlightPath: CGPath?
     private var cachedSpotlightSize: CGFloat = 0
+
+    private var cachedDimmingPath: CGPath?
+    private var cachedDimmingHoleSize: CGFloat = 0
+    private var cachedDimmingCoverSize: CGFloat = 0
 
     private var cachedCircleOuterPath: CGPath?
     private var cachedCircleInnerPath: CGPath?
@@ -46,7 +51,18 @@ class CursorHighlightView: NSView {
         setupLayers()
     }
 
+    /// Creates the effect layers back-to-front: dimming below everything so the
+    /// spotlight glow, click rings, and active cursor stay visible over it.
     private func setupLayers() {
+        // Dimming layer (darkens everything except a hole around the cursor)
+        let dimming = CAShapeLayer()
+        dimming.fillRule = .evenOdd
+        dimming.fillColor = Self.blackCG
+        dimming.lineWidth = 0
+        dimming.opacity = 0
+        layer?.addSublayer(dimming)
+        dimmingLayer = dimming
+
         // Spotlight layer (follows cursor when enabled)
         let spotlight = CAShapeLayer()
         spotlight.lineWidth = 0
@@ -142,6 +158,33 @@ class CursorHighlightView: NSView {
             ringLayer.opacity = alpha
         } else {
             ringLayer.opacity = 0
+        }
+
+        CATransaction.commit()
+    }
+
+    /// Repositions the dimming cutout under the cursor, or hides the layer when
+    /// dimming is off or the cursor is on another screen.
+    func updateDimming() {
+        guard let window = self.window, let dimming = dimmingLayer else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let globalPosition = manager.cursorPosition
+        let cursorOnThisScreen = window.screen?.frame.contains(globalPosition) ?? false
+
+        if manager.shouldShowDimming && cursorOnThisScreen {
+            let windowPoint = window.convertPoint(fromScreen: globalPosition)
+            let localPoint = convert(windowPoint, from: nil)
+
+            let holeSize = manager.spotlightSize * 7.5
+            let coverSize = max(bounds.width, bounds.height) * 4
+            dimming.path = dimmingPath(holeSize: holeSize, coverSize: coverSize)
+            dimming.position = localPoint
+            dimming.opacity = Float(manager.spotlightDimmingOpacity)
+        } else {
+            dimming.opacity = 0
         }
 
         CATransaction.commit()
@@ -274,6 +317,21 @@ class CursorHighlightView: NSView {
     }
 
     // MARK: - Cached Path Helpers
+
+    /// Even-odd path: an oversized rect with a circular hole, both centered at the layer origin.
+    /// The rect is big enough to cover the screen from any cursor position, so only the
+    /// layer position needs to change per frame and the path stays cached.
+    private func dimmingPath(holeSize: CGFloat, coverSize: CGFloat) -> CGPath {
+        if holeSize != cachedDimmingHoleSize || coverSize != cachedDimmingCoverSize || cachedDimmingPath == nil {
+            let path = CGMutablePath()
+            path.addRect(CGRect(x: -coverSize / 2, y: -coverSize / 2, width: coverSize, height: coverSize))
+            path.addEllipse(in: CGRect(x: -holeSize / 2, y: -holeSize / 2, width: holeSize, height: holeSize))
+            cachedDimmingPath = path
+            cachedDimmingHoleSize = holeSize
+            cachedDimmingCoverSize = coverSize
+        }
+        return cachedDimmingPath!
+    }
 
     private func spotlightPath(for size: CGFloat) -> CGPath {
         if size != cachedSpotlightSize || cachedSpotlightPath == nil {
