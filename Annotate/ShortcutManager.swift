@@ -85,10 +85,16 @@ class ShortcutManager: @unchecked Sendable {
         return !key.isEmpty && !shortcut.isEmpty && key == shortcut
     }
 
-    func resetToDefault(tool: ShortcutKey) {
+    @discardableResult
+    func resetToDefault(tool: ShortcutKey) -> Bool {
+        if isShortcutTaken(tool.defaultKey, excluding: tool) {
+            print("Default shortcut '\(tool.defaultKey)' is already in use.")
+            return false
+        }
         defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
         defaults.synchronize()
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
+        return true
     }
 
     func resetAllToDefault() {

@@ -172,26 +172,60 @@ final class ShortcutFieldTests: XCTestCase {
         XCTAssertEqual(afterShortcut, initialShortcut, "Empty key should not change shortcut")
     }
 
-    func testEscapeCancelsRecordingWithoutClearing() {
-        var editingShortcut: ShortcutKey? = .pen
-        let before = ShortcutManager.shared.getShortcut(for: .pen)
+    func testEscapeCancelsRecordingWithoutClearing() throws {
+        let manager = ShortcutManager(userDefaults: testDefaults)
+        let before = manager.getShortcut(for: .pen)
         XCTAssertEqual(before, "p")
+        let escape = try XCTUnwrap(
+            TestEvents.createKeyEvent(type: .keyDown, keyCode: 53)
+        )
 
-        editingShortcut = nil
+        let result = ShortcutRecordingEventHandler.handle(
+            escape,
+            editingShortcut: .pen
+        )
 
-        XCTAssertNil(editingShortcut, "Escape should cancel recording")
+        XCTAssertNil(result.editingShortcut, "Escape should cancel recording")
+        XCTAssertTrue(result.consumesEvent, "Escape should not propagate beyond the recorder")
         XCTAssertEqual(
-            ShortcutManager.shared.getShortcut(for: .pen), before,
+            manager.getShortcut(for: .pen), before,
             "Canceling recording must leave the shortcut unchanged")
     }
 
     func testClearButtonUnbindsWithoutRecording() {
-        ShortcutManager.shared.setShortcut("f", for: .pen)
-        ShortcutManager.shared.clearShortcut(tool: .pen)
+        let manager = ShortcutManager(userDefaults: testDefaults)
+        manager.setShortcut("f", for: .pen)
 
-        XCTAssertEqual(
-            ShortcutManager.shared.getShortcut(for: .pen), "",
-            "The clear button should unbind without recording a key")
+        let result = ShortcutSettingAction.clear.perform(tool: .pen, manager: manager)
+
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+        XCTAssertEqual(result.shortcuts[.pen], "")
+        XCTAssertFalse(result.restoreConflict)
+    }
+
+    func testRestoreButtonRestoresDefaultAndReportsConflicts() {
+        let manager = ShortcutManager(userDefaults: testDefaults)
+        manager.clearShortcut(tool: .pen)
+
+        let restored = ShortcutSettingAction.restoreDefault.perform(
+            tool: .pen,
+            manager: manager
+        )
+
+        XCTAssertEqual(restored.shortcuts[.pen], "p")
+        XCTAssertFalse(restored.restoreConflict)
+
+        manager.clearShortcut(tool: .pen)
+        manager.setShortcut("p", for: .arrow)
+
+        let rejected = ShortcutSettingAction.restoreDefault.perform(
+            tool: .pen,
+            manager: manager
+        )
+
+        XCTAssertEqual(rejected.shortcuts[.pen], "")
+        XCTAssertEqual(rejected.shortcuts[.arrow], "p")
+        XCTAssertTrue(rejected.restoreConflict)
     }
 
     func testLowercaseConversion() {

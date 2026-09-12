@@ -162,9 +162,22 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
 
         manager.clearShortcut(tool: .pen)
         XCTAssertEqual(manager.getShortcut(for: .pen), "")
-        manager.resetToDefault(tool: .pen)
+        XCTAssertTrue(manager.resetToDefault(tool: .pen))
         XCTAssertEqual(manager.getShortcut(for: .pen), ShortcutKey.pen.defaultKey)
         XCTAssertTrue(manager.matches("p", tool: .pen))
+    }
+
+    func testResetToDefaultRejectsAReassignedDefault() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        manager.clearShortcut(tool: .pen)
+        manager.setShortcut("p", for: .arrow)
+
+        XCTAssertFalse(manager.resetToDefault(tool: .pen))
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+        XCTAssertEqual(manager.getShortcut(for: .arrow), "p")
     }
 
     func testResetAllRestoresLetterDefaultsAndLeavesDimmingUnset() {

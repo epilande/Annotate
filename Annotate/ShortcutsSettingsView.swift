@@ -1,5 +1,35 @@
 import SwiftUI
 
+struct ShortcutSettingActionResult {
+    let shortcuts: [ShortcutKey: String]
+    let restoreConflict: Bool
+}
+
+enum ShortcutSettingAction {
+    case clear
+    case restoreDefault
+
+    @MainActor
+    func perform(
+        tool: ShortcutKey,
+        manager: ShortcutManager = .shared
+    ) -> ShortcutSettingActionResult {
+        let restoreConflict: Bool
+        switch self {
+        case .clear:
+            manager.clearShortcut(tool: tool)
+            restoreConflict = false
+        case .restoreDefault:
+            restoreConflict = !manager.resetToDefault(tool: tool)
+        }
+
+        return ShortcutSettingActionResult(
+            shortcuts: manager.allShortcuts,
+            restoreConflict: restoreConflict
+        )
+    }
+}
+
 struct ShortcutsSettingsView: View {
     @State private var shortcuts: [ShortcutKey: String] = ShortcutManager.shared.allShortcuts
     @State private var editingShortcut: ShortcutKey?
@@ -196,6 +226,7 @@ struct ShortcutSettingRow: View {
     @State private var isHoveringKey = false
     @State private var isHoveringClear = false
     @State private var isHoveringRestore = false
+    @State private var showRestoreConflict = false
 
     private var shortcut: String { shortcuts[tool] ?? tool.defaultKey }
 
@@ -232,8 +263,8 @@ struct ShortcutSettingRow: View {
                 }
 
                 Button {
-                    ShortcutManager.shared.clearShortcut(tool: tool)
-                    shortcuts = ShortcutManager.shared.allShortcuts
+                    let result = ShortcutSettingAction.clear.perform(tool: tool)
+                    shortcuts = result.shortcuts
                     editingShortcut = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -246,9 +277,10 @@ struct ShortcutSettingRow: View {
                 .onHover { isHoveringClear = $0 }
 
                 Button {
-                    ShortcutManager.shared.resetToDefault(tool: tool)
-                    shortcuts = ShortcutManager.shared.allShortcuts
+                    let result = ShortcutSettingAction.restoreDefault.perform(tool: tool)
+                    shortcuts = result.shortcuts
                     editingShortcut = nil
+                    showRestoreConflict = result.restoreConflict
                 } label: {
                     Image(systemName: "arrow.counterclockwise.circle.fill")
                         .font(.body)
@@ -258,6 +290,13 @@ struct ShortcutSettingRow: View {
                 .help("Restore default")
                 .disabled(shortcut == tool.defaultKey)
                 .onHover { isHoveringRestore = $0 }
+                .alert("Default Shortcut Unavailable", isPresented: $showRestoreConflict) {
+                    Button("OK") {}
+                } message: {
+                    Text(
+                        "The default shortcut “\(tool.defaultKey)” is already assigned. Clear it from the other action first."
+                    )
+                }
             }
         } label: {
             Text(label)
