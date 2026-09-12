@@ -19,8 +19,14 @@ enum ShortcutKey: String, CaseIterable {
     case lineWidthPicker = "w"
     case toggleBoard = "b"
     case toggleClickEffects = "k"
+    case toggleBackgroundDimming = "toggleBackgroundDimming"
 
-    var defaultKey: String { rawValue }
+    var defaultKey: String {
+        switch self {
+        case .toggleBackgroundDimming: return ""
+        default: return rawValue
+        }
+    }
 
     var displayName: String {
         switch self {
@@ -38,6 +44,7 @@ enum ShortcutKey: String, CaseIterable {
         case .lineWidthPicker: return "Line Width"
         case .toggleBoard: return "Toggle Board"
         case .toggleClickEffects: return "Toggle Cursor Highlight"
+        case .toggleBackgroundDimming: return "Toggle Background Dimming"
         }
     }
 }
@@ -85,6 +92,7 @@ class ShortcutManager: @unchecked Sendable {
     /// table (Space, Delete, Cmd+Z, Option+Command+T) are key-code or chord matched and cannot
     /// be typed into a shortcut field, so none of them needs reserving here.
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {
+        guard !key.isEmpty else { return false }
         for otherTool in ShortcutKey.allCases where otherTool != tool {
             if getShortcut(for: otherTool) == key {
                 return true

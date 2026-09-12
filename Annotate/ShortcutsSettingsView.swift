@@ -140,6 +140,13 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .toggleBackgroundDimming,
+                    label: "Toggle Background Dimming",
+                    description: "Toggle dimming while annotating; enables the spotlight if needed",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "slider.horizontal.3",
@@ -189,6 +196,8 @@ struct ShortcutSettingRow: View {
     @State private var isHoveringKey = false
     @State private var isHoveringReset = false
 
+    private var shortcut: String { shortcuts[tool] ?? tool.defaultKey }
+
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
@@ -201,7 +210,7 @@ struct ShortcutSettingRow: View {
                     .frame(minWidth: 60)
                 } else {
                     Button(action: { editingShortcut = tool }) {
-                        Text(shortcuts[tool] ?? tool.defaultKey)
+                        Text(shortcut.isEmpty ? "Not Set" : shortcut)
                             .font(.body.weight(.medium).monospaced())
                             .foregroundStyle(.primary)
                             .frame(minWidth: 32)
@@ -230,7 +239,8 @@ struct ShortcutSettingRow: View {
                             .foregroundStyle(isHoveringReset ? .secondary : .tertiary)
                     }
                     .buttonStyle(.plain)
-                    .help("Reset to default")
+                    .help(tool.defaultKey.isEmpty ? "Clear shortcut" : "Reset to default")
+                    .disabled(shortcut.isEmpty && tool.defaultKey.isEmpty)
                     .onHover { isHoveringReset = $0 }
                 }
             }

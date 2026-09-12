@@ -136,6 +136,38 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
     }
 
     // MARK: - Default Shortcut Tests
+
+    func testDimmingShortcutIsUnassignedUntilConfiguredAndCanBeCleared() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+        manager.setShortcut("j", for: .toggleBackgroundDimming)
+        XCTAssertEqual(
+            ShortcutManager(userDefaults: defaults).getShortcut(for: .toggleBackgroundDimming), "j")
+
+        manager.setShortcut("p", for: .toggleBackgroundDimming)
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "j", "Pen already uses p")
+
+        manager.resetToDefault(tool: .toggleBackgroundDimming)
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+        manager.setShortcut("j", for: .toggleBackgroundDimming)
+        manager.resetAllToDefault()
+        XCTAssertEqual(manager.getShortcut(for: .toggleBackgroundDimming), "")
+    }
+
+    func testUnassignedShortcutsDoNotConflict() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults)
+
+        XCTAssertFalse(manager.isShortcutTaken("", excluding: .pen))
+        manager.setShortcut("", for: .pen)
+        manager.setShortcut("", for: .arrow)
+        XCTAssertEqual(manager.getShortcut(for: .pen), "")
+        XCTAssertEqual(manager.getShortcut(for: .arrow), "")
+    }
     
     func testAllDefaultShortcuts() {
         // Test all default keyboard shortcuts
@@ -152,12 +184,14 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(ShortcutKey.lineWidthPicker.defaultKey, "w", "Line Width should be 'w'")
         XCTAssertEqual(ShortcutKey.toggleBoard.defaultKey, "b", "Board should be 'b'")
         XCTAssertEqual(ShortcutKey.toggleClickEffects.defaultKey, "k", "Toggle Cursor Highlight should be 'k'")
+        XCTAssertEqual(ShortcutKey.toggleBackgroundDimming.defaultKey, "")
     }
     
     func testNoShortcutConflicts() {
-        // Verify all default shortcuts are unique
+        // Only assigned defaults reserve a key.
         var shortcuts = Set<String>()
-        for tool in ShortcutKey.allCases {
+        let assignedTools = ShortcutKey.allCases.filter { !$0.defaultKey.isEmpty }
+        for tool in assignedTools {
             let shortcut = tool.defaultKey
             XCTAssertFalse(
                 shortcuts.contains(shortcut),
@@ -166,8 +200,7 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
             shortcuts.insert(shortcut)
         }
         
-        // Should have 12 unique shortcuts
-        XCTAssertEqual(shortcuts.count, ShortcutKey.allCases.count, "All shortcuts should be unique")
+        XCTAssertEqual(shortcuts.count, assignedTools.count, "All assigned shortcuts should be unique")
     }
     
     func testFirstLetterShortcuts() {

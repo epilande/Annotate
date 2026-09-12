@@ -141,6 +141,7 @@ brew install --cask annotate
 | <kbd>V</kbd> | **Select**           | Select, move, and manage objects          |
 | <kbd>B</kbd> | **Board**            | Toggle whiteboard/blackboard              |
 | <kbd>K</kbd> | **Cursor Highlight** | Toggle cursor highlight and click effects |
+| Not set | **Background Dimming** | Toggle background dimming |
 
 #### ⚡ Quick Actions
 
@@ -376,7 +377,9 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
 - **Shapes**: Rectangle, Circle
 - **Advanced Tools**: Counter, Text, Select, Eraser
-- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight
+- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming
+
+**Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating, or clear it with the reset button. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/0dcdd2c2-a26d-4fd4-9860-8f7340554ada">
