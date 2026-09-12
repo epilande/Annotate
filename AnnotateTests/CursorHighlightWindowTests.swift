@@ -24,7 +24,7 @@ final class CursorHighlightWindowTests: XCTestCase {
         XCTAssertNil(window.animationDisplayLink)
     }
 
-    func testUpdateVisibilityHidesSpotlightImmediatelyWhenClickEffectsKeepWindowAlive() throws {
+    func testUpdateVisibilityHidesSpotlightAndDimmingImmediatelyWhenClickEffectsKeepWindowAlive() throws {
         let defaults = TestUserDefaults.create()
         let originalShared = CursorHighlightManager.shared
         let manager = CursorHighlightManager(userDefaults: defaults)
@@ -46,8 +46,11 @@ final class CursorHighlightWindowTests: XCTestCase {
         manager.cursorHighlightEnabled = false
         manager.spotlightRequiresOverlay = false
 
-        let spotlight = try XCTUnwrap(window.highlightView.layer?.sublayers?.first)
+        let layers = try XCTUnwrap(window.highlightView.layer?.sublayers)
+        let spotlight = try XCTUnwrap(layers.first { $0.name == "spotlight" })
+        let dimming = try XCTUnwrap(layers.first { $0.name == "dimming" })
         spotlight.opacity = 1
+        dimming.opacity = 1
 
         window.updateVisibility()
 
@@ -55,6 +58,11 @@ final class CursorHighlightWindowTests: XCTestCase {
             spotlight.opacity,
             0,
             "Spotlight should hide as soon as it is disabled, even if click effects keep the window ordered in"
+        )
+        XCTAssertEqual(
+            dimming.opacity,
+            0,
+            "Dimming should hide as soon as the spotlight is disabled, even if click effects keep the window ordered in"
         )
     }
 }
