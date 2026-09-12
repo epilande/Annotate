@@ -141,7 +141,7 @@ brew install --cask annotate
 | <kbd>V</kbd> | **Select**           | Select, move, and manage objects          |
 | <kbd>B</kbd> | **Board**            | Toggle whiteboard/blackboard              |
 | <kbd>K</kbd> | **Cursor Highlight** | Toggle cursor highlight and click effects |
-| Not set | **Background Dimming** | Assign a key in Settings → Shortcuts to toggle dimming while annotating |
+| Not set | **Background Dimming** | Toggle background dimming |
 
 #### ⚡ Quick Actions
 
