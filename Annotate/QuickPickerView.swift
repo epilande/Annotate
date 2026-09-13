@@ -18,14 +18,98 @@ final class QuickPickerView: NSView {
         }
     }()
 
-    static let cellSize: CGFloat = 46
+    /// Large enough that the 1–9 caption can sit in the trailing-bottom corner
+    /// without colliding with the swatch or the selected ring.
+    static let cellSize: CGFloat = 50
     static let padding: CGFloat = 12
     static let commitAnimationDuration: TimeInterval = 0.16
     static let digitFontSize: CGFloat = 10
     static let digitFontWeight: NSFont.Weight = .medium
+    static let colorSwatchDiameter: CGFloat = 27
+    static let selectedColorSwatchDiameter: CGFloat = 29
+    static let sizeDotMinDiameter: CGFloat = 8
+    static let sizeDotMaxDiameter: CGFloat = 28
+    static let swatchVerticalNudge: CGFloat = 3
+    static let selectionRingOutset: CGFloat = 3
+    static let selectionRingLineWidth: CGFloat = 2
+    static let digitTrailingInset: CGFloat = 2
+    static let digitBottomInset: CGFloat = 2
+    /// Air between the caption box and the swatch fill / selected ring. The
+    /// caption box comes from live font metrics, so this is kept at 1 to leave
+    /// ~1.5pt of headroom in the tightest (selected ring) case; if the clearance
+    /// test goes red on a new macOS, re-tune the insets rather than delete it.
+    static let digitClearance: CGFloat = 1
 
     static var digitFont: NSFont {
         NSFont.monospacedDigitSystemFont(ofSize: digitFontSize, weight: digitFontWeight)
+    }
+
+    static func digitLabel(for digit: Int, selected: Bool) -> NSAttributedString {
+        NSAttributedString(
+            string: String(digit),
+            attributes: [
+                .font: digitFont,
+                .foregroundColor: selected ? NSColor.labelColor : NSColor.secondaryLabelColor
+            ])
+    }
+
+    static func digitRect(for digit: Int, in bounds: NSRect) -> NSRect {
+        let size = digitLabel(for: digit, selected: false).size()
+        return NSRect(
+            x: bounds.maxX - digitTrailingInset - size.width,
+            y: bounds.minY + digitBottomInset,
+            width: size.width,
+            height: size.height)
+    }
+
+    static func swatchCenter(in bounds: NSRect) -> NSPoint {
+        NSPoint(x: bounds.midX, y: bounds.midY + swatchVerticalNudge)
+    }
+
+    static func swatchRect(in bounds: NSRect, diameter: CGFloat) -> NSRect {
+        let center = swatchCenter(in: bounds)
+        return NSRect(
+            x: center.x - diameter / 2,
+            y: center.y - diameter / 2,
+            width: diameter,
+            height: diameter)
+    }
+
+    static func sizeDotDiameter(value: CGFloat, in range: ClosedRange<CGFloat>) -> CGFloat {
+        let span = range.upperBound - range.lowerBound
+        let fraction = span > 0 ? (value - range.lowerBound) / span : 0
+        return sizeDotMinDiameter + fraction * (sizeDotMaxDiameter - sizeDotMinDiameter)
+    }
+
+    static func selectionRingOuterRadius(for diameter: CGFloat) -> CGFloat {
+        diameter / 2 + selectionRingOutset + selectionRingLineWidth / 2
+    }
+
+    /// Whether the shortcut caption stays outside the swatch fill and, when
+    /// selected, the white ring — including `digitClearance` of air.
+    static func digitClearsSwatchChrome(
+        digit: Int,
+        swatchDiameter: CGFloat,
+        selected: Bool,
+        in bounds: NSRect = NSRect(x: 0, y: 0, width: cellSize, height: cellSize)
+    ) -> Bool {
+        let caption = digitRect(for: digit, in: bounds)
+        let chromeRadius = selected
+            ? selectionRingOuterRadius(for: swatchDiameter)
+            : swatchDiameter / 2
+        return !circleIntersects(
+            caption,
+            center: swatchCenter(in: bounds),
+            radius: chromeRadius + digitClearance)
+    }
+
+    private static func circleIntersects(_ rect: NSRect, center: NSPoint, radius: CGFloat) -> Bool {
+        let closest = NSPoint(
+            x: min(max(center.x, rect.minX), rect.maxX),
+            y: min(max(center.y, rect.minY), rect.maxY))
+        let dx = closest.x - center.x
+        let dy = closest.y - center.y
+        return dx * dx + dy * dy < radius * radius
     }
 
     let mode: Mode
@@ -54,7 +138,6 @@ final class QuickPickerView: NSView {
     var previewLaydownAlpha: CGFloat {
         previewTool.laydownAlpha
     }
-
 
     private let previewColor: NSColor
     private let previewTool: ToolType
@@ -296,25 +379,14 @@ final class QuickPickerCellView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        if isSelected {
-            NSColor.white.withAlphaComponent(0.16).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 10, yRadius: 10).fill()
-        }
+        let diameter =
+            mode == .color
+            ? (isSelected
+                ? QuickPickerView.selectedColorSwatchDiameter
+                : QuickPickerView.colorSwatchDiameter)
+            : QuickPickerView.sizeDotDiameter(value: value, in: valueRange)
 
-        let diameter: CGFloat
-        if mode == .color {
-            diameter = isSelected ? 29 : 27
-        } else {
-            let span = valueRange.upperBound - valueRange.lowerBound
-            let fraction = span > 0 ? (value - valueRange.lowerBound) / span : 0
-            diameter = 8 + fraction * 20
-        }
-
-        let dotRect = NSRect(
-            x: bounds.midX - diameter / 2,
-            y: bounds.midY - diameter / 2 + 2,
-            width: diameter,
-            height: diameter)
+        let dotRect = QuickPickerView.swatchRect(in: bounds, diameter: diameter)
         let dot = NSBezierPath(ovalIn: dotRect)
         let fillColor = mode == .color ? color : color.withAlphaComponent(laydownAlpha)
         fillColor.setFill()
@@ -322,8 +394,11 @@ final class QuickPickerCellView: NSView {
 
         if isSelected {
             NSColor.white.withAlphaComponent(0.95).setStroke()
-            let ring = NSBezierPath(ovalIn: dotRect.insetBy(dx: -3, dy: -3))
-            ring.lineWidth = 2
+            let ring = NSBezierPath(
+                ovalIn: dotRect.insetBy(
+                    dx: -QuickPickerView.selectionRingOutset,
+                    dy: -QuickPickerView.selectionRingOutset))
+            ring.lineWidth = QuickPickerView.selectionRingLineWidth
             ring.stroke()
         }
     }
@@ -342,16 +417,7 @@ final class QuickPickerDigitView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let label = NSAttributedString(
-            string: String(digit),
-            attributes: [
-                .font: QuickPickerView.digitFont,
-                .foregroundColor: isSelected ? NSColor.labelColor : NSColor.secondaryLabelColor
-            ])
-        let labelSize = label.size()
-        label.draw(
-            at: NSPoint(
-                x: bounds.width - 5 - labelSize.width,
-                y: 3))
+        let label = QuickPickerView.digitLabel(for: digit, selected: isSelected)
+        label.draw(at: QuickPickerView.digitRect(for: digit, in: bounds).origin)
     }
 }
