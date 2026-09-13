@@ -126,6 +126,51 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         XCTAssertTrue(QuickPickerDigitView().allowsVibrancy)
     }
 
+    func testShortcutDigitsStayClearOfSwatchAndSelectionRing() {
+        let bounds = NSRect(
+            x: 0, y: 0,
+            width: QuickPickerView.cellSize,
+            height: QuickPickerView.cellSize)
+
+        for digit in 1...9 {
+            XCTAssertTrue(
+                QuickPickerView.digitClearsSwatchChrome(
+                    digit: digit,
+                    swatchDiameter: QuickPickerView.colorSwatchDiameter,
+                    selected: false,
+                    in: bounds),
+                "Unselected swatch \(digit) should leave air between the caption and the circle")
+            XCTAssertTrue(
+                QuickPickerView.digitClearsSwatchChrome(
+                    digit: digit,
+                    swatchDiameter: QuickPickerView.selectedColorSwatchDiameter,
+                    selected: true,
+                    in: bounds),
+                "Selected swatch \(digit) should keep the caption off the selection ring")
+        }
+
+        XCTAssertTrue(
+            QuickPickerView.digitClearsSwatchChrome(
+                digit: 8,
+                swatchDiameter: QuickPickerView.sizeDotMaxDiameter,
+                selected: true,
+                in: bounds),
+            "The largest size-dot should also keep the caption off the ring")
+    }
+
+    func testShortcutDigitLayoutPinsCaptionToTheTrailingBottomCorner() {
+        let bounds = NSRect(
+            x: 0, y: 0,
+            width: QuickPickerView.cellSize,
+            height: QuickPickerView.cellSize)
+        let caption = QuickPickerView.digitRect(for: 1, in: bounds)
+
+        XCTAssertEqual(caption.maxX, bounds.maxX - QuickPickerView.digitTrailingInset)
+        XCTAssertEqual(caption.minY, QuickPickerView.digitBottomInset)
+        XCTAssertLessThan(caption.maxX, bounds.maxX)
+        XCTAssertGreaterThan(caption.minX, bounds.midX)
+    }
+
     func testEveryPickerModeAssignsOneBasedDigitCaptions() {
         let modes: [QuickPickerView.Mode] = [.color, .width, .fontSize, .counterSize]
         for mode in modes {
