@@ -102,7 +102,7 @@ final class QuickPickerView: NSView {
             radius: chromeRadius + digitClearance)
     }
 
-    private     private static func circleIntersects(_ rect: NSRect, center: NSPoint, radius: CGFloat) -> Bool {
+    private static func circleIntersects(_ rect: NSRect, center: NSPoint, radius: CGFloat) -> Bool {
         let closest = NSPoint(
             x: min(max(center.x, rect.minX), rect.maxX),
             y: min(max(center.y, rect.minY), rect.maxY))
