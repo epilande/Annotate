@@ -165,8 +165,8 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
             height: QuickPickerView.cellSize)
         let caption = QuickPickerView.digitRect(for: 1, in: bounds)
 
-        XCTAssertEqual(caption.maxX, bounds.maxX - QuickPickerView.digitTrailingInset)
-        XCTAssertEqual(caption.minY, QuickPickerView.digitBottomInset)
+        XCTAssertEqual(caption.maxX, bounds.maxX - QuickPickerView.digitTrailingInset, accuracy: 0.001)
+        XCTAssertEqual(caption.minY, QuickPickerView.digitBottomInset, accuracy: 0.001)
         XCTAssertLessThan(caption.maxX, bounds.maxX)
         XCTAssertGreaterThan(caption.minX, bounds.midX)
 

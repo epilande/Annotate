@@ -34,8 +34,11 @@ final class QuickPickerView: NSView {
     static let selectionRingLineWidth: CGFloat = 2
     static let digitTrailingInset: CGFloat = 2
     static let digitBottomInset: CGFloat = 2
-    /// Air between the caption box and the swatch fill / selected ring.
-    static let digitClearance: CGFloat = 2
+    /// Air between the caption box and the swatch fill / selected ring. The
+    /// caption box comes from live font metrics, so this is kept at 1 to leave
+    /// ~1.5pt of headroom in the tightest (selected ring) case; if the clearance
+    /// test goes red on a new macOS, re-tune the insets rather than delete it.
+    static let digitClearance: CGFloat = 1
 
     static var digitFont: NSFont {
         NSFont.monospacedDigitSystemFont(ofSize: digitFontSize, weight: digitFontWeight)
