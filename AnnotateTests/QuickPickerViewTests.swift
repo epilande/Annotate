@@ -158,6 +158,49 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
             "The largest size-dot should also keep the caption off the ring")
     }
 
+    func testSelectionChromeFlagMapsAAndB() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+
+        XCTAssertEqual(
+            QuickPickerView.selectionChrome(from: defaults, environment: [:]),
+            .dropPad,
+            "Default is Option A (drop the gray pad)")
+
+        defaults.set("B", forKey: QuickPickerView.selectionChromeDefaultsKey)
+        XCTAssertEqual(
+            QuickPickerView.selectionChrome(from: defaults, environment: [:]),
+            .growPad)
+
+        defaults.set("a", forKey: QuickPickerView.selectionChromeDefaultsKey)
+        XCTAssertEqual(
+            QuickPickerView.selectionChrome(from: defaults, environment: [:]),
+            .dropPad)
+
+        defaults.set("B", forKey: QuickPickerView.selectionChromeDefaultsKey)
+        XCTAssertEqual(
+            QuickPickerView.selectionChrome(
+                from: defaults,
+                environment: [QuickPickerView.selectionChromeEnvironmentKey: "A"]),
+            .dropPad,
+            "Launch-time env var wins over UserDefaults")
+    }
+
+    func testGrownSelectionPadCoversDigitInsideTheChrome() {
+        let bounds = NSRect(
+            x: 0, y: 0,
+            width: QuickPickerView.cellSize,
+            height: QuickPickerView.cellSize)
+        let pad = QuickPickerView.selectionBackgroundRect(in: bounds)
+
+        for digit in 1...9 {
+            let caption = QuickPickerView.digitRect(for: digit, in: bounds)
+            XCTAssertTrue(
+                pad.contains(caption),
+                "Option B pad should enclose digit \(digit) so it is not in a corner pocket")
+        }
+    }
+
     func testShortcutDigitLayoutPinsCaptionToTheTrailingBottomCorner() {
         let bounds = NSRect(
             x: 0, y: 0,

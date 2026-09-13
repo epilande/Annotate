@@ -30,14 +30,60 @@ final class QuickPickerView: NSView {
     static let sizeDotMinDiameter: CGFloat = 8
     static let sizeDotMaxDiameter: CGFloat = 28
     static let swatchVerticalNudge: CGFloat = 3
-    static let selectionBackgroundInset: CGFloat = 3
-    static let selectionBackgroundRadius: CGFloat = 10
+    /// Option B: pad fills the cell so the digit sits inside the chrome, not in a gutter.
+    static let selectionBackgroundGrownInset: CGFloat = 0
+    static let selectionBackgroundGrownRadius: CGFloat = 12
     static let selectionRingOutset: CGFloat = 3
     static let selectionRingLineWidth: CGFloat = 2
     static let digitTrailingInset: CGFloat = 2
     static let digitBottomInset: CGFloat = 2
     /// Air between the caption box and the swatch fill / selected ring.
     static let digitClearance: CGFloat = 2
+
+    /// Temporary A/B switch for selected-swatch chrome. Default is A (no gray pad).
+    ///
+    /// Mac Test on erp-mac-mini — flip without rebuilding, then relaunch Annotate:
+    /// ```
+    /// defaults write com.epilande.Annotate DebugQuickPickerSelectionChrome A
+    /// defaults write com.epilande.Annotate DebugQuickPickerSelectionChrome B
+    /// defaults delete com.epilande.Annotate DebugQuickPickerSelectionChrome
+    /// ```
+    /// A = drop the gray pad, keep the white ring.
+    /// B = grow the gray pad to cover the circle + digit; ring stays.
+    /// Launch-time override (wins over UserDefaults):
+    /// `ANNOTATE_PICKER_SELECTION_CHROME=B open -b com.epilande.Annotate`
+    enum SelectionChromeOption: String {
+        /// Option A — no gray selection background; white ring only.
+        case dropPad = "A"
+        /// Option B — expanded gray pad covering swatch + digit; white ring stays.
+        case growPad = "B"
+    }
+
+    static let selectionChromeDefaultsKey = "DebugQuickPickerSelectionChrome"
+    static let selectionChromeEnvironmentKey = "ANNOTATE_PICKER_SELECTION_CHROME"
+    static let selectionChromeDefault: SelectionChromeOption = .dropPad
+
+    static func selectionChrome(
+        from defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SelectionChromeOption {
+        if let raw = environment[selectionChromeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            let option = SelectionChromeOption(rawValue: raw.uppercased())
+        {
+            return option
+        }
+        if let raw = defaults.string(forKey: selectionChromeDefaultsKey),
+            let option = SelectionChromeOption(rawValue: raw.uppercased())
+        {
+            return option
+        }
+        return selectionChromeDefault
+    }
+
+    static func selectionBackgroundRect(in bounds: NSRect) -> NSRect {
+        bounds.insetBy(dx: selectionBackgroundGrownInset, dy: selectionBackgroundGrownInset)
+    }
 
     static var digitFont: NSFont {
         NSFont.monospacedDigitSystemFont(ofSize: digitFontSize, weight: digitFontWeight)
@@ -378,14 +424,12 @@ final class QuickPickerCellView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        if isSelected {
+        if isSelected, QuickPickerView.selectionChrome() == .growPad {
             NSColor.white.withAlphaComponent(0.16).setFill()
             NSBezierPath(
-                roundedRect: bounds.insetBy(
-                    dx: QuickPickerView.selectionBackgroundInset,
-                    dy: QuickPickerView.selectionBackgroundInset),
-                xRadius: QuickPickerView.selectionBackgroundRadius,
-                yRadius: QuickPickerView.selectionBackgroundRadius
+                roundedRect: QuickPickerView.selectionBackgroundRect(in: bounds),
+                xRadius: QuickPickerView.selectionBackgroundGrownRadius,
+                yRadius: QuickPickerView.selectionBackgroundGrownRadius
             ).fill()
         }
 
