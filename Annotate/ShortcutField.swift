@@ -1,6 +1,29 @@
 import SwiftUI
 import AppKit
 
+struct ShortcutRecordingEventResult {
+    let editingShortcut: ShortcutKey?
+    let consumesEvent: Bool
+}
+
+enum ShortcutRecordingEventHandler {
+    static func handle(
+        _ event: NSEvent,
+        editingShortcut: ShortcutKey?
+    ) -> ShortcutRecordingEventResult {
+        if event.type == .keyDown && event.keyCode == 53 {
+            return ShortcutRecordingEventResult(editingShortcut: nil, consumesEvent: true)
+        }
+        if event.type == .leftMouseDown || event.type == .rightMouseDown {
+            return ShortcutRecordingEventResult(editingShortcut: nil, consumesEvent: false)
+        }
+        return ShortcutRecordingEventResult(
+            editingShortcut: editingShortcut,
+            consumesEvent: false
+        )
+    }
+}
+
 struct ShortcutField: View {
     let tool: ShortcutKey
     @Binding var shortcuts: [ShortcutKey: String]
@@ -58,15 +81,12 @@ struct ShortcutField: View {
 
     private func setupEventMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { event in
-            // Escape key (keyCode 53)
-            if event.type == .keyDown && event.keyCode == 53 {
-                editingShortcut = nil
-                return nil
-            }
-            if event.type == .leftMouseDown || event.type == .rightMouseDown {
-                editingShortcut = nil
-            }
-            return event
+            let result = ShortcutRecordingEventHandler.handle(
+                event,
+                editingShortcut: editingShortcut
+            )
+            editingShortcut = result.editingShortcut
+            return result.consumesEvent ? nil : event
         }
     }
 

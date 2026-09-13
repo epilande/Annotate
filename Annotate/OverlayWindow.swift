@@ -721,7 +721,7 @@ class OverlayWindow: NSPanel {
             if performToolShortcut(mappedTo: key) {
                 return true
             }
-            if key == ShortcutManager.shared.getShortcut(for: .toggleBackgroundDimming) {
+            if ShortcutManager.shared.matches(key, tool: .toggleBackgroundDimming) {
                 toggleBackgroundDimming(with: event)
                 return true
             }
@@ -734,7 +734,7 @@ class OverlayWindow: NSPanel {
         guard !toolShortcuts.contains(key) else { return false }
 
         let colorKey = ShortcutManager.shared.getShortcut(for: .colorPicker)
-        if key == colorKey {
+        if ShortcutManager.shared.matches(key, tool: .colorPicker) {
             if isEditingAnnotationText {
                 return false
             }
@@ -743,7 +743,7 @@ class OverlayWindow: NSPanel {
         }
 
         let sizeKey = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
-        if key == sizeKey {
+        if ShortcutManager.shared.matches(key, tool: .lineWidthPicker) {
             if isEditingAnnotationText {
                 return false
             }
@@ -790,30 +790,30 @@ class OverlayWindow: NSPanel {
             ShortcutManager.shared.getShortcut(for: .text),
             ShortcutManager.shared.getShortcut(for: .select),
             ShortcutManager.shared.getShortcut(for: .eraser),
-        ])
+        ].filter { !$0.isEmpty })
     }
     private func performToolShortcut(mappedTo key: String) -> Bool {
         let shortcutManager = ShortcutManager.shared
         let appDelegate = AppDelegate.shared
-        if key == shortcutManager.getShortcut(for: .pen) {
+        if shortcutManager.matches(key, tool: .pen) {
             appDelegate?.enablePenMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .arrow) {
+        } else if shortcutManager.matches(key, tool: .arrow) {
             appDelegate?.enableArrowMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .line) {
+        } else if shortcutManager.matches(key, tool: .line) {
             appDelegate?.enableLineMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .highlighter) {
+        } else if shortcutManager.matches(key, tool: .highlighter) {
             appDelegate?.enableHighlighterMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .rectangle) {
+        } else if shortcutManager.matches(key, tool: .rectangle) {
             appDelegate?.enableRectangleMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .circle) {
+        } else if shortcutManager.matches(key, tool: .circle) {
             appDelegate?.enableCircleMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .counter) {
+        } else if shortcutManager.matches(key, tool: .counter) {
             appDelegate?.enableCounterMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .text) {
+        } else if shortcutManager.matches(key, tool: .text) {
             appDelegate?.enableTextMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .select) {
+        } else if shortcutManager.matches(key, tool: .select) {
             appDelegate?.enableSelectMode(NSMenuItem())
-        } else if key == shortcutManager.getShortcut(for: .eraser) {
+        } else if shortcutManager.matches(key, tool: .eraser) {
             appDelegate?.enableEraserMode(NSMenuItem())
         } else {
             return false
@@ -1538,61 +1538,71 @@ class OverlayWindow: NSPanel {
             cancelFreehandStroke()
         }
         
-        // Handle single-key shortcuts if no modifiers are pressed
+        // Handle single-key shortcuts if no modifiers are pressed.
+        // Empty bindings are unbound and must not match an empty key event.
         if !cmdPressed
-            && !key.isEmpty
             && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
         {
-            switch key {
-            case ShortcutManager.shared.getShortcut(for: .pen):
+            let shortcuts = ShortcutManager.shared
+            if shortcuts.matches(key, tool: .pen) {
                 AppDelegate.shared?.enablePenMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .arrow):
+            }
+            if shortcuts.matches(key, tool: .arrow) {
                 AppDelegate.shared?.enableArrowMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .line):
+            }
+            if shortcuts.matches(key, tool: .line) {
                 AppDelegate.shared?.enableLineMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .highlighter):
+            }
+            if shortcuts.matches(key, tool: .highlighter) {
                 AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .rectangle):
+            }
+            if shortcuts.matches(key, tool: .rectangle) {
                 AppDelegate.shared?.enableRectangleMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .circle):
+            }
+            if shortcuts.matches(key, tool: .circle) {
                 AppDelegate.shared?.enableCircleMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .counter):
+            }
+            if shortcuts.matches(key, tool: .counter) {
                 AppDelegate.shared?.enableCounterMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .text):
+            }
+            if shortcuts.matches(key, tool: .text) {
                 AppDelegate.shared?.enableTextMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .select):
+            }
+            if shortcuts.matches(key, tool: .select) {
                 AppDelegate.shared?.enableSelectMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .eraser):
+            }
+            if shortcuts.matches(key, tool: .eraser) {
                 AppDelegate.shared?.enableEraserMode(NSMenuItem())
                 return
-            case ShortcutManager.shared.getShortcut(for: .colorPicker):
-                if isEditingAnnotationText { break }
-                AppDelegate.shared?.showColorPicker(nil)
-                return
-            case ShortcutManager.shared.getShortcut(for: .lineWidthPicker):
+            }
+            if shortcuts.matches(key, tool: .colorPicker) {
+                if !isEditingAnnotationText {
+                    AppDelegate.shared?.showColorPicker(nil)
+                    return
+                }
+            } else if shortcuts.matches(key, tool: .lineWidthPicker) {
                 AppDelegate.shared?.showLineWidthPicker(nil)
                 return
-            case ShortcutManager.shared.getShortcut(for: .toggleBoard):
+            } else if shortcuts.matches(key, tool: .toggleBoard) {
                 AppDelegate.shared?.toggleBoardVisibility(nil)
                 return
-            case ShortcutManager.shared.getShortcut(for: .toggleClickEffects):
+            } else if shortcuts.matches(key, tool: .toggleClickEffects) {
                 AppDelegate.shared?.toggleClickEffects(nil)
                 return
-            case ShortcutManager.shared.getShortcut(for: .toggleBackgroundDimming):
-                if isEditingAnnotationText { break }
-                toggleBackgroundDimming(with: event)
-                return
-            default:
-                break
+            } else if shortcuts.matches(key, tool: .toggleBackgroundDimming) {
+                if !isEditingAnnotationText {
+                    toggleBackgroundDimming(with: event)
+                    return
+                }
             }
         }
 

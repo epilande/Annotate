@@ -74,10 +74,27 @@ class ShortcutManager: @unchecked Sendable {
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
 
-    func resetToDefault(tool: ShortcutKey) {
+    /// Stores an empty binding so the shortcut is unbound (Not Set).
+    func clearShortcut(tool: ShortcutKey) {
+        setShortcut("", for: tool)
+    }
+
+    /// True when `key` is a non-empty bound shortcut for `tool`. Empty keys never match.
+    func matches(_ key: String, tool: ShortcutKey) -> Bool {
+        let shortcut = getShortcut(for: tool)
+        return !key.isEmpty && !shortcut.isEmpty && key == shortcut
+    }
+
+    @discardableResult
+    func resetToDefault(tool: ShortcutKey) -> Bool {
+        if isShortcutTaken(tool.defaultKey, excluding: tool) {
+            print("Default shortcut '\(tool.defaultKey)' is already in use.")
+            return false
+        }
         defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
         defaults.synchronize()
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
+        return true
     }
 
     func resetAllToDefault() {
