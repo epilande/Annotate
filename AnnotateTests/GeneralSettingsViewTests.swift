@@ -307,6 +307,22 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertNotNil(hostingController.view)
     }
 
+    func testFixedShortcutsListToolbarAndBracketKeys() {
+        let fixedShortcuts = ShortcutsSettingsView.fixedShortcuts
+
+        XCTAssertTrue(
+            fixedShortcuts.contains { $0.keys == "⌥⌘T" },
+            "Fixed shortcuts should include the toolbar toggle"
+        )
+        XCTAssertTrue(
+            fixedShortcuts.contains { $0.keys == "[ ]" },
+            "Fixed shortcuts should include the step size keys"
+        )
+
+        let ids = fixedShortcuts.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "Fixed shortcut ids should be unique")
+    }
+
     // MARK: - Persistence Tests
 
     func testSettingsPersistAcrossViewLifecycle() {
