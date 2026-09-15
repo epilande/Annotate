@@ -31,7 +31,57 @@ enum ShortcutSettingAction {
     }
 }
 
+struct BuiltInShortcut: Identifiable, Equatable {
+    let keys: String
+    let label: String
+    let description: String
+    var id: String { keys }
+}
+
 struct ShortcutsSettingsView: View {
+    static let builtInShortcuts: [BuiltInShortcut] = [
+        BuiltInShortcut(
+            keys: "⌥⌘T",
+            label: "Toggle Toolbar",
+            description: "Show or hide the floating toolbar"
+        ),
+        BuiltInShortcut(
+            keys: "[ ]",
+            label: "Step Size",
+            description: "Step stroke width, or text and counter size for those tools"
+        ),
+        BuiltInShortcut(
+            keys: "Space",
+            label: "Toggle Fade Mode",
+            description: "Switch between fade and persist"
+        ),
+        BuiltInShortcut(
+            keys: "Delete",
+            label: "Delete",
+            description: "Remove the selection or the most recent annotation"
+        ),
+        BuiltInShortcut(
+            keys: "⌥Delete",
+            label: "Clear All",
+            description: "Remove every annotation"
+        ),
+        BuiltInShortcut(
+            keys: "⌘Z",
+            label: "Undo",
+            description: "Undo the last action"
+        ),
+        BuiltInShortcut(
+            keys: "⇧⌘Z",
+            label: "Redo",
+            description: "Redo the last undone action"
+        ),
+        BuiltInShortcut(
+            keys: "Esc",
+            label: "Close Overlay",
+            description: "Hide the annotation overlay"
+        )
+    ]
+
     @State private var shortcuts: [ShortcutKey: String] = ShortcutManager.shared.allShortcuts
     @State private var editingShortcut: ShortcutKey?
     @State private var showResetConfirmation = false
@@ -188,6 +238,19 @@ struct ShortcutsSettingsView: View {
             }
 
             Section {
+                ForEach(Self.builtInShortcuts) { shortcut in
+                    BuiltInShortcutRow(shortcut: shortcut)
+                }
+            } header: {
+                SettingsHeader(
+                    icon: "lock",
+                    color: .gray,
+                    title: "Built-in Shortcuts",
+                    subtitle: "Not customizable yet"
+                )
+            }
+
+            Section {
                 HStack {
                     Spacer()
                     Button {
@@ -249,14 +312,7 @@ struct ShortcutSettingRow: View {
                             .frame(minWidth: 32)
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(.quaternary)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .strokeBorder(.separator, lineWidth: 1)
-                                    )
-                            )
+                            .background(ShortcutKeycapBackground())
                     }
                     .buttonStyle(.plain)
                     .opacity(isHoveringKey ? 0.8 : 1.0)
@@ -302,6 +358,37 @@ struct ShortcutSettingRow: View {
         } label: {
             Text(label)
             Text(description)
+        }
+    }
+}
+
+/// The rounded, quaternary-filled keycap shape shared by shortcut key labels.
+private struct ShortcutKeycapBackground: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(.quaternary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(.separator, lineWidth: 1)
+            )
+    }
+}
+
+struct BuiltInShortcutRow: View {
+    let shortcut: BuiltInShortcut
+
+    var body: some View {
+        LabeledContent {
+            Text(shortcut.keys)
+                .font(.body.weight(.medium).monospaced())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 32)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(ShortcutKeycapBackground())
+        } label: {
+            Text(shortcut.label)
+            Text(shortcut.description)
         }
     }
 }
