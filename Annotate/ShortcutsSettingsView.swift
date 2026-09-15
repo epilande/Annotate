@@ -31,7 +31,7 @@ enum ShortcutSettingAction {
     }
 }
 
-struct FixedShortcut: Identifiable, Equatable {
+struct BuiltInShortcut: Identifiable, Equatable {
     let keys: String
     let label: String
     let description: String
@@ -39,43 +39,43 @@ struct FixedShortcut: Identifiable, Equatable {
 }
 
 struct ShortcutsSettingsView: View {
-    static let fixedShortcuts: [FixedShortcut] = [
-        FixedShortcut(
+    static let builtInShortcuts: [BuiltInShortcut] = [
+        BuiltInShortcut(
             keys: "⌥⌘T",
             label: "Toggle Toolbar",
             description: "Show or hide the floating toolbar"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "[ ]",
             label: "Step Size",
             description: "Step stroke width, or text and counter size for those tools"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "Space",
             label: "Toggle Fade Mode",
             description: "Switch between fade and persist"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "Delete",
             label: "Delete",
             description: "Remove the selection or the most recent annotation"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "⌥Delete",
             label: "Clear All",
             description: "Remove every annotation"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "⌘Z",
             label: "Undo",
             description: "Undo the last action"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "⇧⌘Z",
             label: "Redo",
             description: "Redo the last undone action"
         ),
-        FixedShortcut(
+        BuiltInShortcut(
             keys: "Esc",
             label: "Close Overlay",
             description: "Hide the annotation overlay"
@@ -238,15 +238,15 @@ struct ShortcutsSettingsView: View {
             }
 
             Section {
-                ForEach(Self.fixedShortcuts) { shortcut in
-                    FixedShortcutRow(shortcut: shortcut)
+                ForEach(Self.builtInShortcuts) { shortcut in
+                    BuiltInShortcutRow(shortcut: shortcut)
                 }
             } header: {
                 SettingsHeader(
                     icon: "lock",
                     color: .gray,
-                    title: "Fixed Shortcuts",
-                    subtitle: "Built in and cannot be changed"
+                    title: "Built-in Shortcuts",
+                    subtitle: "Not customizable yet"
                 )
             }
 
@@ -374,8 +374,8 @@ private struct ShortcutKeycapBackground: View {
     }
 }
 
-struct FixedShortcutRow: View {
-    let shortcut: FixedShortcut
+struct BuiltInShortcutRow: View {
+    let shortcut: BuiltInShortcut
 
     var body: some View {
         LabeledContent {

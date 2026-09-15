@@ -307,20 +307,20 @@ final class GeneralSettingsViewTests: XCTestCase {
         XCTAssertNotNil(hostingController.view)
     }
 
-    func testFixedShortcutsListToolbarAndBracketKeys() {
-        let fixedShortcuts = ShortcutsSettingsView.fixedShortcuts
+    func testBuiltInShortcutsListToolbarAndBracketKeys() {
+        let builtInShortcuts = ShortcutsSettingsView.builtInShortcuts
 
         XCTAssertTrue(
-            fixedShortcuts.contains { $0.keys == "⌥⌘T" },
-            "Fixed shortcuts should include the toolbar toggle"
+            builtInShortcuts.contains { $0.keys == "⌥⌘T" },
+            "Built-in shortcuts should include the toolbar toggle"
         )
         XCTAssertTrue(
-            fixedShortcuts.contains { $0.keys == "[ ]" },
-            "Fixed shortcuts should include the step size keys"
+            builtInShortcuts.contains { $0.keys == "[ ]" },
+            "Built-in shortcuts should include the step size keys"
         )
 
-        let ids = fixedShortcuts.map(\.id)
-        XCTAssertEqual(ids.count, Set(ids).count, "Fixed shortcut ids should be unique")
+        let ids = builtInShortcuts.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "Built-in shortcut ids should be unique")
     }
 
     // MARK: - Persistence Tests

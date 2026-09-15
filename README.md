@@ -380,7 +380,7 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Advanced Tools**: Counter, Text, Select, Eraser
 - **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming
 
-A **Fixed Shortcuts** section above the reset button lists the built-in keys that cannot be remapped, including <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> for the toolbar and <kbd>[</kbd> / <kbd>]</kbd> for stepping sizes.
+A **Built-in Shortcuts** section above the reset button lists the keys that are not customizable yet, including <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> for the toolbar and <kbd>[</kbd> / <kbd>]</kbd> for stepping sizes.
 
 **Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores every letter default and leaves dimming unset. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 
