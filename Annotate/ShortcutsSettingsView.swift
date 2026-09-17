@@ -31,7 +31,7 @@ enum ShortcutSettingAction {
     }
 }
 
-struct BuiltInShortcut: Identifiable, Equatable {
+struct BuiltInShortcut: Identifiable {
     let keys: String
     let label: String
     let description: String
@@ -58,7 +58,7 @@ struct ShortcutsSettingsView: View {
         BuiltInShortcut(
             keys: "Delete",
             label: "Delete",
-            description: "Remove the selection or the most recent annotation"
+            description: "Remove the selection, or the newest item drawn with the current tool"
         ),
         BuiltInShortcut(
             keys: "⌥Delete",
@@ -78,7 +78,7 @@ struct ShortcutsSettingsView: View {
         BuiltInShortcut(
             keys: "Esc",
             label: "Close Overlay",
-            description: "Hide the annotation overlay"
+            description: "Hide the overlay, or dismiss an open picker or label first"
         )
     ]
 

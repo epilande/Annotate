@@ -209,8 +209,8 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 - **Color Picker**: Press <kbd>C</kbd> to open the swatch picker
 - **Size Picker**: Press <kbd>W</kbd> to open the size ladder. It adapts to the active tool: stroke widths from 1 to 24 px for drawing tools, font sizes from 12 to 120 pt for Text, and badge sizes for Counter
 - **Choosing**: Tap the key, then click a swatch or type its digit. Or hold the key, move over your choice, and release. Press the same key or <kbd>Esc</kbd> to dismiss without changing anything
-- **Bracket Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> at any time to step the active ladder without opening the picker. While typing in a label, brackets insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
-- **Command + Scroll**: Hold <kbd>Command</kbd> and scroll to fine-tune stroke width from 0.5 to 24 px, with a preview at the bottom center of the screen
+- **Bracket Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> to step the active ladder without opening the picker. They do nothing while a picker is open, and while typing in a label they insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
+- **Command + Scroll**: Hold <kbd>Command</kbd> and scroll to fine-tune the active size, stroke width from 0.5 to 24 px for drawing tools or the text and counter size for those tools, with a preview at the bottom center of the screen
 - **Smart Scaling**: Arrowhead sizes scale with line width for better visual balance
 
 > [!TIP]
