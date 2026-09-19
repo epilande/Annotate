@@ -98,6 +98,60 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         XCTAssertEqual(window.overlayView.arrows.count, 1)
     }
 
+    func testDvorakQwertyCommandLayerUndoesAndRedoes() throws {
+        addUndoableArrow()
+
+        window.keyDown(with: try keyEvent("z", keyCode: 6, charactersIgnoringModifiers: ";"))
+
+        XCTAssertTrue(
+            window.overlayView.arrows.isEmpty, "Cmd+Z must undo on Dvorak - QWERTY ⌘")
+        XCTAssertEqual(
+            appDelegate.closeCount, 0,
+            "Cmd+Z must not close the overlay on Dvorak - QWERTY ⌘")
+
+        window.keyDown(
+            with: try keyEvent(
+                "Z", keyCode: 6, modifiers: [.command, .shift],
+                charactersIgnoringModifiers: ":"))
+
+        XCTAssertEqual(
+            window.overlayView.arrows.count, 1,
+            "Cmd+Shift+Z must redo on Dvorak - QWERTY ⌘")
+        XCTAssertEqual(
+            appDelegate.closeCount, 0, "Redo must not close the overlay on Dvorak - QWERTY ⌘")
+    }
+
+    func testDvorakQwertyCommandLayerClosesWithoutUndoing() throws {
+        addUndoableArrow()
+
+        window.keyDown(with: try keyEvent("w", keyCode: 13, charactersIgnoringModifiers: ","))
+
+        XCTAssertEqual(
+            appDelegate.closeCount, 1, "Cmd+W must close the overlay on Dvorak - QWERTY ⌘")
+        XCTAssertEqual(
+            window.overlayView.arrows.count, 1, "Cmd+W must not undo on Dvorak - QWERTY ⌘")
+    }
+
+    func testRussianCommandLayerUndoesAndResetsCounter() throws {
+        addUndoableArrow()
+
+        window.keyDown(with: try keyEvent("z", keyCode: 6, charactersIgnoringModifiers: "я"))
+
+        XCTAssertTrue(window.overlayView.arrows.isEmpty, "Cmd+Z must undo on Russian")
+        XCTAssertEqual(
+            appDelegate.closeCount, 0, "Cmd+Z must not close the overlay on Russian")
+
+        window.overlayView.currentTool = .counter
+        window.overlayView.nextCounterNumber = 5
+
+        window.keyDown(with: try keyEvent("r", keyCode: 15, charactersIgnoringModifiers: "к"))
+
+        XCTAssertEqual(
+            window.overlayView.nextCounterNumber, 1, "Cmd+R must reset the counter on Russian")
+    }
+
+    /// Covers plain Dvorak, which has no Command layer, so both character properties report the
+    /// Dvorak letter. Dvorak-QWERTY⌘ is covered separately above.
     func testDvorakKeysAtQwertyShortcutPositionsDoNotTriggerCommands() throws {
         addUndoableArrow()
         window.overlayView.currentTool = .counter
@@ -106,6 +160,29 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         for (character, keyCode): (String, UInt16) in [(";", 6), (",", 13), ("p", 15)] {
             window.keyDown(with: try keyEvent(character, keyCode: keyCode))
         }
+
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(appDelegate.closeCount, 0)
+        XCTAssertEqual(window.overlayView.nextCounterNumber, 5)
+    }
+
+    /// On Dvorak - QWERTY ⌘ the base layer behind Cmd+, Cmd+/ Cmd+? and Cmd+O is "w", "z", "Z"
+    /// and "r", so matching `charactersIgnoringModifiers` would close the overlay, undo, redo and
+    /// reset the counter on those chords. Matching `characters` leaves them alone.
+    func testDvorakQwertyBaseLayerAliasesDoNotTriggerCommands() throws {
+        addUndoableArrow()
+        window.overlayView.currentTool = .counter
+        window.overlayView.nextCounterNumber = 5
+
+        window.keyDown(with: try keyEvent(",", keyCode: 43, charactersIgnoringModifiers: "w"))
+        window.keyDown(with: try keyEvent("/", keyCode: 44, charactersIgnoringModifiers: "z"))
+        XCTAssertEqual(
+            window.overlayView.arrows.count, 1, "Cmd+/ must not undo on Dvorak - QWERTY ⌘")
+        window.keyDown(
+            with: try keyEvent(
+                "?", keyCode: 44, modifiers: [.command, .shift],
+                charactersIgnoringModifiers: "Z"))
+        window.keyDown(with: try keyEvent("o", keyCode: 31, charactersIgnoringModifiers: "r"))
 
         XCTAssertEqual(window.overlayView.arrows.count, 1)
         XCTAssertEqual(appDelegate.closeCount, 0)
@@ -137,11 +214,13 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
     }
 
     private func keyEvent(
-        _ character: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = .command
+        _ character: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = .command,
+        charactersIgnoringModifiers: String? = nil
     ) throws -> NSEvent {
         try XCTUnwrap(TestEvents.createKeyEvent(
             type: .keyDown, keyCode: keyCode, modifierFlags: modifiers,
-            characters: character, windowNumber: window.windowNumber))
+            characters: character, charactersIgnoringModifiers: charactersIgnoringModifiers,
+            windowNumber: window.windowNumber))
     }
 }
 
