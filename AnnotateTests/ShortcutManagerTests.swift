@@ -266,10 +266,10 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
     
     func testNoShortcutConflicts() {
         // Only assigned defaults reserve a key.
-        var shortcuts = Set<String>()
+        var shortcuts = Set<ShortcutBinding>()
         let assignedTools = ShortcutKey.allCases.filter { !$0.defaultKey.isEmpty }
         for tool in assignedTools {
-            let shortcut = tool.defaultKey
+            let shortcut = tool.defaultBinding
             XCTAssertFalse(
                 shortcuts.contains(shortcut),
                 "Shortcut '\(shortcut)' is used by multiple tools"

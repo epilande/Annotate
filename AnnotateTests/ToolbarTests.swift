@@ -717,6 +717,147 @@ final class ToolbarTests: XCTestCase {
                 + "to Select must not fire here")
     }
 
+    func testRemappedFadeAndToolbarReplaceTheirOldKeys() throws {
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        let shortcuts = ShortcutManager.shared
+        XCTAssertTrue(shortcuts.setShortcut("j", for: .toggleFade))
+        XCTAssertTrue(shortcuts.setShortcut(ShortcutBinding("u", modifiers: [.command, .shift]), for: .toggleToolbar))
+
+        window.sendEvent(try shortcutEvent(" ", keyCode: 49))
+        XCTAssertFalse(spy.didToggleFade)
+        window.sendEvent(try shortcutEvent("j", keyCode: 38))
+        XCTAssertTrue(spy.didToggleFade)
+        window.sendEvent(try XCTUnwrap(toolbarToggleEvent()))
+        XCTAssertTrue(spy.toolbarVisible)
+        window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: [.command, .shift]))
+        XCTAssertFalse(spy.toolbarVisible)
+        window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: [.command, .shift], repeatKey: true))
+        XCTAssertFalse(spy.toolbarVisible, "Holding the new toolbar binding must only toggle once")
+
+        spy.didToggleFade = false
+        shortcuts.clearShortcut(tool: .toggleFade)
+        window.sendEvent(try shortcutEvent("j", keyCode: 38))
+        XCTAssertFalse(spy.didToggleFade)
+    }
+
+    func testRemappedClearAllDoesNotLeaveOptionDeleteActive() throws {
+        let shortcuts = ShortcutManager.shared
+        XCTAssertTrue(shortcuts.setShortcut(ShortcutBinding("j", modifiers: .option), for: .clearAll))
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        window.overlayView.paths.append(TestFactory.createDrawingPath())
+        window.overlayView.paths.append(TestFactory.createDrawingPath())
+        window.sendEvent(try shortcutEvent("", keyCode: 51, modifiers: .option))
+        XCTAssertEqual(window.overlayView.paths.count, 2)
+        window.sendEvent(try shortcutEvent("j", keyCode: 38, modifiers: .option))
+        XCTAssertTrue(window.overlayView.paths.isEmpty)
+        window.overlayView.undo()
+        XCTAssertEqual(window.overlayView.paths.count, 2)
+        window.keyDown(with: try shortcutEvent("", keyCode: 51))
+        XCTAssertEqual(window.overlayView.paths.count, 1, "Bare Delete stays fixed")
+    }
+
+    func testRemappedSizeStepsRepeatAndUseTheActiveToolLadder() throws {
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("j", for: .decreaseSize))
+        XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("u", modifiers: .option), for: .increaseSize))
+        window.overlayView.currentTool = .pen
+        window.overlayView.currentLineWidth = 3
+        window.sendEvent(try shortcutEvent("[", keyCode: 33))
+        XCTAssertEqual(window.overlayView.currentLineWidth, 3)
+        window.sendEvent(try shortcutEvent("j", keyCode: 38))
+        XCTAssertEqual(window.overlayView.currentLineWidth, 2)
+        window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: .option))
+        window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: .option, repeatKey: true))
+        XCTAssertEqual(window.overlayView.currentLineWidth, 5)
+
+        window.overlayView.currentTool = .text
+        defaults.textToolFontSize = QuickPickerView.fontSizeOptions[1]
+        window.sendEvent(try shortcutEvent("j", keyCode: 38))
+        XCTAssertEqual(defaults.textToolFontSize, QuickPickerView.fontSizeOptions[0])
+        window.overlayView.currentTool = .counter
+        defaults.counterToolFontSize = QuickPickerView.counterSizeOptions[1]
+        window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: .option))
+        XCTAssertEqual(defaults.counterToolFontSize, QuickPickerView.counterSizeOptions[2])
+    }
+
+    func testRemappedActionsYieldToPickerAndTextEditing() throws {
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("j", for: .toggleFade))
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("u", for: .clearAll))
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("i", for: .increaseSize))
+        window.overlayView.paths.append(TestFactory.createDrawingPath())
+        let originalWidth = window.overlayView.currentLineWidth
+        window.beginQuickPicker(.color)
+        for (key, code): (String, UInt16) in [("j", 38), ("u", 32), ("i", 34)] {
+            window.sendEvent(try shortcutEvent(key, keyCode: code))
+        }
+        XCTAssertTrue(window.isQuickPickerOpen)
+        XCTAssertFalse(spy.didToggleFade)
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+        window.cancelQuickPicker()
+
+        _ = try XCTUnwrap(startEditingAnnotationText())
+        for (key, code): (String, UInt16) in [("j", 38), ("u", 32), ("i", 34)] {
+            window.sendEvent(try shortcutEvent(key, keyCode: code))
+        }
+        XCTAssertFalse(spy.didToggleFade)
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
+    }
+
+    func testPickerChordReleaseWorksAfterModifierRelease() throws {
+        XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("{", modifiers: .shift), for: .colorPicker))
+        window.sendEvent(try shortcutEvent("{", keyCode: 33, modifiers: .shift))
+        XCTAssertTrue(window.isQuickPickerOpen)
+        let deadline = Date().addingTimeInterval(0.3)
+        while Date() < deadline { _ = CFRunLoopRunInMode(.defaultMode, 0.01, false) }
+        // Releasing Shift first changes "{" to "[" on key-up; the physical key is unchanged.
+        window.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(type: .keyUp, keyCode: 33,
+            characters: "[", windowNumber: window.windowNumber)))
+        let dismissDeadline = Date().addingTimeInterval(10)
+        while window.isQuickPickerOpen && Date() < dismissDeadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+        }
+        XCTAssertFalse(window.isQuickPickerOpen, "The held picker must commit on release of its activation key")
+    }
+
+    func testMenuAndToolbarReflectChordsClearingAndRestoring() throws {
+        appDelegate.setupStatusBarItem()
+        installedStatusItem = true
+        let shortcuts = ShortcutManager.shared
+        let cases: [(ShortcutKey, Selector, ShortcutBinding)] = [
+            (.toggleFade, #selector(AppDelegate.toggleFadeMode(_:)), ShortcutBinding("j", modifiers: .option)),
+            (.toggleToolbar, #selector(AppDelegate.toggleToolbar), ShortcutBinding("u", modifiers: .command)),
+            (.clearAll, #selector(AppDelegate.clearAllAnnotations), ShortcutBinding("i", modifiers: [.control, .shift]))
+        ]
+        for (action, selector, binding) in cases {
+            XCTAssertTrue(shortcuts.setShortcut(binding, for: action))
+            appDelegate.refreshMenuKeyEquivalents()
+            let item = try XCTUnwrap(appDelegate.statusItem.menu?.items.first { $0.action == selector })
+            XCTAssertEqual(item.keyEquivalent, binding.menuKeyEquivalent)
+            XCTAssertEqual(item.keyEquivalentModifierMask, binding.modifiers)
+            XCTAssertEqual(window.toolbarModel.shortcuts[action], binding.displayValue)
+            shortcuts.clearShortcut(tool: action)
+            appDelegate.refreshMenuKeyEquivalents()
+            XCTAssertEqual(item.keyEquivalent, "")
+            XCTAssertEqual(item.keyEquivalentModifierMask, [])
+            XCTAssertEqual(window.toolbarModel.shortcuts[action], "")
+            XCTAssertTrue(shortcuts.resetToDefault(tool: action))
+            appDelegate.refreshMenuKeyEquivalents()
+            XCTAssertEqual(item.keyEquivalent, action.defaultBinding.menuKeyEquivalent)
+            XCTAssertEqual(item.keyEquivalentModifierMask, action.defaultBinding.modifiers)
+        }
+    }
+
+    private func shortcutEvent(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [],
+                               repeatKey: Bool = false) throws -> NSEvent {
+        try XCTUnwrap(TestEvents.createKeyEvent(type: .keyDown, keyCode: keyCode,
+            modifierFlags: modifiers, characters: key, windowNumber: window.windowNumber, isARepeat: repeatKey))
+    }
+
     private func toolbarToggleEvent(
         modifierFlags: NSEvent.ModifierFlags = [.command, .option],
         isARepeat: Bool = false

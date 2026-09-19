@@ -29,6 +29,7 @@ class OverlayWindow: NSPanel {
     private static let quickPickerHoldDuration: CFTimeInterval = 0.25
     private var quickPicker: QuickPickerView?
     private var quickPickerInteraction: QuickPickerInteraction?
+    private var quickPickerActivationKeyCode: UInt16?
     private var quickPickerHoldTask: DispatchWorkItem?
     private var quickPickerMoveMonitor: Any?
     private var quickPickerInitialMouseLocation: NSPoint?
@@ -367,17 +368,6 @@ class OverlayWindow: NSPanel {
     var isQuickPickerOpen: Bool { quickPicker != nil }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, quickPicker == nil, !isEditingAnnotationText,
-            !overlayView.isReadOnlyMode, isToolbarToggleEvent(event)
-        {
-            // Holding the chord auto-repeats, so only the first press toggles. The repeats are
-            // swallowed with it: the chord belongs to the window, and nothing downstream wants it.
-            if !event.isARepeat {
-                AppDelegate.shared?.toggleToolbar()
-            }
-            return
-        }
-
         if routeOverlayMouseEvent(event) {
             return
         }
@@ -388,7 +378,7 @@ class OverlayWindow: NSPanel {
                 _ = handleQuickPickerKeyDown(event)
                 return
             }
-            if handleQuickPickerKeyDown(event) {
+            if handleOverlayShortcut(event) {
                 return
             }
             if isEditingAnnotationText, deliverKeyToAnnotationField(event) {
@@ -485,7 +475,8 @@ class OverlayWindow: NSPanel {
     func beginQuickPicker(
         _ requestedMode: QuickPickerView.Mode,
         anchor requestedAnchor: NSPoint? = nil,
-        activationKey: String? = nil
+        activationKey: String? = nil,
+        activationKeyCode: UInt16? = nil
     ) {
         guard quickPicker == nil else { return }
 
@@ -516,6 +507,7 @@ class OverlayWindow: NSPanel {
         acceptsMouseMovedEvents = true
         quickPickerInitialMouseLocation = NSEvent.mouseLocation
 
+        quickPickerActivationKeyCode = activationKeyCode
         let key = activationKey ?? shortcut(for: requestedMode)
         if activationKey == nil {
             quickPickerInteraction = .open(key: key)
@@ -705,59 +697,59 @@ class OverlayWindow: NSPanel {
                 commitQuickPicker()
                 return true
             }
-            if key == activeQuickPickerKey {
+            let action: ShortcutKey = picker.mode == .color ? .colorPicker : .lineWidthPicker
+            if ShortcutManager.shared.matches(event, tool: action) {
                 cancelQuickPicker()
             }
             return true
         }
 
-        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        return false
+    }
+
+    /// All editable overlay actions share exact key/modifier matching and the same focus guards.
+    @discardableResult
+    private func handleOverlayShortcut(_ event: NSEvent) -> Bool {
+        guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
+            let action = ShortcutManager.shared.action(for: event)
         else { return false }
 
-        if key == "[" || key == "]" {
-            if isEditingAnnotationText {
-                return false
+        switch action {
+        case .pen: AppDelegate.shared?.enablePenMode(NSMenuItem())
+        case .arrow: AppDelegate.shared?.enableArrowMode(NSMenuItem())
+        case .line: AppDelegate.shared?.enableLineMode(NSMenuItem())
+        case .highlighter: AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
+        case .rectangle: AppDelegate.shared?.enableRectangleMode(NSMenuItem())
+        case .circle: AppDelegate.shared?.enableCircleMode(NSMenuItem())
+        case .counter: AppDelegate.shared?.enableCounterMode(NSMenuItem())
+        case .text: AppDelegate.shared?.enableTextMode(NSMenuItem())
+        case .select: AppDelegate.shared?.enableSelectMode(NSMenuItem())
+        case .eraser: AppDelegate.shared?.enableEraserMode(NSMenuItem())
+        case .colorPicker, .lineWidthPicker:
+            if !event.isARepeat {
+                beginQuickPicker(action == .colorPicker ? .color : .width,
+                    activationKey: ShortcutManager.shared.getShortcut(for: action),
+                    activationKeyCode: event.keyCode)
             }
-            if performToolShortcut(mappedTo: key) {
-                return true
-            }
-            if ShortcutManager.shared.matches(key, tool: .toggleBackgroundDimming) {
-                toggleBackgroundDimming(with: event)
-                return true
-            }
-            stepActiveLadder(key == "[" ? -1 : 1)
-            return true
+        case .toggleBoard: AppDelegate.shared?.toggleBoardVisibility(nil)
+        case .toggleClickEffects: AppDelegate.shared?.toggleClickEffects(nil)
+        case .toggleBackgroundDimming: toggleBackgroundDimming(with: event)
+        case .toggleFade: AppDelegate.shared?.toggleFadeMode(nil)
+        case .toggleToolbar:
+            if !event.isARepeat { AppDelegate.shared?.toggleToolbar() }
+        case .decreaseSize: stepActiveLadder(-1)
+        case .increaseSize: stepActiveLadder(1)
+        case .clearAll: performClearAll()
         }
-        guard !event.isARepeat else { return false }
-
-
-        guard !toolShortcuts.contains(key) else { return false }
-
-        let colorKey = ShortcutManager.shared.getShortcut(for: .colorPicker)
-        if ShortcutManager.shared.matches(key, tool: .colorPicker) {
-            if isEditingAnnotationText {
-                return false
-            }
-            beginQuickPicker(.color, activationKey: colorKey)
-            return true
-        }
-
-        let sizeKey = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
-        if ShortcutManager.shared.matches(key, tool: .lineWidthPicker) {
-            if isEditingAnnotationText {
-                return false
-            }
-            beginQuickPicker(.width, activationKey: sizeKey)
-            return true
-        }
-        return false
+        return true
     }
 
     private func handleQuickPickerKeyUp(_ event: NSEvent) -> Bool {
         guard quickPicker != nil, let interaction = quickPickerInteraction,
             case .waitingForRelease(let key, let openedAt, let moved, let holdActive) =
                 interaction,
-            event.charactersIgnoringModifiers?.lowercased() == key
+            quickPickerActivationKeyCode.map({ event.keyCode == $0 })
+                ?? (event.charactersIgnoringModifiers?.lowercased() == key)
         else { return false }
 
         quickPickerHoldTask?.cancel()
@@ -769,58 +761,6 @@ class OverlayWindow: NSPanel {
         }
         return true
     }
-
-    private var activeQuickPickerKey: String? {
-        guard let interaction = quickPickerInteraction else { return nil }
-        switch interaction {
-        case .waitingForRelease(let key, _, _, _), .open(let key):
-            return key
-        }
-    }
-
-    private var toolShortcuts: Set<String> {
-        Set([
-            ShortcutManager.shared.getShortcut(for: .pen),
-            ShortcutManager.shared.getShortcut(for: .arrow),
-            ShortcutManager.shared.getShortcut(for: .line),
-            ShortcutManager.shared.getShortcut(for: .highlighter),
-            ShortcutManager.shared.getShortcut(for: .rectangle),
-            ShortcutManager.shared.getShortcut(for: .circle),
-            ShortcutManager.shared.getShortcut(for: .counter),
-            ShortcutManager.shared.getShortcut(for: .text),
-            ShortcutManager.shared.getShortcut(for: .select),
-            ShortcutManager.shared.getShortcut(for: .eraser),
-        ].filter { !$0.isEmpty })
-    }
-    private func performToolShortcut(mappedTo key: String) -> Bool {
-        let shortcutManager = ShortcutManager.shared
-        let appDelegate = AppDelegate.shared
-        if shortcutManager.matches(key, tool: .pen) {
-            appDelegate?.enablePenMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .arrow) {
-            appDelegate?.enableArrowMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .line) {
-            appDelegate?.enableLineMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .highlighter) {
-            appDelegate?.enableHighlighterMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .rectangle) {
-            appDelegate?.enableRectangleMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .circle) {
-            appDelegate?.enableCircleMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .counter) {
-            appDelegate?.enableCounterMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .text) {
-            appDelegate?.enableTextMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .select) {
-            appDelegate?.enableSelectMode(NSMenuItem())
-        } else if shortcutManager.matches(key, tool: .eraser) {
-            appDelegate?.enableEraserMode(NSMenuItem())
-        } else {
-            return false
-        }
-        return true
-    }
-
 
     private func applyColor(_ color: NSColor) {
         if let colorData = try? NSKeyedArchiver.archivedData(
@@ -846,6 +786,7 @@ class OverlayWindow: NSPanel {
         quickPicker?.removeFromSuperview()
         quickPicker = nil
         quickPickerInteraction = nil
+        quickPickerActivationKeyCode = nil
         quickPickerInitialMouseLocation = nil
         pickerCommitInFlight = false
         acceptsMouseMovedEvents = acceptedMouseMovedBeforePicker
@@ -1531,79 +1472,15 @@ class OverlayWindow: NSPanel {
             return
         }
 
+        if handleOverlayShortcut(event) { return }
+        // The field editor already handles typing before it reaches the window.
+        // Do not let an unhandled editing key reach another window's shortcuts.
+        guard !isEditingAnnotationText else { return }
         let cmdPressed = event.modifierFlags.contains(.command)
         let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
             cancelFreehandStroke()
-        }
-        
-        // Handle single-key shortcuts if no modifiers are pressed.
-        // Empty bindings are unbound and must not match an empty key event.
-        if !cmdPressed
-            && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-        {
-            let shortcuts = ShortcutManager.shared
-            if shortcuts.matches(key, tool: .pen) {
-                AppDelegate.shared?.enablePenMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .arrow) {
-                AppDelegate.shared?.enableArrowMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .line) {
-                AppDelegate.shared?.enableLineMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .highlighter) {
-                AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .rectangle) {
-                AppDelegate.shared?.enableRectangleMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .circle) {
-                AppDelegate.shared?.enableCircleMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .counter) {
-                AppDelegate.shared?.enableCounterMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .text) {
-                AppDelegate.shared?.enableTextMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .select) {
-                AppDelegate.shared?.enableSelectMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .eraser) {
-                AppDelegate.shared?.enableEraserMode(NSMenuItem())
-                return
-            }
-            if shortcuts.matches(key, tool: .colorPicker) {
-                if !isEditingAnnotationText {
-                    AppDelegate.shared?.showColorPicker(nil)
-                    return
-                }
-            } else if shortcuts.matches(key, tool: .lineWidthPicker) {
-                AppDelegate.shared?.showLineWidthPicker(nil)
-                return
-            } else if shortcuts.matches(key, tool: .toggleBoard) {
-                AppDelegate.shared?.toggleBoardVisibility(nil)
-                return
-            } else if shortcuts.matches(key, tool: .toggleClickEffects) {
-                AppDelegate.shared?.toggleClickEffects(nil)
-                return
-            } else if shortcuts.matches(key, tool: .toggleBackgroundDimming) {
-                if !isEditingAnnotationText {
-                    toggleBackgroundDimming(with: event)
-                    return
-                }
-            }
         }
 
         // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
@@ -1642,20 +1519,10 @@ class OverlayWindow: NSPanel {
             } else {
                 AppDelegate.shared?.toggleOverlay()
             }
-        case 51:  // Delete/Backspace key
-            if event.modifierFlags.contains(.option) {
-                performClearAll()
-            } else {
+        case 51, 117:  // Delete/Backspace and Forward Delete
+            if !event.modifierFlags.contains(.option) {
                 overlayView.deleteLastItem()
             }
-        case 117:  // Forward Delete key (fn+delete)
-            if event.modifierFlags.contains(.option) {
-                performClearAll()
-            } else {
-                overlayView.deleteLastItem()
-            }
-        case 49:  // Spacebar - toggle drawing mode
-            AppDelegate.shared?.toggleFadeMode(NSMenuItem())
         default:
             super.keyDown(with: event)
         }
@@ -2241,6 +2108,7 @@ class OverlayWindow: NSPanel {
     // MARK: - Keyboard Commands for Copy/Paste/Cut/Duplicate
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if handleQuickPickerKeyDown(event) || handleOverlayShortcut(event) { return true }
         // Check for Command key combinations
         guard event.modifierFlags.contains(.command) else {
             return super.performKeyEquivalent(with: event)
@@ -2334,15 +2202,5 @@ class LinePreviewView: NSView {
         path.lineWidth = lineWidth
         path.lineCapStyle = .round
         path.stroke()
-    }
-}
-
-private extension OverlayWindow {
-    /// Option+Command+T, matched on the character rather than the key code so it resolves
-    /// the way AppKit resolves the menu key equivalent and still works on non-QWERTY layouts.
-    func isToolbarToggleEvent(_ event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        return modifiers == [.command, .option]
-            && event.charactersIgnoringModifiers?.lowercased() == "t"
     }
 }

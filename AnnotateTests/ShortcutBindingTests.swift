@@ -1,0 +1,148 @@
+import AppKit
+import XCTest
+@testable import Annotate
+
+@MainActor
+final class ShortcutBindingTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var manager: ShortcutManager!
+
+    override func setUp() {
+        super.setUp()
+        defaults = TestUserDefaults.create()
+        manager = ShortcutManager(userDefaults: defaults)
+    }
+
+    override func tearDown() {
+        manager = nil
+        TestUserDefaults.removeSuite()
+        defaults = nil
+        super.tearDown()
+    }
+
+    func testLegacyBindingsAndClearedValuesSurviveReload() {
+        defaults.set("j", forKey: "shortcut.p")
+        defaults.set("", forKey: "shortcut.a")
+        defaults.set("]", forKey: "shortcut.e")
+        defaults.set(" ", forKey: "shortcut.k")
+        let migrated = ShortcutManager(userDefaults: defaults)
+        XCTAssertEqual(migrated.binding(for: .pen), ShortcutBinding("j"))
+        XCTAssertEqual(migrated.binding(for: .arrow), .unassigned)
+        XCTAssertEqual(migrated.binding(for: .eraser), ShortcutBinding("]"))
+        XCTAssertEqual(migrated.binding(for: .increaseSize), .unassigned)
+        XCTAssertEqual(migrated.binding(for: .toggleFade), .unassigned)
+        XCTAssertEqual(migrated.binding(for: .decreaseSize), ShortcutBinding("["))
+        XCTAssertFalse(migrated.resetToDefault(tool: .increaseSize))
+        migrated.clearShortcut(tool: .eraser)
+        XCTAssertEqual(ShortcutManager(userDefaults: defaults).binding(for: .increaseSize), .unassigned)
+        XCTAssertTrue(migrated.resetToDefault(tool: .increaseSize))
+        XCTAssertEqual(migrated.binding(for: .increaseSize), ShortcutBinding("]"))
+    }
+
+    func testModifierBindingsPersistAndCompareWholeChord() {
+        let chord = ShortcutBinding("p", modifiers: [.command, .option])
+        XCTAssertTrue(manager.setShortcut(chord, for: .toggleFade))
+        XCTAssertEqual(ShortcutManager(userDefaults: defaults).binding(for: .toggleFade), chord)
+        XCTAssertEqual(manager.binding(for: .pen), ShortcutBinding("p"))
+        XCTAssertFalse(manager.setShortcut(chord, for: .toggleToolbar))
+        XCTAssertEqual(manager.binding(for: .toggleToolbar), ShortcutKey.toggleToolbar.defaultBinding)
+    }
+
+    func testClearRestoreAndResetAllPreserveTheirDistinctMeanings() {
+        manager.clearShortcut(tool: .clearAll)
+        XCTAssertEqual(manager.binding(for: .clearAll), .unassigned)
+        XCTAssertEqual(ShortcutManager(userDefaults: defaults).binding(for: .clearAll), .unassigned)
+        XCTAssertTrue(manager.setShortcut(ShortcutKey.clearAll.defaultBinding, for: .toggleFade))
+        XCTAssertFalse(manager.resetToDefault(tool: .clearAll))
+        manager.clearShortcut(tool: .toggleFade)
+        XCTAssertTrue(manager.resetToDefault(tool: .clearAll))
+        manager.resetAllToDefault()
+        for action in ShortcutKey.allCases {
+            XCTAssertEqual(manager.binding(for: action), action.defaultBinding)
+        }
+        XCTAssertEqual(manager.binding(for: .toggleBackgroundDimming), .unassigned)
+    }
+
+    func testEventNormalizationUsesLogicalKeyAndExactModifiers() throws {
+        let chord = try event("†", keyCode: 17, modifiers: [.option, .command, .capsLock], ignoring: "T")
+        XCTAssertEqual(ShortcutBinding(event: chord), ShortcutKey.toggleToolbar.defaultBinding)
+        XCTAssertEqual(manager.action(for: chord), .toggleToolbar)
+        XCTAssertNil(manager.action(for: try event("t", keyCode: 17, modifiers: [.option, .command, .shift])))
+        XCTAssertEqual(manager.action(for: try event("", keyCode: 49)), .toggleFade)
+        XCTAssertEqual(manager.action(for: try event("", keyCode: 51, modifiers: .option)), .clearAll)
+        XCTAssertEqual(manager.action(for: try event("", keyCode: 117, modifiers: [.option, .function])), .clearAll)
+        XCTAssertNil(manager.action(for: try event("", keyCode: 0)))
+        XCTAssertFalse(manager.matches("", tool: .toggleBackgroundDimming))
+    }
+
+    func testRecordingCapturesChordsAndConsumesTheEvent() throws {
+        let result = ShortcutRecordingEventHandler.handle(
+            try event("∆", keyCode: 38, modifiers: [.option, .command], ignoring: "j"),
+            editingShortcut: .toggleFade, manager: manager)
+        XCTAssertNil(result.editingShortcut)
+        XCTAssertTrue(result.consumesEvent)
+        XCTAssertNil(result.error)
+        XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutBinding("j", modifiers: [.option, .command]))
+        XCTAssertEqual(manager.allShortcuts[.toggleFade], "⌥⌘J")
+    }
+
+    func testRecordingCapturesSpaceAndOptionDeleteWithoutTextEntry() throws {
+        manager.clearShortcut(tool: .toggleFade)
+        let space = ShortcutRecordingEventHandler.handle(
+            try event("", keyCode: 49), editingShortcut: .toggleFade, manager: manager)
+        XCTAssertNil(space.error)
+        XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutBinding(" "))
+        manager.clearShortcut(tool: .clearAll)
+        let delete = ShortcutRecordingEventHandler.handle(
+            try event("", keyCode: 51, modifiers: .option), editingShortcut: .clearAll, manager: manager)
+        XCTAssertNil(delete.error)
+        XCTAssertEqual(manager.binding(for: .clearAll), ShortcutKey.clearAll.defaultBinding)
+        XCTAssertEqual(manager.binding(for: .clearAll).menuKeyEquivalent, "\u{8}")
+    }
+
+    func testConflictingAndReservedEventsKeepRecordingAndPreserveBinding() throws {
+        let events = [
+            try event("p", keyCode: 35),
+            try event("", keyCode: 51),
+            try event("z", keyCode: 6, modifiers: .command),
+            try event("z", keyCode: 6, modifiers: [.command, .shift]),
+            try event("c", keyCode: 8, modifiers: .command),
+            try event("b", keyCode: 11, modifiers: .command),
+            try event("r", keyCode: 15, modifiers: .command),
+            try event("w", keyCode: 13, modifiers: .command)
+        ]
+        for event in events {
+            let result = ShortcutRecordingEventHandler.handle(event, editingShortcut: .toggleFade, manager: manager)
+            XCTAssertEqual(result.editingShortcut, .toggleFade)
+            XCTAssertNotNil(result.error)
+            XCTAssertTrue(result.consumesEvent)
+            XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutKey.toggleFade.defaultBinding)
+        }
+    }
+
+    func testFixedCommandValidationLeavesUnrelatedChordsAvailable() {
+        XCTAssertFalse(manager.setShortcut(ShortcutBinding("b", modifiers: .command), for: .toggleFade))
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("b", modifiers: [.command, .option]), for: .toggleFade))
+        XCTAssertFalse(manager.setShortcut(ShortcutBinding("r", modifiers: .command), for: .toggleFade))
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("r", modifiers: [.command, .shift]), for: .toggleFade))
+        XCTAssertFalse(manager.setShortcut(ShortcutBinding("\u{7f}", modifiers: .shift), for: .toggleFade))
+    }
+
+    func testEscapeAndOutsideClickCancelWithoutChangingBinding() throws {
+        let escape = ShortcutRecordingEventHandler.handle(
+            try event("", keyCode: 53), editingShortcut: .toggleToolbar, manager: manager)
+        XCTAssertNil(escape.editingShortcut)
+        XCTAssertTrue(escape.consumesEvent)
+        let click = try XCTUnwrap(TestEvents.createMouseEvent(type: .leftMouseDown, location: .zero))
+        let outside = ShortcutRecordingEventHandler.handle(click, editingShortcut: .toggleToolbar, manager: manager)
+        XCTAssertNil(outside.editingShortcut)
+        XCTAssertFalse(outside.consumesEvent)
+        XCTAssertEqual(manager.binding(for: .toggleToolbar), ShortcutKey.toggleToolbar.defaultBinding)
+    }
+
+    private func event(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [],
+                       ignoring: String? = nil) throws -> NSEvent {
+        try XCTUnwrap(TestEvents.createKeyEvent(type: .keyDown, keyCode: keyCode,
+            modifierFlags: modifiers, characters: characters, charactersIgnoringModifiers: ignoring))
+    }
+}

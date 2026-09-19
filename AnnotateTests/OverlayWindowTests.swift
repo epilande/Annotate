@@ -1423,8 +1423,12 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.currentLineWidth, 2, "[ should step the width ladder when it is not a tool shortcut")
 
         window.overlayView.currentLineWidth = 3
+        ShortcutManager.shared.clearShortcut(tool: .increaseSize)
         ShortcutManager.shared.setShortcut("]", for: .eraser)
-        defer { ShortcutManager.shared.resetToDefault(tool: .eraser) }
+        defer {
+            ShortcutManager.shared.resetToDefault(tool: .eraser)
+            ShortcutManager.shared.resetToDefault(tool: .increaseSize)
+        }
 
         sendKey("]", keyCode: 30)
         XCTAssertEqual(

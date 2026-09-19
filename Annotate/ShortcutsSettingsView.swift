@@ -41,29 +41,9 @@ struct BuiltInShortcut: Identifiable {
 struct ShortcutsSettingsView: View {
     static let builtInShortcuts: [BuiltInShortcut] = [
         BuiltInShortcut(
-            keys: "⌥⌘T",
-            label: "Toggle Toolbar",
-            description: "Show or hide the floating toolbar"
-        ),
-        BuiltInShortcut(
-            keys: "[ ]",
-            label: "Step Size",
-            description: "Step stroke width, or text and counter size for those tools"
-        ),
-        BuiltInShortcut(
-            keys: "Space",
-            label: "Toggle Fade Mode",
-            description: "Switch between fade and persist"
-        ),
-        BuiltInShortcut(
             keys: "Delete",
             label: "Delete",
             description: "Remove the selection, or the newest item drawn with the current tool"
-        ),
-        BuiltInShortcut(
-            keys: "⌥Delete",
-            label: "Clear All",
-            description: "Remove every annotation"
         ),
         BuiltInShortcut(
             keys: "⌘Z",
@@ -228,12 +208,47 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .toggleFade,
+                    label: ShortcutKey.toggleFade.displayName,
+                    description: "Switch between fade and persist",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .toggleToolbar,
+                    label: ShortcutKey.toggleToolbar.displayName,
+                    description: "Show or hide the floating toolbar",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .decreaseSize,
+                    label: ShortcutKey.decreaseSize.displayName,
+                    description: "Step stroke width, text size, or counter size down",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .increaseSize,
+                    label: ShortcutKey.increaseSize.displayName,
+                    description: "Step stroke width, text size, or counter size up",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .clearAll,
+                    label: ShortcutKey.clearAll.displayName,
+                    description: "Remove every annotation",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "slider.horizontal.3",
                     color: .orange,
                     title: "Utilities",
-                    subtitle: "Color, width, and board controls"
+                    subtitle: "Pickers, sizes, and overlay controls"
                 )
             }
 
@@ -246,7 +261,7 @@ struct ShortcutsSettingsView: View {
                     icon: "lock",
                     color: .gray,
                     title: "Built-in Shortcuts",
-                    subtitle: "Not customizable yet"
+                    subtitle: "Fixed editing and dismissal keys"
                 )
             }
 
@@ -292,7 +307,7 @@ struct ShortcutSettingRow: View {
     @State private var isHoveringRestore = false
     @State private var showRestoreConflict = false
 
-    private var shortcut: String { shortcuts[tool] ?? tool.defaultKey }
+    private var shortcut: String { shortcuts[tool] ?? tool.defaultBinding.displayValue }
 
     var body: some View {
         LabeledContent {
@@ -315,6 +330,9 @@ struct ShortcutSettingRow: View {
                             .background(ShortcutKeycapBackground())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Record \(label) shortcut")
+                    .accessibilityValue(shortcut.isEmpty ? "Not Set" : shortcut)
+                    .accessibilityIdentifier("shortcut.\(tool.rawValue).record")
                     .opacity(isHoveringKey ? 0.8 : 1.0)
                     .onHover { isHoveringKey = $0 }
                 }
@@ -330,6 +348,8 @@ struct ShortcutSettingRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Clear shortcut")
+                .accessibilityLabel("Clear \(label) shortcut")
+                .accessibilityIdentifier("shortcut.\(tool.rawValue).clear")
                 .disabled(shortcut.isEmpty)
                 .onHover { isHoveringClear = $0 }
 
@@ -345,13 +365,15 @@ struct ShortcutSettingRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Restore default")
-                .disabled(shortcut == tool.defaultKey)
+                .accessibilityLabel("Restore \(label) default")
+                .accessibilityIdentifier("shortcut.\(tool.rawValue).restore")
+                .disabled(shortcut == tool.defaultBinding.displayValue)
                 .onHover { isHoveringRestore = $0 }
                 .alert("Default Shortcut Unavailable", isPresented: $showRestoreConflict) {
                     Button("OK") {}
                 } message: {
                     Text(
-                        "The default shortcut “\(tool.defaultKey)” is already assigned. Clear it from the other action first."
+                        "The default shortcut “\(tool.defaultBinding.displayValue)” is already assigned. Clear it from the other action first."
                     )
                 }
             }
@@ -359,6 +381,7 @@ struct ShortcutSettingRow: View {
             Text(label)
             Text(description)
         }
+        .accessibilityElement(children: .contain)
     }
 }
 
