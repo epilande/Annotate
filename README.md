@@ -23,17 +23,18 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🔲 **Rectangle** shapes for boxing content.
   - ⭕ **Circle** shapes for highlighting areas.
   - 🔢 **Counter** tool for adding sequential numbered circles.
-  - 📝 **Text** annotations with drag & edit support.
+  - 📝 **Text** annotations with drag & edit support, live resizing, and an optional background pill.
   - 👆 **Select** tool for moving and managing objects.
   - 🧹 **Eraser** tool for removing annotations.
 - ✨ **Fade/Persist Mode:** Control whether annotations fade out after a duration or persist on the screen.
 - 📌 **Always-On Mode:** Display annotations persistently without user interaction.
-- 🌈 **Color Picker:** Easily select and persist your preferred color.
-- ↕️ **Line Width Control:** Adjust line thickness with an interactive picker or Command+Scroll wheel.
+- 🌈 **Quick Color Picker:** Press <kbd>C</kbd> to open a glass swatch picker right on the overlay. Your choice persists across sessions.
+- ↕️ **Quick Size Picker:** Press <kbd>W</kbd> for an in-overlay size ladder that adapts to the active tool, or step it with <kbd>[</kbd> and <kbd>]</kbd>.
 - ⬛ **Board**: Toggle whiteboard or blackboard based on system appearance.
 - 👆 **Cursor Highlight**: Visual spotlight that follows your cursor for better visibility during presentations.
 - 🎯 **Active Cursor Indicator**: Custom cursor styles to visually indicate when Annotate is active.
 - 🧰 **Floating Toolbar:** Live overlay bar for tools, color, width, and quick actions, toggled with Option + Command + T. Drag it anywhere on screen; its position is remembered per display.
+- 🔊 **Sounds:** Optional feedback cues for overlay on, overlay off, and clear all, with five themes to choose from.
 - 🖥️ **Fullscreen Support:** Works seamlessly over fullscreen applications.
 - 🎛️ **Menu Bar Integration:** Quick access via a status icon.
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
@@ -106,7 +107,7 @@ brew install --cask annotate
 4. Press <kbd>Esc</kbd> to exit the overlay.
 
 > [!TIP]
-> The application provides a menu bar item that lets you select tools, choose colors, and perform actions like undo and redo.
+> The application provides a menu bar item that lets you select tools, open the color and size pickers on the active overlay, and perform actions like undo and redo.
 > It also shows the application's active state, current color selection, tool, and mode.
 
 <img width="250" alt="image" src="https://github.com/user-attachments/assets/40a94d67-29f1-49a6-9a3a-453d7f3d89e1" />
@@ -134,14 +135,14 @@ brew install --cask annotate
 
 #### 🎯 Tool Settings & Selection
 
-| Key          | Tool                 | Description                               |
-| ------------ | -------------------- | ----------------------------------------- |
-| <kbd>C</kbd> | **Color Picker**     | Open color selection menu                 |
-| <kbd>W</kbd> | **Line Width**       | Open line width picker                    |
-| <kbd>V</kbd> | **Select**           | Select, move, and manage objects          |
-| <kbd>B</kbd> | **Board**            | Toggle whiteboard/blackboard              |
-| <kbd>K</kbd> | **Cursor Highlight** | Toggle cursor highlight and click effects |
-| Not set | **Background Dimming** | Toggle background dimming |
+| Key          | Tool                   | Description                               |
+| ------------ | ---------------------- | ----------------------------------------- |
+| <kbd>C</kbd> | **Color Picker**       | Open the in-overlay color quick picker    |
+| <kbd>W</kbd> | **Line Width**         | Open the in-overlay size quick picker     |
+| <kbd>V</kbd> | **Select**             | Select, move, and manage objects          |
+| <kbd>B</kbd> | **Board**              | Toggle whiteboard/blackboard              |
+| <kbd>K</kbd> | **Cursor Highlight**   | Toggle cursor highlight and click effects |
+| Not set      | **Background Dimming** | Toggle background dimming                 |
 
 #### ⚡ Quick Actions
 
@@ -156,6 +157,7 @@ brew install --cask annotate
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
 | Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
 | <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
+| <kbd>[</kbd> / <kbd>]</kbd>                           | **Step Size**        | Step stroke width, or text and counter size when those tools are active    |
 | <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
 | <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
@@ -171,11 +173,11 @@ brew install --cask annotate
 
 #### 🔤 Text Editing (While Typing a Label)
 
-| Shortcut                                             | Action               | Description                                        |
-| ---------------------------------------------------- | -------------------- | -------------------------------------------------- |
-| <kbd>Command</kbd> + <kbd>+</kbd>                    | **Increase Size**    | Step the label font size up one notch              |
-| <kbd>Command</kbd> + <kbd>-</kbd>                    | **Decrease Size**    | Step the label font size down one notch            |
-| <kbd>Command</kbd> + <kbd>B</kbd>                    | **Label Background** | Toggle the rounded background pill behind the text |
+| Shortcut                          | Action               | Description                                        |
+| --------------------------------- | -------------------- | -------------------------------------------------- |
+| <kbd>Command</kbd> + <kbd>+</kbd> | **Increase Size**    | Step the label font size up one notch              |
+| <kbd>Command</kbd> + <kbd>-</kbd> | **Decrease Size**    | Step the label font size down one notch            |
+| <kbd>Command</kbd> + <kbd>B</kbd> | **Label Background** | Toggle the rounded background pill behind the text |
 
 <kbd>Command</kbd> + <kbd>B</kbd> also works with the Text tool selected, so you can set the background on or off before you place a label.
 
@@ -198,24 +200,21 @@ brew install --cask annotate
 - Click and drag to draw freehand lines
 - Pen creates solid lines while highlighter creates semi-transparent, thicker strokes
 - Hold <kbd>Shift</kbd> while drawing to constrain to a perfectly straight line at 45° angle increments (0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°)
-- Adjust line thickness using the Line Width Picker or <kbd>Command</kbd> + <kbd>Scroll</kbd> for quick adjustments
+- Adjust line thickness with the size picker (<kbd>W</kbd>), step it with <kbd>[</kbd> and <kbd>]</kbd>, or hold <kbd>Command</kbd> and scroll
 
-#### Line Width Control
+#### Quick Pickers
 
-Annotate provides flexible line width control:
+Color and size live in glass pickers that open right on the overlay, so you never leave what you are annotating:
 
-- **Interactive Picker**: Press <kbd>W</kbd> or select "Line Width" from the menu bar to open a picker with:
-  - Visual line preview showing the current thickness
-  - Slider for precise width adjustment (0.5px to 20px)
-  - Real-time feedback as you adjust
-- **Quick Adjustment**: Hold <kbd>Command</kbd> and scroll your mouse wheel to quickly adjust line width
-  - Scroll up to increase thickness
-  - Scroll down to decrease thickness
-  - Visual feedback appears at the bottom center showing current width and a preview line
-- **Smart Scaling**: Arrowhead sizes automatically scale proportionally with line width for better visual balance
+- **Color Picker**: Press <kbd>C</kbd> to open the swatch picker
+- **Size Picker**: Press <kbd>W</kbd> to open the size ladder. It adapts to the active tool: stroke widths from 1 to 24 px for drawing tools, font sizes from 12 to 120 pt for Text, and badge sizes for Counter
+- **Choosing**: Tap the key, then click a swatch or type its digit. Or hold the key, move over your choice, and release. Press the same key or <kbd>Esc</kbd> to dismiss without changing anything
+- **Bracket Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> to step the active ladder without opening the picker. They do nothing while a picker is open, and while typing in a label they insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
+- **Command + Scroll**: Hold <kbd>Command</kbd> and scroll to fine-tune the active size, stroke width from 0.5 to 24 px for drawing tools or the text and counter size for those tools, with a preview at the bottom center of the screen
+- **Smart Scaling**: Arrowhead sizes scale with line width for better visual balance
 
 > [!TIP]
-> Line width settings are persisted across sessions and apply to all drawing tools (pen, arrow, line, rectangle, circle).
+> Color and size persist across sessions and apply to every drawing tool. The menu bar's Color and Line Width items open the same pickers on the active overlay.
 
 #### Shapes (Rectangle, Circle)
 
@@ -239,12 +238,14 @@ Annotate provides flexible line width control:
 - Click and drag to reposition text
 - Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
 - Press <kbd>Command</kbd> + <kbd>B</kbd> to toggle a rounded background pill behind the text
+- With the Text tool active and no label open, <kbd>[</kbd> and <kbd>]</kbd> step the size used for the next label
 
 #### Counter Tool
 
 - Click anywhere to add sequential numbered circles (1, 2, 3...)
 - Numbers increment automatically with each click
 - Press <kbd>Command</kbd> + <kbd>R</kbd> to reset the counter back to 1 (existing counters remain)
+- Press <kbd>[</kbd> or <kbd>]</kbd> to step the badge size, or <kbd>W</kbd> to pick one
 
 #### Select Tool
 
@@ -378,6 +379,8 @@ Customize single-key shortcuts for tools and utilities, organized into categorie
 - **Shapes**: Rectangle, Circle
 - **Advanced Tools**: Counter, Text, Select, Eraser
 - **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming
+
+A **Built-in Shortcuts** section above the reset button lists the keys that are not customizable yet, including <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> for the toolbar and <kbd>[</kbd> / <kbd>]</kbd> for stepping sizes.
 
 **Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores every letter default and leaves dimming unset. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 
