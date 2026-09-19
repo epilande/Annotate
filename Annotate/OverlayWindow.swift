@@ -1606,6 +1606,30 @@ class OverlayWindow: NSPanel {
             }
         }
 
+        // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
+        if cmdPressed {
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "w":
+                AppDelegate.shared?.closeOverlay()
+                return
+            case "z":
+                if event.modifierFlags.contains(.shift) {
+                    overlayView.redo()
+                } else {
+                    overlayView.undo()
+                }
+                return
+            case "r" where !event.modifierFlags.contains(.shift)
+                && !event.modifierFlags.contains(.option)
+                && overlayView.currentTool == .counter:
+                overlayView.resetCounter()
+                showToggleFeedback("Counter Reset", icon: "🔄")
+                return
+            default:
+                break
+            }
+        }
+
         switch event.keyCode {
         case 53:  // ESC key
             if event.modifierFlags.contains(.shift) {
@@ -1627,25 +1651,6 @@ class OverlayWindow: NSPanel {
             }
         case 49:  // Spacebar - toggle drawing mode
             AppDelegate.shared?.toggleFadeMode(NSMenuItem())
-        case 13:  // 'w' key
-            if cmdPressed { AppDelegate.shared?.closeOverlay() }
-        case 6:  // 'z' key
-            if cmdPressed {
-                if event.modifierFlags.contains(.shift) {
-                    overlayView.redo()
-                } else {
-                    overlayView.undo()
-                }
-            }
-        case 15:  // 'r' key
-            if cmdPressed
-                && !event.modifierFlags.contains(.shift)
-                && !event.modifierFlags.contains(.option)
-                && overlayView.currentTool == .counter
-            {
-                overlayView.resetCounter()
-                showToggleFeedback("Counter Reset", icon: "🔄")
-            }
         default:
             super.keyDown(with: event)
         }
