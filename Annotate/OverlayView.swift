@@ -12,6 +12,14 @@ class AnnotationTextField: NSTextField {
     /// its natural position instead of staying stuck to the left.
     var anchorX: CGFloat = 0
 
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted, let color = textColor, let editor = currentEditor() {
+            AnnotationTextEditorContrast.apply(to: editor, textColor: color)
+        }
+        return accepted
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command) {
             if event.keyCode == 36 {
@@ -60,10 +68,23 @@ class PaddedTextFieldCell: NSTextFieldCell {
 
     override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
         super.select(withFrame: insetRect(for: rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+        applyEditorContrast(to: textObj)
     }
 
     override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
         super.edit(withFrame: insetRect(for: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+        applyEditorContrast(to: textObj)
+    }
+
+    override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
+        let editor = super.setUpFieldEditorAttributes(textObj)
+        applyEditorContrast(to: editor)
+        return editor
+    }
+
+    private func applyEditorContrast(to editor: NSText) {
+        guard let color = textColor else { return }
+        AnnotationTextEditorContrast.apply(to: editor, textColor: color)
     }
 }
 
@@ -1813,17 +1834,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.anchorX = textField.frame.origin.x
         textField.font = font
 
-        let boardType = currentBoardType
-        textField.backgroundColor = boardType == .blackboard
-            ? NSColor.black.withAlphaComponent(0.85)
-            : NSColor.white.withAlphaComponent(0.92)
-        textField.textColor = adaptColorForBoard(currentColor, boardType: boardType)
+        let editorTextColor = adaptColorForBoard(currentColor, boardType: currentBoardType)
 
         textField.isBordered = false
         textField.isEditable = true
         textField.isSelectable = true
         textField.isBezeled = false
-        textField.drawsBackground = true
         textField.usesSingleLineMode = false
         textField.cell?.wraps = false
         textField.cell?.truncatesLastVisibleLine = false
@@ -1845,6 +1861,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.layer?.shadowRadius = 6
         textField.layer?.shadowOpacity = 0.2
         textField.layer?.masksToBounds = false
+
+        // Style the field and the focused native editor from the annotation color so
+        // Dark Mode cannot paint a dark field-editor fill behind black (or other
+        // low-contrast) text. Committed drawing still uses `currentTextAnnotation.color`.
+        AnnotationTextEditorContrast.apply(to: textField, textColor: editorTextColor)
 
         if isEditing {
             textField.frame.size = textFieldBoxSize(forText: existingText, font: font)
