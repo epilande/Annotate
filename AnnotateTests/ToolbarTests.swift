@@ -133,7 +133,7 @@ final class ToolbarTests: XCTestCase {
 
     func testADragDoesNotChangeTheToolEvenWhenThePointerStaysOnTheChip() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -172,7 +172,7 @@ final class ToolbarTests: XCTestCase {
 
     func testPointerTravelPastTheThresholdSuppressesTheChipWithoutMovingTheBar() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -198,7 +198,7 @@ final class ToolbarTests: XCTestCase {
 
     func testAChipClickWithoutADragStillChangesTheTool() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -552,7 +552,7 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testToolbarHostAcceptsFirstMouse() throws {
-        let host = try XCTUnwrap(window.toolbarPanel?.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(window.toolbarPanel?.hostingView)
 
         XCTAssertTrue(
             host.acceptsFirstMouse(for: nil),
@@ -639,7 +639,7 @@ final class ToolbarTests: XCTestCase {
             "A narrow proposal must take the stacked ViewThatFits layout")
     }
 
-    func testToolbarWrapsToASecondRowInANarrowWindow() {
+    func testToolbarWrapsToASecondRowInANarrowWindow() throws {
         let narrowWindow = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 800),
             styleMask: .borderless,
@@ -647,10 +647,9 @@ final class ToolbarTests: XCTestCase {
             defer: false
         )
         defer { narrowWindow.close() }
-        narrowWindow.contentView?.layoutSubtreeIfNeeded()
 
-        let wideFrame = window.toolbarFrame
-        let narrowFrame = narrowWindow.toolbarFrame
+        let wideFrame = try realizedToolbarFrame(window)
+        let narrowFrame = try realizedToolbarFrame(narrowWindow)
 
         XCTAssertEqual(narrowWindow.frame.width, 700, accuracy: 0.5)
         XCTAssertLessThanOrEqual(
@@ -659,6 +658,84 @@ final class ToolbarTests: XCTestCase {
         XCTAssertGreaterThan(
             narrowFrame.height, wideFrame.height,
             "Narrow height \(narrowFrame.height) must exceed wide height \(wideFrame.height)")
+
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        XCTAssertGreaterThan(
+            panel.measuredSize(availableWidth: 700).height,
+            panel.measuredSize(availableWidth: 1_880).height,
+            "The production measurer must still wrap after a wide proposal")
+    }
+
+    func testAttachedToolbarStaysSingleRowOnA1920Overlay() throws {
+        let wideWindow = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { wideWindow.close() }
+        let panel = try XCTUnwrap(wideWindow.toolbarPanel)
+        let host = try XCTUnwrap(panel.hostingView)
+        let wideFrame = try realizedToolbarFrame(wideWindow)
+
+        XCTAssertTrue(
+            host.sizingOptions.isEmpty,
+            "The displayed host must not publish stacked min/ideal/max sizes to the panel")
+        XCTAssertEqual(
+            host.frame.size.width, wideFrame.width, accuracy: 0.5,
+            "The attached host has to occupy the measured panel, not a leftover stacked frame")
+        XCTAssertEqual(host.frame.size.height, wideFrame.height, accuracy: 0.5)
+
+        let available = 1_920 - ToolbarPanel.edgeInset * 2
+        let measured = panel.measuredSize(availableWidth: available)
+        XCTAssertEqual(
+            wideFrame.width, measured.width, accuracy: 1,
+            "Live panel width \(wideFrame.width) must match production measurement \(measured.width)")
+        XCTAssertEqual(
+            wideFrame.height, measured.height, accuracy: 1,
+            "Live panel height \(wideFrame.height) must match production measurement \(measured.height)")
+
+        let oneRow = NSHostingController(rootView: ToolbarView(model: wideWindow.toolbarModel) { _ in })
+            .sizeThatFits(in: CGSize(width: available, height: 200))
+        let stacked = NSHostingController(rootView: ToolbarView(model: wideWindow.toolbarModel) { _ in })
+            .sizeThatFits(in: CGSize(width: 700, height: 200))
+
+        XCTAssertEqual(
+            wideFrame.height, oneRow.height, accuracy: 1,
+            "A 1920pt overlay must keep the one-row height \(oneRow.height), not stacked \(stacked.height)")
+        XCTAssertLessThan(wideFrame.height, stacked.height)
+        XCTAssertGreaterThan(
+            wideFrame.width, stacked.width,
+            "One-row width \(wideFrame.width) must exceed the stacked width \(stacked.width)")
+        XCTAssertLessThanOrEqual(wideFrame.width, available)
+        // Do not assert `host.fittingSize` here: with `sizingOptions = []` it reports
+        // 0×0. The live frame vs `measuredSize` / `sizeThatFits` checks above are the
+        // production path.
+    }
+
+    func testToolbarFollowsOverlayWidthAfterAttachAndResize() throws {
+        let wideWindow = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { wideWindow.close() }
+
+        let initial = try realizedToolbarFrame(wideWindow)
+        wideWindow.setFrame(NSRect(x: 0, y: 0, width: 700, height: 800), display: true)
+        let wrapped = try realizedToolbarFrame(wideWindow)
+        wideWindow.setFrame(NSRect(x: 0, y: 0, width: 1_920, height: 1_080), display: true)
+        let restored = try realizedToolbarFrame(wideWindow)
+
+        XCTAssertGreaterThan(
+            wrapped.height, initial.height,
+            "Resizing to 700pt must take the stacked layout")
+        XCTAssertLessThanOrEqual(wrapped.width, 700 - ToolbarPanel.edgeInset * 2)
+        XCTAssertEqual(
+            restored.height, initial.height, accuracy: 1,
+            "Growing back to 1920pt must return to one row, not keep the stacked height")
+        XCTAssertGreaterThan(restored.width, wrapped.width)
     }
 
     func testPlacementBoundsPicksTheLargestSlabLeftByTheBar() {
@@ -808,18 +885,18 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
     }
 
-    func testPickerChordReleaseWorksAfterModifierRelease() throws {
+    func testPickerChordReleaseWorksAfterModifierRelease() async throws {
         XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("{", modifiers: .shift), for: .colorPicker))
         window.sendEvent(try shortcutEvent("{", keyCode: 33, modifiers: .shift))
         XCTAssertTrue(window.isQuickPickerOpen)
-        let deadline = Date().addingTimeInterval(0.3)
-        while Date() < deadline { _ = CFRunLoopRunInMode(.defaultMode, 0.01, false) }
+        try await Task.sleep(for: .milliseconds(300))
         // Releasing Shift first changes "{" to "[" on key-up; the physical key is unchanged.
         window.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(type: .keyUp, keyCode: 33,
             characters: "[", windowNumber: window.windowNumber)))
         let dismissDeadline = Date().addingTimeInterval(10)
         while window.isQuickPickerOpen && Date() < dismissDeadline {
-            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+            // Yield the main actor so the picker's main-queue dismissal can run.
+            try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertFalse(window.isQuickPickerOpen, "The held picker must commit on release of its activation key")
     }
@@ -850,6 +927,24 @@ final class ToolbarTests: XCTestCase {
             XCTAssertEqual(item.keyEquivalent, action.defaultBinding.menuKeyEquivalent)
             XCTAssertEqual(item.keyEquivalentModifierMask, action.defaultBinding.modifiers)
         }
+    }
+
+    /// Orders the overlay and its toolbar on screen and lays out the displayed host, which is
+    /// the production path the 1200/700 wrap tests used to skip. Off-screen `toolbarFrame`
+    /// reads the measurer's `setFrame` result and never sees NSHostingView snap the panel
+    /// back to a stacked size.
+    private func realizedToolbarFrame(_ overlay: OverlayWindow) throws -> NSRect {
+        let panel = try XCTUnwrap(overlay.toolbarPanel)
+        let host = try XCTUnwrap(panel.hostingView)
+        overlay.orderFrontRegardless()
+        panel.orderFrontRegardless()
+        overlay.contentView?.layoutSubtreeIfNeeded()
+        host.layoutSubtreeIfNeeded()
+        let deadline = Date().addingTimeInterval(0.15)
+        while Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+        }
+        return overlay.toolbarFrame
     }
 
     private func shortcutEvent(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [],

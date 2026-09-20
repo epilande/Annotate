@@ -20,6 +20,9 @@ final class ToolbarModel: ObservableObject {
     @Published var fadeMode = true
     /// Snapshot of the user's tool shortcuts, refreshed by the window on `.shortcutsDidChange`.
     @Published var shortcuts: [ShortcutKey: String] = [:]
+    /// Bumped after the live host is given a new measured size so `ViewThatFits` remounts
+    /// against that width instead of keeping a stacked choice from a previous overlay.
+    @Published var layoutGeneration = 0
 
     var widthDotDiameter: CGFloat {
         let index = QuickPickerView.nearestIndex(in: QuickPickerView.widthOptions, to: currentWidth)
@@ -51,6 +54,7 @@ struct ToolbarView: View {
                 }
             }
         }
+        .id(model.layoutGeneration)
         .animation(reduceMotion ? nil : spring, value: model.activeTool)
         .animation(spring, value: model.currentColor)
         .animation(spring, value: model.currentWidth)

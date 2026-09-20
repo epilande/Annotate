@@ -13,13 +13,15 @@ final class ToolbarPanel: NSPanel {
     /// Gap left between the bar and the quick picker when the two would otherwise overlap.
     static let pickerGap: CGFloat = 8
 
+    private let model: ToolbarModel
     private let host: ToolbarHostingView
-    /// Measures the bar. `NSHostingView.fittingSize` measures `ViewThatFits` against an
-    /// unbounded proposal, so the one-row layout always wins and is then clipped. A hosting
-    /// controller proposes the width it is handed all the way down the view tree, which is the
-    /// only way to learn which layout fits and how tall it is. It shares the model, so it
-    /// always measures exactly what the bar is showing.
-    private let measurer: NSHostingController<ToolbarView>
+    /// Plain AppKit carrier. `NSHostingView` as the panel's `contentView` special-cases
+    /// `contentMinSize` / `setContentSize` from SwiftUI, which kept snapping the live
+    /// window to the stacked 564×90 layout after attach. This view does not.
+    private let chrome = NSView()
+    /// Last size `fitToContent` chose, applied to the live host after attach.
+    private var lockedContentSize: NSSize?
+    private var isApplyingHostLayout = false
     /// The overlay this bar belongs to. Weak because the overlay owns the panel, not the reverse.
     private weak var overlay: OverlayWindow?
     /// True while the app, rather than the user, is moving the bar. Only a drag the user made
@@ -38,15 +40,18 @@ final class ToolbarPanel: NSPanel {
     /// Tells a chip click from a drag of the bar. Shared with the SwiftUI action closure so a
     /// Button mouse-up that lands after the bar has moved can still be refused.
     private let press: ToolbarPress
+    private let deliverAction: (ToolbarAction) -> Void
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
+        self.model = model
         let press = ToolbarPress()
         self.press = press
-        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: { action in
+        let deliverAction: (ToolbarAction) -> Void = { action in
             press.deliver { perform(action) }
-        }))
-        measurer = NSHostingController(rootView: ToolbarView(model: model) { _ in })
+        }
+        self.deliverAction = deliverAction
+        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: deliverAction))
 
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
@@ -54,6 +59,11 @@ final class ToolbarPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+
+        host.sizingOptions = []
+        host.safeAreaRegions = []
+        host.translatesAutoresizingMaskIntoConstraints = true
+        host.autoresizingMask = [.width, .height]
 
         // The SwiftUI segments paint their own glass and shadow, so the panel itself is a
         // transparent, shadowless carrier.
@@ -68,7 +78,10 @@ final class ToolbarPanel: NSPanel {
         level = overlay.level
         collectionBehavior = overlay.collectionBehavior
 
-        contentView = host
+        chrome.autoresizesSubviews = true
+        contentView = chrome
+        contentMinSize = .zero
+        contentMaxSize = NSSize(width: 10_000, height: 10_000)
 
         NotificationCenter.default.addObserver(
             self,
@@ -77,6 +90,10 @@ final class ToolbarPanel: NSPanel {
             object: self
         )
     }
+
+    /// The SwiftUI bar. Not the panel's `contentView`; that is a plain AppKit carrier so
+    /// `NSHostingView` cannot resize the window around a stacked `ViewThatFits` choice.
+    var hostingView: ToolbarHostingView { host }
 
     override var canBecomeKey: Bool { false }
 
@@ -158,7 +175,12 @@ final class ToolbarPanel: NSPanel {
     func attach(to overlay: OverlayWindow) {
         guard parent == nil else { return }
         overlay.addChildWindow(self, ordered: .above)
+        fitToContent()
         restoreSavedPosition()
+        // `addChildWindow` and `restoreSavedPosition` both run layout. The measurer
+        // already returned the one-row size; this is what actually gives that width
+        // to the live host so `ViewThatFits` can re-choose.
+        applyMeasuredSizeToLiveHost()
     }
 
     func detach() {
@@ -182,13 +204,73 @@ final class ToolbarPanel: NSPanel {
         // The width the bar may occupy. Proposing it is what lets `ViewThatFits` pick the
         // stacked layout on a narrow display instead of clipping the one-row bar.
         let available = max(0, overlay.frame.width - Self.edgeInset * 2)
-        var size = measurer.sizeThatFits(
-            in: CGSize(width: available, height: CGFloat.greatestFiniteMagnitude))
-        size.width = min(size.width, available)
-        guard size.width > 0, size.height > 0, size != frame.size else { return }
+        let size = measuredSize(availableWidth: available)
+        guard size.width > 0, size.height > 0 else { return }
 
-        let anchor = NSPoint(x: frame.midX, y: frame.minY)
-        place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
+        lockedContentSize = size
+
+        if size != frame.size {
+            let anchor = NSPoint(x: frame.midX, y: frame.minY)
+            place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
+        }
+
+        // A detached panel's contentView may still be 1×1 even after `setFrame`.
+        // Mounting SwiftUI then makes `ViewThatFits` pick stacked, and that choice
+        // survived attach on real AppKit. Wait until the bar is a child window.
+        if isAttached {
+            applyMeasuredSizeToLiveHost()
+        }
+    }
+
+    /// Puts the displayed host at the measured size and remounts `ViewThatFits` against
+    /// that width. Called after attach (and after overlay resizes) because measurement
+    /// alone does not change the live panel — Mac tests saw 986×41 from the probe and
+    /// 564×90 on the attached window.
+    private func applyMeasuredSizeToLiveHost() {
+        guard !isApplyingHostLayout else { return }
+        guard let size = lockedContentSize, size.width > 0, size.height > 0 else { return }
+        isApplyingHostLayout = true
+        defer { isApplyingHostLayout = false }
+        if abs(frame.width - size.width) > 0.5 || abs(frame.height - size.height) > 0.5 {
+            place(NSRect(origin: frame.origin, size: size))
+        }
+        chrome.frame = NSRect(origin: .zero, size: size)
+        // Autoresizing against a still-stale chrome would crush a 986pt host back to
+        // the leftover stacked width. Set the frame first, then let it track.
+        host.autoresizingMask = []
+        host.frame = NSRect(origin: .zero, size: size)
+        if host.superview !== chrome {
+            chrome.addSubview(host)
+        }
+        host.autoresizingMask = [.width, .height]
+        // Assign a new root after the host has the measured width. Replacing the same
+        // `rootView` is a no-op, and bumping `layoutGeneration` before the frame change
+        // remounted `ViewThatFits` at the leftover stacked width (~660×90 on grow-back).
+        host.rootView = ToolbarView(model: model, perform: deliverAction)
+        model.layoutGeneration += 1
+        host.layoutSubtreeIfNeeded()
+    }
+
+    /// Asks the same probe `fitToContent` uses what the bar wants at `availableWidth`.
+    /// Exposed for tests so they can compare the attached panel to the production
+    /// measurement path rather than to a fresh off-window controller.
+    func measuredSize(availableWidth: CGFloat) -> CGSize {
+        // A finite height is required: `ViewThatFits` on some macOS versions treats an
+        // infinite vertical proposal as "the one-row child does not fit" and returns the
+        // stacked size even when the width is ample. 10_000pt is taller than any overlay
+        // the bar will see and matches the finite proposals the wrap tests already use.
+        let proposal = CGSize(width: availableWidth, height: 10_000)
+        // A reused controller keeps a stacked `ViewThatFits` choice from a previous
+        // tight overlay. Probe with a fresh tree so grow-back (700 → 1920) can return
+        // to one row. Do not put `maxWidth` on `ToolbarView`: `sizeThatFits` would
+        // then report the proposal (e.g. 1160) instead of the one-row ideal (~986),
+        // and restoring a saved x=140 would clamp to 40.
+        let probe = NSHostingController(rootView: ToolbarView(model: model) { _ in })
+        probe.sizingOptions = []
+        probe.safeAreaRegions = []
+        var size = probe.sizeThatFits(in: proposal)
+        size.width = min(max(0, size.width), availableWidth)
+        return size
     }
 
     /// Runs the overlay's own frame change, then refreshes the bar around it. AppKit already
@@ -208,6 +290,7 @@ final class ToolbarPanel: NSPanel {
         fitToContent()
         guard isAttached else { return }
         place(frame)
+        applyMeasuredSizeToLiveHost()
     }
 
     /// Puts the bar back where the user left it on this display, or at the default bottom
@@ -372,7 +455,22 @@ final class ToolbarPress {
 }
 
 /// Hosts the SwiftUI bar. The panel is never key and the app is often inactive, so the first
-/// click has to land on a chip rather than being spent activating anything.
+/// click has to land on a chip rather than being spent activating anything. This view is a
+/// subview of the panel, not its `contentView`, so it cannot rewrite the window size.
 final class ToolbarHostingView: NSHostingView<ToolbarView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func layout() {
+        sizingOptions = []
+        super.layout()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        sizingOptions = []
+    }
 }
