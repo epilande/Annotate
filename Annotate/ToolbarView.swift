@@ -39,7 +39,19 @@ struct ToolbarView: View {
 
     private let spring = Animation.spring(response: 0.24, dampingFraction: 0.72)
 
+    @ViewBuilder
     var body: some View {
+        if #available(macOS 26.0, *) {
+            // Resolve the segments' backdrop together on first presentation. Separate
+            // effects in this non-key panel keep an inactive fill until the first click.
+            // Zero spacing preserves the gaps between the three glass surfaces.
+            GlassEffectContainer(spacing: 0) { toolbarContent }
+        } else {
+            toolbarContent
+        }
+    }
+
+    private var toolbarContent: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
                 toolsSegment
