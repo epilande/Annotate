@@ -708,10 +708,9 @@ final class ToolbarTests: XCTestCase {
             wideFrame.width, stacked.width,
             "One-row width \(wideFrame.width) must exceed the stacked width \(stacked.width)")
         XCTAssertLessThanOrEqual(wideFrame.width, available)
-        // `fittingSize` proposes unbounded width, so ViewThatFits reports the one-row
-        // bar. The live 564×90 panel diverged from that; they must now agree.
-        XCTAssertEqual(host.fittingSize.height, wideFrame.height, accuracy: 2)
-        XCTAssertEqual(host.fittingSize.width, wideFrame.width, accuracy: 2)
+        // Do not assert `host.fittingSize` here: with `sizingOptions = []` it reports
+        // 0×0. The live frame vs `measuredSize` / `sizeThatFits` checks above are the
+        // production path.
     }
 
     func testToolbarFollowsOverlayWidthAfterAttachAndResize() throws {
