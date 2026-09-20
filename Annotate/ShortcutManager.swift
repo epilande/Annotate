@@ -195,7 +195,7 @@ class ShortcutManager: @unchecked Sendable {
         }
         if let value = defaults.dictionary(forKey: storageKey),
             let key = value["key"] as? String,
-            let modifiers = value["modifiers"] as? UInt
+            let modifiers = (value["modifiers"] as? NSNumber)?.uintValue
         {
             return ShortcutBinding(key, modifiers: NSEvent.ModifierFlags(rawValue: modifiers))
         }

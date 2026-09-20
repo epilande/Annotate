@@ -431,9 +431,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switch menuItem.action {
         case #selector(showColorPicker(_:)), #selector(showLineWidthPicker(_:)):
             return visibleMainOverlayWindow != nil
+        case #selector(toggleFadeMode(_:)), #selector(clearAllAnnotations):
+            // Space / Option-Delete become menu equivalents and must not fire
+            // while Settings (or any other window) is key.
+            return isOverlayKeyWindow
         default:
             return true
         }
+    }
+
+    /// Status-menu key equivalents are app-wide. Overlay-owned actions only
+    /// run when an overlay itself is the key window.
+    private var isOverlayKeyWindow: Bool {
+        overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
 
     private var visibleMainOverlayWindow: OverlayWindow? {
@@ -837,17 +847,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func clearAllAnnotations() {
-        if let currentScreen = getCurrentScreen(),
-            let overlayWindow = overlayWindows[currentScreen],
-            overlayWindow.isVisible
-        {
-            if overlayWindow.overlayView.clearAll() {
-                SoundPlayer.shared.playClearAll()
-            }
+        guard isOverlayKeyWindow,
+            let currentScreen = getCurrentScreen(),
+            let overlayWindow = overlayWindows[currentScreen]
+        else { return }
+        if overlayWindow.overlayView.clearAll() {
+            SoundPlayer.shared.playClearAll()
         }
     }
 
     @objc func toggleFadeMode(_ sender: Any?) {
+        if sender is NSMenuItem && !isOverlayKeyWindow { return }
         let isCurrentlyFadeMode = overlayWindows.values.first?.overlayView.fadeMode ?? true
 
         for window in overlayWindows.values {

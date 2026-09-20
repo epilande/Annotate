@@ -51,6 +51,38 @@ final class ShortcutBindingTests: XCTestCase {
         XCTAssertEqual(manager.binding(for: .toggleToolbar), ShortcutKey.toggleToolbar.defaultBinding)
     }
 
+    func testModifierBindingsSurvivePlistRoundTrip() throws {
+        let writeSuite = "com.annotate.tests.modifiers-write.\(UUID().uuidString)"
+        let readSuite = "com.annotate.tests.modifiers-read.\(UUID().uuidString)"
+        let chord = ShortcutBinding("j", modifiers: [.option, .command])
+
+        let writer = UserDefaults(suiteName: writeSuite)!
+        defer {
+            writer.removePersistentDomain(forName: writeSuite)
+            writer.synchronize()
+        }
+        XCTAssertTrue(ShortcutManager(userDefaults: writer).setShortcut(chord, for: .toggleFade))
+        XCTAssertTrue(writer.synchronize())
+
+        // UserDefaults boxes integers as NSNumber after a plist round-trip.
+        // `as? UInt` fails on that type; reopen a *new* suite so we are not
+        // reading the writer's in-memory dictionary.
+        let stored = try XCTUnwrap(writer.dictionary(forKey: "shortcut.toggleFade"))
+        let data = try PropertyListSerialization.data(fromPropertyList: stored, format: .xml, options: 0)
+        let roundTripped = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any])
+        XCTAssertNil(roundTripped["modifiers"] as? UInt)
+        XCTAssertNotNil((roundTripped["modifiers"] as? NSNumber)?.uintValue)
+
+        let reader = UserDefaults(suiteName: readSuite)!
+        defer {
+            reader.removePersistentDomain(forName: readSuite)
+            reader.synchronize()
+        }
+        reader.set(roundTripped, forKey: "shortcut.toggleFade")
+        XCTAssertEqual(ShortcutManager(userDefaults: reader).binding(for: .toggleFade), chord)
+    }
+
     func testClearRestoreAndResetAllPreserveTheirDistinctMeanings() {
         manager.clearShortcut(tool: .clearAll)
         XCTAssertEqual(manager.binding(for: .clearAll), .unassigned)
