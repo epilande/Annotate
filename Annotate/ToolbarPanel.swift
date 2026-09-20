@@ -22,12 +22,6 @@ final class ToolbarPanel: NSPanel {
     /// Last size `fitToContent` chose, applied to the live host after attach.
     private var lockedContentSize: NSSize?
     private var isApplyingHostLayout = false
-    /// Measures the bar. `NSHostingView.fittingSize` measures `ViewThatFits` against an
-    /// unbounded proposal, so the one-row layout always wins and is then clipped. A hosting
-    /// controller proposes the width it is handed all the way down the view tree, which is the
-    /// only way to learn which layout fits and how tall it is. It shares the model, so it
-    /// always measures exactly what the bar is showing.
-    private let measurer: NSHostingController<ToolbarView>
     /// The overlay this bar belongs to. Weak because the overlay owns the panel, not the reverse.
     private weak var overlay: OverlayWindow?
     /// True while the app, rather than the user, is moving the bar. Only a drag the user made
@@ -46,16 +40,18 @@ final class ToolbarPanel: NSPanel {
     /// Tells a chip click from a drag of the bar. Shared with the SwiftUI action closure so a
     /// Button mouse-up that lands after the bar has moved can still be refused.
     private let press: ToolbarPress
+    private let deliverAction: (ToolbarAction) -> Void
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
         self.model = model
         let press = ToolbarPress()
         self.press = press
-        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: { action in
+        let deliverAction: (ToolbarAction) -> Void = { action in
             press.deliver { perform(action) }
-        }))
-        measurer = NSHostingController(rootView: ToolbarView(model: model) { _ in })
+        }
+        self.deliverAction = deliverAction
+        host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: deliverAction))
 
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
@@ -68,8 +64,6 @@ final class ToolbarPanel: NSPanel {
         host.safeAreaRegions = []
         host.translatesAutoresizingMaskIntoConstraints = true
         host.autoresizingMask = [.width, .height]
-        measurer.sizingOptions = []
-        measurer.safeAreaRegions = []
 
         // The SwiftUI segments paint their own glass and shadow, so the panel itself is a
         // transparent, shadowless carrier.
@@ -210,9 +204,6 @@ final class ToolbarPanel: NSPanel {
         // The width the bar may occupy. Proposing it is what lets `ViewThatFits` pick the
         // stacked layout on a narrow display instead of clipping the one-row bar.
         let available = max(0, overlay.frame.width - Self.edgeInset * 2)
-        if model.availableWidth != available {
-            model.availableWidth = available
-        }
         let size = measuredSize(availableWidth: available)
         guard size.width > 0, size.height > 0 else { return }
 
@@ -252,7 +243,11 @@ final class ToolbarPanel: NSPanel {
             chrome.addSubview(host)
         }
         host.autoresizingMask = [.width, .height]
-        host.rootView = host.rootView
+        // Assign a new root after the host has the measured width. Replacing the same
+        // `rootView` is a no-op, and bumping `layoutGeneration` before the frame change
+        // remounted `ViewThatFits` at the leftover stacked width (~660×90 on grow-back).
+        host.rootView = ToolbarView(model: model, perform: deliverAction)
+        model.layoutGeneration += 1
         host.layoutSubtreeIfNeeded()
     }
 
@@ -265,10 +260,15 @@ final class ToolbarPanel: NSPanel {
         // stacked size even when the width is ample. 10_000pt is taller than any overlay
         // the bar will see and matches the finite proposals the wrap tests already use.
         let proposal = CGSize(width: availableWidth, height: 10_000)
-        // A reused controller can keep a stacked `ViewThatFits` choice from a previous
-        // tight frame. Give it the proposal as its own bounds before asking.
-        measurer.view.setFrameSize(proposal)
-        var size = measurer.sizeThatFits(in: proposal)
+        // A reused controller keeps a stacked `ViewThatFits` choice from a previous
+        // tight overlay. Probe with a fresh tree so grow-back (700 → 1920) can return
+        // to one row. Do not put `maxWidth` on `ToolbarView`: `sizeThatFits` would
+        // then report the proposal (e.g. 1160) instead of the one-row ideal (~986),
+        // and restoring a saved x=140 would clamp to 40.
+        let probe = NSHostingController(rootView: ToolbarView(model: model) { _ in })
+        probe.sizingOptions = []
+        probe.safeAreaRegions = []
+        var size = probe.sizeThatFits(in: proposal)
         size.width = min(max(0, size.width), availableWidth)
         return size
     }
