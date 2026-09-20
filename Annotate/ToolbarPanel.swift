@@ -19,9 +19,9 @@ final class ToolbarPanel: NSPanel {
     /// `contentMinSize` / `setContentSize` from SwiftUI, which kept snapping the live
     /// window to the stacked 564×90 layout after attach. This view does not.
     private let chrome = NSView()
-    /// Last size `fitToContent` chose. `setFrame` / `setContentSize` pin to it so a
-    /// stacked `ViewThatFits` pass cannot shrink a wide overlay's bar.
+    /// Last size `fitToContent` chose, applied to the live host after attach.
     private var lockedContentSize: NSSize?
+    private var isApplyingHostLayout = false
     /// Measures the bar. `NSHostingView.fittingSize` measures `ViewThatFits` against an
     /// unbounded proposal, so the one-row layout always wins and is then clipped. A hosting
     /// controller proposes the width it is handed all the way down the view tree, which is the
@@ -100,25 +100,6 @@ final class ToolbarPanel: NSPanel {
     /// The SwiftUI bar. Not the panel's `contentView`; that is a plain AppKit carrier so
     /// `NSHostingView` cannot resize the window around a stacked `ViewThatFits` choice.
     var hostingView: ToolbarHostingView { host }
-
-    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
-        super.setFrame(pinned(frameRect), display: flag, animate: false)
-    }
-
-    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
-        super.setFrame(pinned(frameRect), display: displayFlag, animate: animateFlag)
-    }
-
-    override func setContentSize(_ size: NSSize) {
-        super.setContentSize(lockedContentSize ?? size)
-    }
-
-    private func pinned(_ rect: NSRect) -> NSRect {
-        guard let locked = lockedContentSize else { return rect }
-        var rect = rect
-        rect.size = locked
-        return rect
-    }
 
     override var canBecomeKey: Bool { false }
 
@@ -235,23 +216,12 @@ final class ToolbarPanel: NSPanel {
         let size = measuredSize(availableWidth: available)
         guard size.width > 0, size.height > 0 else { return }
 
-        // Relax window min/max before shrinking (one-row → stacked) so `setFrame` is
-        // not clamped to the previous one-row size.
-        minSize = NSSize(width: 1, height: 1)
-        maxSize = NSSize(width: 10_000, height: 10_000)
-        contentMinSize = .zero
-        contentMaxSize = NSSize(width: 10_000, height: 10_000)
         lockedContentSize = size
 
         if size != frame.size {
             let anchor = NSPoint(x: frame.midX, y: frame.minY)
             place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
         }
-
-        minSize = size
-        maxSize = size
-        contentMinSize = size
-        contentMaxSize = size
 
         // A detached panel's contentView may still be 1×1 even after `setFrame`.
         // Mounting SwiftUI then makes `ViewThatFits` pick stacked, and that choice
@@ -266,7 +236,10 @@ final class ToolbarPanel: NSPanel {
     /// alone does not change the live panel — Mac tests saw 986×41 from the probe and
     /// 564×90 on the attached window.
     private func applyMeasuredSizeToLiveHost() {
+        guard !isApplyingHostLayout else { return }
         guard let size = lockedContentSize, size.width > 0, size.height > 0 else { return }
+        isApplyingHostLayout = true
+        defer { isApplyingHostLayout = false }
         if abs(frame.width - size.width) > 0.5 || abs(frame.height - size.height) > 0.5 {
             place(NSRect(origin: frame.origin, size: size))
         }
