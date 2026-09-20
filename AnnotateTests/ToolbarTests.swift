@@ -133,7 +133,7 @@ final class ToolbarTests: XCTestCase {
 
     func testADragDoesNotChangeTheToolEvenWhenThePointerStaysOnTheChip() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -172,7 +172,7 @@ final class ToolbarTests: XCTestCase {
 
     func testPointerTravelPastTheThresholdSuppressesTheChipWithoutMovingTheBar() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -198,7 +198,7 @@ final class ToolbarTests: XCTestCase {
 
     func testAChipClickWithoutADragStillChangesTheTool() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
@@ -552,7 +552,7 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testToolbarHostAcceptsFirstMouse() throws {
-        let host = try XCTUnwrap(window.toolbarPanel?.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(window.toolbarPanel?.hostingView)
 
         XCTAssertTrue(
             host.acceptsFirstMouse(for: nil),
@@ -675,7 +675,7 @@ final class ToolbarTests: XCTestCase {
         )
         defer { wideWindow.close() }
         let panel = try XCTUnwrap(wideWindow.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         let wideFrame = try realizedToolbarFrame(wideWindow)
 
         XCTAssertTrue(
@@ -935,7 +935,7 @@ final class ToolbarTests: XCTestCase {
     /// back to a stacked size.
     private func realizedToolbarFrame(_ overlay: OverlayWindow) throws -> NSRect {
         let panel = try XCTUnwrap(overlay.toolbarPanel)
-        let host = try XCTUnwrap(panel.contentView as? ToolbarHostingView)
+        let host = try XCTUnwrap(panel.hostingView)
         overlay.orderFrontRegardless()
         panel.orderFrontRegardless()
         overlay.contentView?.layoutSubtreeIfNeeded()
