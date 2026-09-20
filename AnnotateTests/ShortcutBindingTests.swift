@@ -64,15 +64,15 @@ final class ShortcutBindingTests: XCTestCase {
         XCTAssertTrue(ShortcutManager(userDefaults: writer).setShortcut(chord, for: .toggleFade))
         XCTAssertTrue(writer.synchronize())
 
-        // UserDefaults boxes integers as NSNumber after a plist round-trip.
-        // `as? UInt` fails on that type; reopen a *new* suite so we are not
-        // reading the writer's in-memory dictionary.
+        // Persist through the plist format UserDefaults uses on disk, then
+        // load the result in a *new* suite so we are not reading the writer's
+        // in-memory cache. Decode the same way production does: NSNumber.
         let stored = try XCTUnwrap(writer.dictionary(forKey: "shortcut.toggleFade"))
         let data = try PropertyListSerialization.data(fromPropertyList: stored, format: .xml, options: 0)
         let roundTripped = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any])
-        XCTAssertNil(roundTripped["modifiers"] as? UInt)
-        XCTAssertNotNil((roundTripped["modifiers"] as? NSNumber)?.uintValue)
+        XCTAssertEqual(
+            (roundTripped["modifiers"] as? NSNumber)?.uintValue, chord.modifiers.rawValue)
 
         let reader = UserDefaults(suiteName: readSuite)!
         defer {

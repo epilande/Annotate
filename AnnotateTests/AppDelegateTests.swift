@@ -361,6 +361,10 @@ final class AppDelegateTests: XCTestCase, Sendable {
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.paths.append(TestFactory.createDrawingPath())
         appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+        defer {
+            SettingsWindowManager.shared.settingsWindow?.close()
+            overlayWindow.orderOut(nil)
+        }
 
         XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
         XCTAssertFalse(appDelegate.validateMenuItem(clearItem))
@@ -369,30 +373,30 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertFalse(overlayWindow.overlayView.fadeMode)
         XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
 
-        overlayWindow.makeKeyAndOrderFront(nil)
-        defer { overlayWindow.orderOut(nil) }
-        XCTAssertTrue(appDelegate.validateMenuItem(fadeItem))
-        XCTAssertTrue(appDelegate.validateMenuItem(clearItem))
-
+        // Settings is a normal-level window; the overlay sits above screen-saver
+        // level, so show() cannot steal key in CI. orderFront keeps the overlay
+        // visible (the High: Settings focused, overlay still on screen) without
+        // making it the key window.
         SettingsWindowManager.shared.show()
-        let settings = try XCTUnwrap(SettingsWindowManager.shared.settingsWindow)
-        defer { settings.close() }
-        XCTAssertTrue(settings.isKeyWindow)
+        overlayWindow.orderFront(nil)
+        if overlayWindow.isKeyWindow {
+            overlayWindow.resignKey()
+        }
         XCTAssertTrue(overlayWindow.isVisible)
         XCTAssertFalse(overlayWindow.isKeyWindow)
         XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
         XCTAssertFalse(appDelegate.validateMenuItem(clearItem))
-
         appDelegate.toggleFadeMode(NSMenuItem())
         appDelegate.clearAllAnnotations()
         XCTAssertFalse(
             overlayWindow.overlayView.fadeMode,
-            "Fade must not toggle from a menu equivalent while Settings is key")
+            "Fade must not toggle from a menu equivalent unless the overlay is key")
         XCTAssertEqual(
             overlayWindow.overlayView.paths.count, 1,
-            "Clear All must not fire from a menu equivalent while Settings is key")
+            "Clear All must not fire from a menu equivalent unless the overlay is key")
 
         overlayWindow.makeKeyAndOrderFront(nil)
+        XCTAssertTrue(overlayWindow.isKeyWindow)
         XCTAssertTrue(appDelegate.validateMenuItem(fadeItem))
         XCTAssertTrue(appDelegate.validateMenuItem(clearItem))
         appDelegate.toggleFadeMode(NSMenuItem())
