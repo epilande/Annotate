@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import KeyboardShortcuts
 
 extension Notification.Name {
     static let shortcutsDidChange = Notification.Name("shortcutsDidChange")
@@ -30,6 +31,16 @@ struct ShortcutBinding: Equatable, Hashable {
         }
         guard key.count == 1 else { return nil }
         self.init(key, modifiers: event.modifierFlags)
+    }
+
+    init?(globalShortcut: KeyboardShortcuts.Shortcut) {
+        guard let keyCode = CGKeyCode(exactly: globalShortcut.carbonKeyCode),
+            let cgEvent = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
+        else { return nil }
+        // Translate through the current layout, including Shift punctuation, without posting a key.
+        cgEvent.flags = CGEventFlags(rawValue: UInt64(globalShortcut.modifiers.rawValue))
+        guard let event = NSEvent(cgEvent: cgEvent) else { return nil }
+        self.init(event: event)
     }
 
     func hash(into hasher: inout Hasher) {
@@ -156,14 +167,22 @@ class ShortcutManager: @unchecked Sendable {
 
     private let defaults: UserDefaults
     private let shortcutPrefix = "shortcut."
+    private let globalShortcutProvider: (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut?
+    private static let globalActions: [(name: KeyboardShortcuts.Name, label: String)] = [
+        (.toggleOverlay, "Activation Shortcut"),
+        (.toggleAlwaysOnMode, "Always-On Mode")
+    ]
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard,
+         globalShortcutProvider: @escaping (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut) {
         self.defaults = userDefaults
+        self.globalShortcutProvider = globalShortcutProvider
         // Existing assignments win over newly introduced defaults. Persist the unbound state
         // so clearing the old assignment later does not silently enable a second action.
         let existing = ShortcutKey.allCases.filter { !ShortcutKey.newlyEditable.contains($0) }
         for action in ShortcutKey.newlyEditable where defaults.object(forKey: shortcutPrefix + action.rawValue) == nil {
-            if existing.contains(where: { binding(for: $0) == action.defaultBinding }) {
+            if existing.contains(where: { binding(for: $0) == action.defaultBinding })
+                || globalShortcutConflict(for: action.defaultBinding) != nil {
                 defaults.set("", forKey: shortcutPrefix + action.rawValue)
             }
         }
@@ -229,6 +248,9 @@ class ShortcutManager: @unchecked Sendable {
     func resetAllToDefault() {
         ShortcutKey.allCases.forEach { tool in
             defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
+            if globalShortcutConflict(for: tool.defaultBinding) != nil {
+                defaults.set("", forKey: shortcutPrefix + tool.rawValue)
+            }
         }
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
     }
@@ -239,7 +261,24 @@ class ShortcutManager: @unchecked Sendable {
 
     func isShortcutTaken(_ binding: ShortcutBinding, excluding tool: ShortcutKey) -> Bool {
         guard !binding.key.isEmpty else { return false }
-        return ShortcutKey.allCases.contains { $0 != tool && self.binding(for: $0) == binding }
+        return globalShortcutConflict(for: binding) != nil
+            || ShortcutKey.allCases.contains { $0 != tool && self.binding(for: $0) == binding }
+    }
+
+    func globalShortcutConflict(for binding: ShortcutBinding, excluding name: KeyboardShortcuts.Name? = nil) -> String? {
+        guard !binding.key.isEmpty else { return nil }
+        return Self.globalActions.first { action in
+            guard action.name != name, let shortcut = globalShortcutProvider(action.name) else { return false }
+            return ShortcutBinding(globalShortcut: shortcut) == binding
+        }?.label
+    }
+
+    func conflictForGlobalShortcut(_ shortcut: KeyboardShortcuts.Shortcut, excluding name: KeyboardShortcuts.Name) -> String? {
+        guard let candidate = ShortcutBinding(globalShortcut: shortcut) else { return nil }
+        if let tool = ShortcutKey.allCases.first(where: { binding(for: $0) == candidate }) {
+            return tool.displayName
+        }
+        return globalShortcutConflict(for: candidate, excluding: name)
     }
 
     /// Formatted keycaps shared by settings and the floating toolbar.

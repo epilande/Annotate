@@ -385,7 +385,7 @@ Customize keys and modifier combinations for tools and utilities, organized into
 
 The **Built-in Shortcuts** reference lists the fixed keys: Delete, Undo (Command + Z), Redo (Shift + Command + Z), and Escape. Editable bindings cannot conflict with another assigned action or a fixed editing command. Escape cancels recording without changing the binding.
 
-Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores all default keys and modifier combinations and leaves dimming unset. Existing custom bindings and cleared shortcuts are preserved on upgrade; if a new action’s default is already assigned, the new action starts as Not Set.
+Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores default keys and modifier combinations and leaves dimming unset. Bindings cannot reuse the Activation or Always-On shortcuts in General Settings; changing either global shortcut also checks for conflicts with tool and utility bindings. Defaults already used by a global shortcut stay Not Set when resetting. Existing custom bindings and cleared shortcuts are preserved on upgrade; if a new action’s default is already assigned, the new action starts as Not Set.
 
 **Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 

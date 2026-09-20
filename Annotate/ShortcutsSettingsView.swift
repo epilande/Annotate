@@ -290,7 +290,7 @@ struct ShortcutsSettingsView: View {
                 editingShortcut = nil
             }
         } message: {
-            Text("This will reset all keyboard shortcuts to their default values. This action cannot be undone.")
+            Text("This will reset tool and utility shortcuts to their defaults. Defaults used by Activation or Always-On stay Not Set. This action cannot be undone.")
         }
     }
 }

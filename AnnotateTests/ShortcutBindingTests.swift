@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import XCTest
 @testable import Annotate
 
@@ -6,11 +7,13 @@ import XCTest
 final class ShortcutBindingTests: XCTestCase {
     private var defaults: UserDefaults!
     private var manager: ShortcutManager!
+    private var globalShortcuts: [KeyboardShortcuts.Name: KeyboardShortcuts.Shortcut] = [:]
 
     override func setUp() {
         super.setUp()
         defaults = TestUserDefaults.create()
-        manager = ShortcutManager(userDefaults: defaults)
+        globalShortcuts = [:]
+        manager = ShortcutManager(userDefaults: defaults) { [weak self] in self?.globalShortcuts[$0] }
     }
 
     override func tearDown() {
@@ -137,6 +140,98 @@ final class ShortcutBindingTests: XCTestCase {
         let outside = ShortcutRecordingEventHandler.handle(click, editingShortcut: .toggleToolbar, manager: manager)
         XCTAssertNil(outside.editingShortcut)
         XCTAssertFalse(outside.consumesEvent)
+        XCTAssertEqual(manager.binding(for: .toggleToolbar), ShortcutKey.toggleToolbar.defaultBinding)
+    }
+
+    func testGlobalConflictsKeepRecordingAndPreserveTheLocalBinding() throws {
+        globalShortcuts = [
+            .toggleOverlay: .init(.j, modifiers: [.command, .option]),
+            .toggleAlwaysOnMode: .init(.u, modifiers: [.command, .option])
+        ]
+        let wasEnabled = KeyboardShortcuts.isEnabled
+        KeyboardShortcuts.isEnabled = false
+        defer { KeyboardShortcuts.isEnabled = wasEnabled }
+
+        for (key, code, label): (String, UInt16, String) in [
+            ("j", 38, "Activation Shortcut"), ("u", 32, "Always-On Mode")
+        ] {
+            let chord = ShortcutBinding(key, modifiers: [.command, .option])
+            XCTAssertFalse(manager.setShortcut(chord, for: .toggleFade))
+            let result = ShortcutRecordingEventHandler.handle(
+                try event(key, keyCode: code, modifiers: [.command, .option]),
+                editingShortcut: .toggleFade, manager: manager)
+            XCTAssertEqual(result.editingShortcut, .toggleFade)
+            XCTAssertTrue(result.consumesEvent)
+            XCTAssertTrue(try XCTUnwrap(result.error).contains(label))
+            XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutKey.toggleFade.defaultBinding)
+        }
+    }
+
+    func testGlobalConflictsUseExactModifiersAndAllowClearing() {
+        globalShortcuts[.toggleOverlay] = .init(.j, modifiers: [.command, .option])
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("j", modifiers: .command), for: .toggleFade))
+        manager.clearShortcut(tool: .toggleFade)
+        XCTAssertEqual(manager.binding(for: .toggleFade), .unassigned)
+        globalShortcuts[.toggleOverlay] = nil
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("j", modifiers: [.command, .option]), for: .toggleFade))
+    }
+
+    func testGlobalConflictNormalizationIncludesShiftPunctuationAndDeleteAliases() {
+        globalShortcuts[.toggleOverlay] = .init(.leftBracket, modifiers: [.control, .shift])
+        XCTAssertFalse(manager.setShortcut(ShortcutBinding("{", modifiers: [.control, .shift]), for: .toggleFade))
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("[", modifiers: .control), for: .toggleFade))
+        globalShortcuts[.toggleAlwaysOnMode] = .init(.deleteForward, modifiers: [.command, .option])
+        XCTAssertFalse(manager.setShortcut(ShortcutBinding("\u{7f}", modifiers: [.command, .option]), for: .clearAll))
+    }
+
+    func testGlobalRecorderRestoresThePreviousBindingOnLocalConflict() {
+        let name = KeyboardShortcuts.Name("testGlobalShortcutConflict")
+        defer { KeyboardShortcuts.setShortcut(nil, for: name) }
+        let candidate = KeyboardShortcuts.Shortcut(.j, modifiers: [.command, .option])
+        XCTAssertTrue(manager.setShortcut(ShortcutBinding("j", modifiers: [.command, .option]), for: .toggleFade))
+
+        for previous: KeyboardShortcuts.Shortcut? in [nil, .init(.u, modifiers: [.command, .option])] {
+            // The library saves the candidate before invoking the recorder's callback.
+            KeyboardShortcuts.setShortcut(candidate, for: name)
+            let error = GlobalShortcutRecordingHandler.handle(
+                candidate, for: name, previousShortcut: previous, manager: manager)
+            XCTAssertTrue(error?.contains("Toggle Fade Mode") == true)
+            XCTAssertEqual(KeyboardShortcuts.getShortcut(for: name), previous)
+            XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutBinding("j", modifiers: [.command, .option]))
+        }
+    }
+
+    func testGlobalRecorderAcceptsAnAvailableBindingAndClearing() {
+        let name = KeyboardShortcuts.Name("testAvailableGlobalShortcut")
+        defer { KeyboardShortcuts.setShortcut(nil, for: name) }
+        let candidate = KeyboardShortcuts.Shortcut(.j, modifiers: [.command, .option])
+        KeyboardShortcuts.setShortcut(candidate, for: name)
+        XCTAssertNil(GlobalShortcutRecordingHandler.handle(
+            candidate, for: name, previousShortcut: nil, manager: manager))
+        XCTAssertEqual(KeyboardShortcuts.getShortcut(for: name), candidate)
+        KeyboardShortcuts.setShortcut(nil, for: name)
+        XCTAssertNil(GlobalShortcutRecordingHandler.handle(
+            nil, for: name, previousShortcut: candidate, manager: manager))
+        XCTAssertNil(KeyboardShortcuts.getShortcut(for: name))
+    }
+
+    func testGlobalRecorderChecksOtherGlobalActionsButExcludesItself() {
+        let candidate = KeyboardShortcuts.Shortcut(.j, modifiers: [.command, .option])
+        globalShortcuts[.toggleOverlay] = candidate
+        XCTAssertEqual(manager.conflictForGlobalShortcut(candidate, excluding: .toggleAlwaysOnMode), "Activation Shortcut")
+        XCTAssertNil(manager.conflictForGlobalShortcut(candidate, excluding: .toggleOverlay))
+    }
+
+    func testMigrationAndResetDoNotReintroduceGlobalConflicts() {
+        globalShortcuts[.toggleOverlay] = .init(.t, modifiers: [.command, .option])
+        manager = ShortcutManager(userDefaults: defaults) { [weak self] in self?.globalShortcuts[$0] }
+        XCTAssertEqual(manager.binding(for: .toggleToolbar), .unassigned)
+        XCTAssertFalse(manager.resetToDefault(tool: .toggleToolbar))
+        manager.resetAllToDefault()
+        XCTAssertEqual(manager.binding(for: .toggleToolbar), .unassigned)
+        XCTAssertEqual(manager.binding(for: .toggleFade), ShortcutKey.toggleFade.defaultBinding)
+        globalShortcuts[.toggleOverlay] = nil
+        XCTAssertTrue(manager.resetToDefault(tool: .toggleToolbar))
         XCTAssertEqual(manager.binding(for: .toggleToolbar), ShortcutKey.toggleToolbar.defaultBinding)
     }
 
