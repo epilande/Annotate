@@ -33,7 +33,7 @@ struct GeneralSettingsView: View {
 
             Section {
                 LabeledContent {
-                    KeyboardShortcuts.Recorder("", name: .toggleOverlay)
+                    GlobalShortcutRecorder(name: .toggleOverlay)
                 } label: {
                     Text("Activation Shortcut")
                     Text("Primary keyboard shortcut to activate Annotate")
@@ -41,7 +41,7 @@ struct GeneralSettingsView: View {
                 }
 
                 LabeledContent {
-                    KeyboardShortcuts.Recorder("", name: .toggleAlwaysOnMode)
+                    GlobalShortcutRecorder(name: .toggleAlwaysOnMode)
                 } label: {
                     Text("Always-On Mode")
                     Text("Keep Annotate active without auto-hide")
@@ -132,5 +132,41 @@ struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .toggleStyle(.switch)
         .settingsScrollEdgeEffect()
+    }
+}
+
+enum GlobalShortcutRecordingHandler {
+    @MainActor
+    static func handle(_ shortcut: KeyboardShortcuts.Shortcut?, for name: KeyboardShortcuts.Name,
+                       previousShortcut: KeyboardShortcuts.Shortcut?, manager: ShortcutManager? = nil) -> String? {
+        guard let shortcut,
+            let conflict = (manager ?? .shared).conflictForGlobalShortcut(shortcut, excluding: name)
+        else { return nil }
+        // Recorder saves before invoking its callback. Restore the accepted binding on conflict.
+        KeyboardShortcuts.setShortcut(previousShortcut, for: name)
+        return "This shortcut is already assigned to \(conflict). Change or clear it first."
+    }
+}
+
+private struct GlobalShortcutRecorder: View {
+    let name: KeyboardShortcuts.Name
+    @State private var previousShortcut: KeyboardShortcuts.Shortcut?
+    @State private var conflictMessage: String?
+
+    var body: some View {
+        KeyboardShortcuts.Recorder("", name: name) { shortcut in
+            conflictMessage = GlobalShortcutRecordingHandler.handle(
+                shortcut, for: name, previousShortcut: previousShortcut)
+            if conflictMessage == nil { previousShortcut = shortcut }
+        }
+        .onAppear { previousShortcut = KeyboardShortcuts.getShortcut(for: name) }
+        .alert("Shortcut Unavailable", isPresented: Binding(
+            get: { conflictMessage != nil },
+            set: { if !$0 { conflictMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(conflictMessage ?? "")
+        }
     }
 }

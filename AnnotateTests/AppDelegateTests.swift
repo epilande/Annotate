@@ -24,6 +24,8 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            SettingsWindowManager.shared.settingsWindow?.close()
+            appDelegate.overlayKeyWindowOverride = nil
             appDelegate = nil
         }
         TestUserDefaults.removeSuite()
@@ -277,7 +279,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             overlayWindow.overlayView.fadeMode, "Expected fade mode to be true by default.")
 
         // Toggle fade mode.
-        appDelegate.toggleFadeMode(NSMenuItem())
+        appDelegate.toggleFadeMode(nil)
 
         XCTAssertFalse(
             overlayWindow.overlayView.fadeMode, "Expected fade mode to be false after toggle.")
@@ -305,7 +307,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             )
         ]
 
-        appDelegate.toggleFadeMode(NSMenuItem())
+        appDelegate.toggleFadeMode(nil)
 
         XCTAssertTrue(overlayWindow.overlayView.fadeMode)
         XCTAssertNotNil(overlayWindow.fadeTimer)
@@ -348,6 +350,63 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.arrows.first?.startPoint, NSPoint(x: 20, y: 20))
         XCTAssertNotNil(overlayWindow.fadeTimer)
         overlayWindow.stopFadeLoop()
+    }
+
+    func testFadeAndClearAllMenuActionsRequireOverlayKeyWindow() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let fadeItem = try XCTUnwrap(
+            menu.items.first { $0.action == #selector(AppDelegate.toggleFadeMode(_:)) })
+        let clearItem = try XCTUnwrap(
+            menu.items.first { $0.action == #selector(AppDelegate.clearAllAnnotations) })
+        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows.values.first)
+        overlayWindow.overlayView.fadeMode = false
+        overlayWindow.overlayView.paths.append(TestFactory.createDrawingPath())
+        appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+        defer {
+            SettingsWindowManager.shared.settingsWindow?.close()
+            overlayWindow.orderOut(nil)
+        }
+
+        XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
+        XCTAssertFalse(appDelegate.validateMenuItem(clearItem))
+        appDelegate.toggleFadeMode(NSMenuItem())
+        appDelegate.clearAllAnnotations()
+        XCTAssertFalse(overlayWindow.overlayView.fadeMode)
+        XCTAssertEqual(overlayWindow.overlayView.paths.count, 1)
+
+        // Settings is a normal-level window; the overlay sits above screen-saver
+        // level, so show() cannot steal key in CI. orderFront keeps the overlay
+        // visible (the High: Settings focused, overlay still on screen) without
+        // making it the key window.
+        SettingsWindowManager.shared.show()
+        overlayWindow.orderFront(nil)
+        if overlayWindow.isKeyWindow {
+            overlayWindow.resignKey()
+        }
+        XCTAssertTrue(overlayWindow.isVisible)
+        XCTAssertFalse(overlayWindow.isKeyWindow)
+        XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
+        XCTAssertFalse(appDelegate.validateMenuItem(clearItem))
+        appDelegate.toggleFadeMode(NSMenuItem())
+        appDelegate.clearAllAnnotations()
+        XCTAssertFalse(
+            overlayWindow.overlayView.fadeMode,
+            "Fade must not toggle from a menu equivalent unless the overlay is key")
+        XCTAssertEqual(
+            overlayWindow.overlayView.paths.count, 1,
+            "Clear All must not fire from a menu equivalent unless the overlay is key")
+
+        // XCTest will not make this overlay key: ToolbarPanel answers
+        // canBecomeKey = false, so makeKeyAndOrderFront leaves isKeyWindow false.
+        // Drive the same product gate through the test seam instead.
+        overlayWindow.orderFront(nil)
+        appDelegate.overlayKeyWindowOverride = true
+        XCTAssertTrue(appDelegate.validateMenuItem(fadeItem))
+        XCTAssertTrue(appDelegate.validateMenuItem(clearItem))
+        appDelegate.toggleFadeMode(NSMenuItem())
+        appDelegate.clearAllAnnotations()
+        XCTAssertTrue(overlayWindow.overlayView.fadeMode)
+        XCTAssertTrue(overlayWindow.overlayView.paths.isEmpty)
     }
 
     func testOverlayWindowsRestorePersistedFadeMode() {

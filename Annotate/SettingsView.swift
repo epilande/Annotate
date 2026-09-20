@@ -44,7 +44,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .tools: "Default sizes for text and counter annotations"
         case .board: "Board background appearance and visibility"
         case .cursor: "Cursor style, spotlight, and click effects"
-        case .shortcuts: "Single-key shortcuts for tools and utilities"
+        case .shortcuts: "Keyboard shortcuts for tools and utilities"
         }
     }
 }

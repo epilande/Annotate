@@ -279,7 +279,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let toggleDrawingModeItem = NSMenuItem(
                 title: persistedFadeMode ? "Persist" : "Fade",
                 action: #selector(toggleFadeMode(_:)),
-                keyEquivalent: " "
+                keyEquivalent: ""
             )
             toggleDrawingModeItem.keyEquivalentModifierMask = []
             menu.addItem(toggleDrawingModeItem)
@@ -304,9 +304,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let toolbarItem = NSMenuItem(
                 title: toolbarVisible ? "Hide Toolbar" : "Show Toolbar",
                 action: #selector(toggleToolbar),
-                keyEquivalent: "t"
+                keyEquivalent: ""
             )
-            toolbarItem.keyEquivalentModifierMask = [.command, .option]
             menu.addItem(toolbarItem)
 
             menu.addItem(NSMenuItem.separator())
@@ -314,9 +313,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let clearAllItem = NSMenuItem(
                 title: "Clear All",
                 action: #selector(clearAllAnnotations),
-                keyEquivalent: "\u{8}"
+                keyEquivalent: ""
             )
-            clearAllItem.keyEquivalentModifierMask = [.option]
             menu.addItem(clearAllItem)
 
             let undoItem = NSMenuItem(
@@ -360,6 +358,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                     keyEquivalent: "q"))
 
             statusItem?.menu = menu
+            refreshMenuKeyEquivalents()
         }
     }
 
@@ -432,9 +431,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switch menuItem.action {
         case #selector(showColorPicker(_:)), #selector(showLineWidthPicker(_:)):
             return visibleMainOverlayWindow != nil
+        case #selector(toggleFadeMode(_:)), #selector(clearAllAnnotations):
+            // Space / Option-Delete become menu equivalents and must not fire
+            // while Settings (or any other window) is key.
+            return isOverlayKeyWindow
         default:
             return true
         }
+    }
+
+    /// Status-menu key equivalents are app-wide. Overlay-owned actions only
+    /// run when an overlay itself is the key window.
+    ///
+    /// Tests can set `overlayKeyWindowOverride` because XCTest will not make
+    /// the overlay key while its ToolbarPanel child reports `canBecomeKey = false`.
+    var overlayKeyWindowOverride: Bool?
+
+    private var isOverlayKeyWindow: Bool {
+        overlayKeyWindowOverride
+            ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
 
     private var visibleMainOverlayWindow: OverlayWindow? {
@@ -777,38 +792,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         guard let menu = statusItem?.menu else { return }
 
         for item in menu.items {
+            let action: ShortcutKey
             switch item.action {
             case #selector(showColorPicker(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .colorPicker)
+                action = .colorPicker
             case #selector(showLineWidthPicker(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .lineWidthPicker)
+                action = .lineWidthPicker
             case #selector(enableArrowMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .arrow)
+                action = .arrow
             case #selector(enableLineMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .line)
+                action = .line
             case #selector(enablePenMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .pen)
+                action = .pen
             case #selector(enableHighlighterMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .highlighter)
+                action = .highlighter
             case #selector(enableRectangleMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .rectangle)
+                action = .rectangle
             case #selector(enableCircleMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .circle)
+                action = .circle
             case #selector(enableCounterMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .counter)
+                action = .counter
             case #selector(enableTextMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .text)
+                action = .text
             case #selector(enableSelectMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .select)
+                action = .select
             case #selector(enableEraserMode(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .eraser)
+                action = .eraser
             case #selector(toggleBoardVisibility(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleBoard)
+                action = .toggleBoard
             case #selector(toggleClickEffects(_:)):
-                item.keyEquivalent = ShortcutManager.shared.getShortcut(for: .toggleClickEffects)
+                action = .toggleClickEffects
+            case #selector(toggleFadeMode(_:)): action = .toggleFade
+            case #selector(toggleToolbar): action = .toggleToolbar
+            case #selector(clearAllAnnotations): action = .clearAll
             default:
-                break
+                continue
             }
+            let binding = ShortcutManager.shared.binding(for: action)
+            item.keyEquivalent = binding.menuKeyEquivalent
+            item.keyEquivalentModifierMask = binding.modifiers
         }
     }
 
@@ -831,17 +853,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func clearAllAnnotations() {
-        if let currentScreen = getCurrentScreen(),
-            let overlayWindow = overlayWindows[currentScreen],
-            overlayWindow.isVisible
-        {
-            if overlayWindow.overlayView.clearAll() {
-                SoundPlayer.shared.playClearAll()
-            }
+        guard isOverlayKeyWindow,
+            let currentScreen = getCurrentScreen(),
+            let overlayWindow = overlayWindows[currentScreen]
+        else { return }
+        if overlayWindow.overlayView.clearAll() {
+            SoundPlayer.shared.playClearAll()
         }
     }
 
     @objc func toggleFadeMode(_ sender: Any?) {
+        if sender is NSMenuItem && !isOverlayKeyWindow { return }
         let isCurrentlyFadeMode = overlayWindows.values.first?.overlayView.fadeMode ?? true
 
         for window in overlayWindows.values {

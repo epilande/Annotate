@@ -109,7 +109,7 @@ struct ToolbarView: View {
             }
 
             toolbarButton(identifier: "toolbar.fade", action: { perform(.toggleFade) }) {
-                chip(symbol: "circle.lefthalf.filled", keycap: "␣", active: model.fadeMode)
+                chip(symbol: "circle.lefthalf.filled", keycap: shortcut(for: .toggleFade), active: model.fadeMode)
                     .background {
                         if model.fadeMode {
                             ToolbarSelectionLens()
@@ -125,7 +125,7 @@ struct ToolbarView: View {
                 chip(symbol: "delete.left", keycap: "⌫")
             }
             toolbarButton(identifier: "toolbar.clearAll", action: { perform(.clearAll) }) {
-                chip(symbol: "trash", keycap: "⌥⌫")
+                chip(symbol: "trash", keycap: shortcut(for: .clearAll))
             }
             toolbarButton(identifier: "toolbar.undo", action: { perform(.undo) }) {
                 chip(symbol: "arrow.uturn.backward", keycap: "⌘Z")
@@ -171,7 +171,7 @@ struct ToolbarView: View {
     }
 
     private func shortcut(for key: ShortcutKey) -> String {
-        model.shortcuts[key] ?? key.defaultKey
+        model.shortcuts[key] ?? key.defaultBinding.displayValue
     }
 }
 

@@ -146,6 +146,8 @@ brew install --cask annotate
 
 #### ⚡ Quick Actions
 
+Fade mode, toolbar visibility, size stepping, and Clear All can be rebound in **Settings → Shortcuts**, using a single key or a modifier combination. The table shows their defaults.
+
 | Shortcut                                              | Action               | Description                                                                |
 | ----------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
 | <kbd>Space</kbd>                                      | **Toggle Fade Mode** | Switch between fade and persist modes                                      |
@@ -157,7 +159,8 @@ brew install --cask annotate
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
 | Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
 | <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
-| <kbd>[</kbd> / <kbd>]</kbd>                           | **Step Size**        | Step stroke width, or text and counter size when those tools are active    |
+| <kbd>[</kbd>                                         | **Decrease Size**    | Step stroke width, text size, or counter size down                          |
+| <kbd>]</kbd>                                         | **Increase Size**    | Step stroke width, text size, or counter size up                            |
 | <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
 | <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
@@ -209,7 +212,7 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 - **Color Picker**: Press <kbd>C</kbd> to open the swatch picker
 - **Size Picker**: Press <kbd>W</kbd> to open the size ladder. It adapts to the active tool: stroke widths from 1 to 24 px for drawing tools, font sizes from 12 to 120 pt for Text, and badge sizes for Counter
 - **Choosing**: Tap the key, then click a swatch or type its digit. Or hold the key, move over your choice, and release. Press the same key or <kbd>Esc</kbd> to dismiss without changing anything
-- **Bracket Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> to step the active ladder without opening the picker. They do nothing while a picker is open, and while typing in a label they insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
+- **Size Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> by default (customizable in Settings → Shortcuts) to step the active ladder without opening the picker. They do nothing while a picker is open, and while typing in a label they insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
 - **Command + Scroll**: Hold <kbd>Command</kbd> and scroll to fine-tune the active size, stroke width from 0.5 to 24 px for drawing tools or the text and counter size for those tools, with a preview at the bottom center of the screen
 - **Smart Scaling**: Arrowhead sizes scale with line width for better visual balance
 
@@ -301,7 +304,7 @@ The Eraser tool allows you to remove specific annotations by dragging over them:
 
 ### Drawing Modes
 
-Toggle between modes with the <kbd>Space</kbd> key.
+Toggle between modes with <kbd>Space</kbd> by default, or rebind **Toggle Fade Mode** in Settings → Shortcuts.
 
 #### Fade Mode
 
@@ -373,16 +376,18 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 
 ### Shortcuts
 
-Customize single-key shortcuts for tools and utilities, organized into categories, with a **Reset All to Default** action:
+Customize keys and modifier combinations for tools and utilities, organized into categories, with a **Reset All to Default** action:
 
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
 - **Shapes**: Rectangle, Circle
 - **Advanced Tools**: Counter, Text, Select, Eraser
-- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming
+- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All
 
-A **Built-in Shortcuts** section above the reset button lists the keys that are not customizable yet, including <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> for the toolbar and <kbd>[</kbd> / <kbd>]</kbd> for stepping sizes.
+The **Built-in Shortcuts** reference lists the fixed keys: Delete, Undo (Command + Z), Redo (Shift + Command + Z), and Escape. Editable bindings cannot conflict with another assigned action or a fixed editing command. Escape cancels recording without changing the binding.
 
-**Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores every letter default and leaves dimming unset. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
+Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores default keys and modifier combinations and leaves dimming unset. Bindings cannot reuse the Activation or Always-On shortcuts in General Settings; changing either global shortcut also checks for conflicts with tool and utility bindings. Defaults already used by a global shortcut stay Not Set when resetting. Existing custom bindings and cleared shortcuts are preserved on upgrade; if a new action’s default is already assigned, the new action starts as Not Set.
+
+**Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/0dcdd2c2-a26d-4fd4-9860-8f7340554ada">

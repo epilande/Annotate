@@ -62,6 +62,8 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
         let manager = CursorHighlightManager.shared
         window.overlayView.currentTool = .pen
 
+        ShortcutManager.shared.clearShortcut(tool: .decreaseSize)
+        ShortcutManager.shared.clearShortcut(tool: .increaseSize)
         for (characters, keyCode): (String, UInt16) in [("[", 33), ("]", 30)] {
             ShortcutManager.shared.setShortcut(characters, for: .toggleBackgroundDimming)
             for useSendEvent in [false, true] {
@@ -115,7 +117,9 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
     }
 
     func testShortcutDoesNotToggleWhileEditingAnnotationText() throws {
+        XCTAssertFalse(CursorHighlightManager.shared.spotlightDimmingEnabled, "Before creating field")
         window.overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "Label")
+        XCTAssertFalse(CursorHighlightManager.shared.spotlightDimmingEnabled, "After creating field")
         XCTAssertNotNil(window.overlayView.activeTextField)
         for (characters, keyCode): (String, UInt16) in [("j", 38), ("[", 33), ("]", 30)] {
             ShortcutManager.shared.setShortcut(characters, for: .toggleBackgroundDimming)
