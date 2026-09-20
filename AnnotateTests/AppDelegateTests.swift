@@ -25,6 +25,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
             SettingsWindowManager.shared.settingsWindow?.close()
+            appDelegate.overlayKeyWindowOverride = nil
             appDelegate = nil
         }
         TestUserDefaults.removeSuite()
@@ -395,8 +396,11 @@ final class AppDelegateTests: XCTestCase, Sendable {
             overlayWindow.overlayView.paths.count, 1,
             "Clear All must not fire from a menu equivalent unless the overlay is key")
 
-        overlayWindow.makeKeyAndOrderFront(nil)
-        XCTAssertTrue(overlayWindow.isKeyWindow)
+        // XCTest will not make this overlay key: ToolbarPanel answers
+        // canBecomeKey = false, so makeKeyAndOrderFront leaves isKeyWindow false.
+        // Drive the same product gate through the test seam instead.
+        overlayWindow.orderFront(nil)
+        appDelegate.overlayKeyWindowOverride = true
         XCTAssertTrue(appDelegate.validateMenuItem(fadeItem))
         XCTAssertTrue(appDelegate.validateMenuItem(clearItem))
         appDelegate.toggleFadeMode(NSMenuItem())

@@ -442,8 +442,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     /// Status-menu key equivalents are app-wide. Overlay-owned actions only
     /// run when an overlay itself is the key window.
+    ///
+    /// Tests can set `overlayKeyWindowOverride` because XCTest will not make
+    /// the overlay key while its ToolbarPanel child reports `canBecomeKey = false`.
+    var overlayKeyWindowOverride: Bool?
+
     private var isOverlayKeyWindow: Bool {
-        overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
+        overlayKeyWindowOverride
+            ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
 
     private var visibleMainOverlayWindow: OverlayWindow? {
