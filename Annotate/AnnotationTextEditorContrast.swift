@@ -27,7 +27,7 @@ enum AnnotationTextEditorContrast {
 
     static func apply(to textField: NSTextField, textColor: NSColor) {
         textField.textColor = textColor
-        textField.cell?.textColor = textColor
+        (textField.cell as? NSTextFieldCell)?.textColor = textColor
         textField.drawsBackground = true
         textField.backgroundColor = backgroundColor(for: textColor)
         textField.appearance = appearance(for: textColor)
