@@ -55,6 +55,17 @@ final class ToolbarPanel: NSPanel {
             defer: false
         )
 
+        // The panel's size is chosen by `fitToContent`, not by SwiftUI's intrinsic
+        // constraints. Default `sizingOptions` would otherwise publish min/ideal/max
+        // sizes to this window: `ViewThatFits` first sees the 1×1 startup frame, picks
+        // the stacked layout, and those constraints pin the live panel at ~564×90 even
+        // on a 1920pt overlay. The same trap does not show up in an off-screen
+        // `sizeThatFits` probe, which is why the 1200/700 wrap tests still passed.
+        host.sizingOptions = []
+        host.safeAreaRegions = []
+        measurer.sizingOptions = []
+        measurer.safeAreaRegions = []
+
         // The SwiftUI segments paint their own glass and shadow, so the panel itself is a
         // transparent, shadowless carrier.
         backgroundColor = .clear
@@ -69,6 +80,11 @@ final class ToolbarPanel: NSPanel {
         collectionBehavior = overlay.collectionBehavior
 
         contentView = host
+        // `NSHostingView` as a window's `contentView` can still write `contentMinSize` /
+        // `contentMaxSize` during that assignment. Clear them so `setFrame` from
+        // `fitToContent` is not clamped back to the stacked layout.
+        contentMinSize = .zero
+        contentMaxSize = NSSize(width: 10_000, height: 10_000)
 
         NotificationCenter.default.addObserver(
             self,
@@ -158,6 +174,10 @@ final class ToolbarPanel: NSPanel {
     func attach(to overlay: OverlayWindow) {
         guard parent == nil else { return }
         overlay.addChildWindow(self, ordered: .above)
+        // Joining the overlay's window group is when the displayed host first lays out
+        // on screen. Re-measure now so a stacked choice from the 1×1 startup frame
+        // cannot survive into the attached panel.
+        fitToContent()
         restoreSavedPosition()
     }
 
@@ -182,13 +202,38 @@ final class ToolbarPanel: NSPanel {
         // The width the bar may occupy. Proposing it is what lets `ViewThatFits` pick the
         // stacked layout on a narrow display instead of clipping the one-row bar.
         let available = max(0, overlay.frame.width - Self.edgeInset * 2)
-        var size = measurer.sizeThatFits(
-            in: CGSize(width: available, height: CGFloat.greatestFiniteMagnitude))
-        size.width = min(size.width, available)
-        guard size.width > 0, size.height > 0, size != frame.size else { return }
+        let size = measuredSize(availableWidth: available)
+        guard size.width > 0, size.height > 0 else { return }
 
-        let anchor = NSPoint(x: frame.midX, y: frame.minY)
-        place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
+        if size != frame.size {
+            let anchor = NSPoint(x: frame.midX, y: frame.minY)
+            place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
+        }
+
+        // Keep the displayed host on the measured size. `ViewThatFits` chooses from the
+        // width it is offered, so a stale 1×1 (or stacked) frame would keep the two-row
+        // layout even after the panel itself had been sized for one row.
+        if host.frame.size != size {
+            host.setFrameSize(size)
+        }
+        host.layoutSubtreeIfNeeded()
+    }
+
+    /// Asks the same probe `fitToContent` uses what the bar wants at `availableWidth`.
+    /// Exposed for tests so they can compare the attached panel to the production
+    /// measurement path rather than to a fresh off-window controller.
+    func measuredSize(availableWidth: CGFloat) -> CGSize {
+        // A finite height is required: `ViewThatFits` on some macOS versions treats an
+        // infinite vertical proposal as "the one-row child does not fit" and returns the
+        // stacked size even when the width is ample. 10_000pt is taller than any overlay
+        // the bar will see and matches the finite proposals the wrap tests already use.
+        let proposal = CGSize(width: availableWidth, height: 10_000)
+        // A reused controller can keep a stacked `ViewThatFits` choice from a previous
+        // tight frame. Give it the proposal as its own bounds before asking.
+        measurer.view.setFrameSize(proposal)
+        var size = measurer.sizeThatFits(in: proposal)
+        size.width = min(max(0, size.width), availableWidth)
+        return size
     }
 
     /// Runs the overlay's own frame change, then refreshes the bar around it. AppKit already
@@ -372,7 +417,9 @@ final class ToolbarPress {
 }
 
 /// Hosts the SwiftUI bar. The panel is never key and the app is often inactive, so the first
-/// click has to land on a chip rather than being spent activating anything.
+/// click has to land on a chip rather than being spent activating anything. Sizing is the
+/// panel's job: an empty `sizingOptions` stops this view from rewriting the window's
+/// content min/max around a stacked `ViewThatFits` choice.
 final class ToolbarHostingView: NSHostingView<ToolbarView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
