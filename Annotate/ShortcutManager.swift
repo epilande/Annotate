@@ -106,8 +106,9 @@ class ShortcutManager: @unchecked Sendable {
     }
 
     /// Only tool shortcuts need checking. The fixed overlay keys handled outside the shortcut
-    /// table (Space, Delete, Cmd+Z, Option+Command+T) are key-code or chord matched and cannot
-    /// be typed into a shortcut field, so none of them needs reserving here.
+    /// table (Space, Delete, Cmd+Z, Option+Command+T) are matched by key code or under the
+    /// Command modifier and cannot be typed into a shortcut field, so none of them needs
+    /// reserving here.
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {
         guard !key.isEmpty else { return false }
         for otherTool in ShortcutKey.allCases where otherTool != tool {

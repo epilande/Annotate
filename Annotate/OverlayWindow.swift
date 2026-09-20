@@ -1606,6 +1606,35 @@ class OverlayWindow: NSPanel {
             }
         }
 
+        // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
+        // Match on `characters` only. With Command held, `characters` carries the layout's
+        // Command layer (QWERTY letters on Dvorak - QWERTY ⌘, Latin letters on Russian, Greek
+        // and Hebrew) and falls back to the base letter on layouts with no Command layer, so it
+        // is correct everywhere. `charactersIgnoringModifiers` reports the base layer instead:
+        // it misses those layouts and aliases unrelated chords, for example on Dvorak - QWERTY ⌘
+        // the base letter behind Cmd+, is "w", so Cmd+, would close the overlay.
+        if cmdPressed {
+            if key == "w" {
+                AppDelegate.shared?.closeOverlay()
+                return
+            }
+            if key == "z" {
+                if event.modifierFlags.contains(.shift) {
+                    overlayView.redo()
+                } else {
+                    overlayView.undo()
+                }
+                return
+            }
+            if key == "r", !event.modifierFlags.contains(.shift),
+                !event.modifierFlags.contains(.option), overlayView.currentTool == .counter
+            {
+                overlayView.resetCounter()
+                showToggleFeedback("Counter Reset", icon: "🔄")
+                return
+            }
+        }
+
         switch event.keyCode {
         case 53:  // ESC key
             if event.modifierFlags.contains(.shift) {
@@ -1627,25 +1656,6 @@ class OverlayWindow: NSPanel {
             }
         case 49:  // Spacebar - toggle drawing mode
             AppDelegate.shared?.toggleFadeMode(NSMenuItem())
-        case 13:  // 'w' key
-            if cmdPressed { AppDelegate.shared?.closeOverlay() }
-        case 6:  // 'z' key
-            if cmdPressed {
-                if event.modifierFlags.contains(.shift) {
-                    overlayView.redo()
-                } else {
-                    overlayView.undo()
-                }
-            }
-        case 15:  // 'r' key
-            if cmdPressed
-                && !event.modifierFlags.contains(.shift)
-                && !event.modifierFlags.contains(.option)
-                && overlayView.currentTool == .counter
-            {
-                overlayView.resetCounter()
-                showToggleFeedback("Counter Reset", icon: "🔄")
-            }
         default:
             super.keyDown(with: event)
         }
