@@ -25,6 +25,7 @@ enum AnnotationTextEditorContrast {
         return NSAppearance(named: name) ?? .currentDrawing()
     }
 
+    @MainActor
     static func apply(to textField: NSTextField, textColor: NSColor) {
         textField.textColor = textColor
         (textField.cell as? NSTextFieldCell)?.textColor = textColor
@@ -36,6 +37,7 @@ enum AnnotationTextEditorContrast {
         }
     }
 
+    @MainActor
     static func apply(to editor: NSText, textColor: NSColor) {
         editor.appearance = appearance(for: textColor)
         editor.textColor = textColor
@@ -45,7 +47,7 @@ enum AnnotationTextEditorContrast {
         textView.insertionPointColor = textColor
         textView.selectedTextAttributes = [
             .backgroundColor: NSColor.selectedTextBackgroundColor,
-            .foregroundColor: textColor,
+            .foregroundColor: NSColor.selectedTextColor,
         ]
     }
 }

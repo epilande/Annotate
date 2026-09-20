@@ -226,6 +226,10 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
             backing: .buffered,
             defer: false
         )
+        defer {
+            window.overlayView.pickerUserDefaultsOverride = nil
+            window.close()
+        }
         window.appearance = NSAppearance(named: .darkAqua)
         window.overlayView.pickerUserDefaultsOverride = overlayView.pickerUserDefaultsOverride
         window.overlayView.currentColor = .black
@@ -244,32 +248,13 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
         if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
             window.makeFirstResponder(field)
         }
-        if field.currentEditor() == nil {
-            _ = field.becomeFirstResponder()
-        }
-
         assertFieldContrast(field, displayedColor: .black)
-
-        if let editor = field.currentEditor() {
-            assertEditorContrast(editor, displayedColor: .black)
-        } else {
-            // Headless hosts may not install a field editor; the cell path above
-            // still covers setUpFieldEditorAttributes / select / edit.
-            let editor = NSTextView(frame: field.bounds)
-            editor.appearance = NSAppearance(named: .darkAqua)
-            let cell = try XCTUnwrap(field.cell as? PaddedTextFieldCell)
-            assertEditorContrast(
-                cell.setUpFieldEditorAttributes(editor),
-                displayedColor: .black
-            )
-        }
+        let editor = try XCTUnwrap(field.currentEditor(), "Native field editor must be attached")
+        assertEditorContrast(editor, displayedColor: .black)
 
         field.stringValue = "Start here"
         window.overlayView.finalizeTextAnnotation(field)
         XCTAssertTrue(window.overlayView.textAnnotations.last?.color.isClose(to: .black) ?? false)
-
-        window.overlayView.pickerUserDefaultsOverride = nil
-        window.close()
     }
 
     func testAnnotationTextFieldBecomeFirstResponderAppliesEditorContrast() throws {
@@ -280,19 +265,27 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
             defer: false
         )
         window.isReleasedWhenClosed = false
+        defer { window.close() }
         window.appearance = NSAppearance(named: .darkAqua)
         let field = AnnotationTextField(frame: NSRect(x: 20, y: 20, width: 200, height: 32))
         field.cell = PaddedTextFieldCell()
-        AnnotationTextEditorContrast.apply(to: field, textColor: .black)
+        field.isEditable = true
+        field.isSelectable = true
+        field.stringValue = "Selected annotation"
+        AnnotationTextEditorContrast.apply(to: field, textColor: .systemRed)
         window.contentView?.addSubview(field)
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(field)
+        XCTAssertTrue(window.makeFirstResponder(field))
 
-        if let editor = field.currentEditor() {
-            assertEditorContrast(editor, displayedColor: .black)
-        }
-        window.close()
+        let editor = try XCTUnwrap(
+            field.currentEditor() as? NSTextView, "Native field editor must be attached")
+        editor.selectAll(nil)
+        assertEditorContrast(editor, displayedColor: .systemRed)
+        XCTAssertEqual(editor.selectedRange().length, field.stringValue.utf16.count)
+        let storedColor = try XCTUnwrap(
+            editor.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+        XCTAssertTrue(storedColor.isClose(to: .systemRed), "Selection must preserve annotation color")
     }
 
     // MARK: - Helpers
@@ -401,17 +394,20 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
                 file: file,
                 line: line
             )
-            XCTAssertNotNil(
+            XCTAssertEqual(
                 textView.selectedTextAttributes[.backgroundColor] as? NSColor,
-                "Focused editor must set a selection fill",
+                NSColor.selectedTextBackgroundColor,
+                "Selection must use the system highlight background",
                 file: file,
                 line: line
             )
-            if let selectedText = textView.selectedTextAttributes[.foregroundColor] as? NSColor {
-                XCTAssertTrue(selectedText.isClose(to: displayedColor), file: file, line: line)
-            } else {
-                XCTFail("Focused editor must keep annotation color while selected", file: file, line: line)
-            }
+            XCTAssertEqual(
+                textView.selectedTextAttributes[.foregroundColor] as? NSColor,
+                NSColor.selectedTextColor,
+                "Selection foreground must match the system highlight background",
+                file: file,
+                line: line
+            )
         } else {
             XCTFail("Field editor should be an NSTextView", file: file, line: line)
         }
