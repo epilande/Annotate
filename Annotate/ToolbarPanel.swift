@@ -85,7 +85,6 @@ final class ToolbarPanel: NSPanel {
         collectionBehavior = overlay.collectionBehavior
 
         chrome.autoresizesSubviews = true
-        chrome.isOpaque = false
         contentView = chrome
         contentMinSize = .zero
         contentMaxSize = NSSize(width: 10_000, height: 10_000)
