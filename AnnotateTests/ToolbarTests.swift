@@ -885,18 +885,18 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
     }
 
-    func testPickerChordReleaseWorksAfterModifierRelease() throws {
+    func testPickerChordReleaseWorksAfterModifierRelease() async throws {
         XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("{", modifiers: .shift), for: .colorPicker))
         window.sendEvent(try shortcutEvent("{", keyCode: 33, modifiers: .shift))
         XCTAssertTrue(window.isQuickPickerOpen)
-        let deadline = Date().addingTimeInterval(0.3)
-        while Date() < deadline { _ = CFRunLoopRunInMode(.defaultMode, 0.01, false) }
+        try await Task.sleep(for: .milliseconds(300))
         // Releasing Shift first changes "{" to "[" on key-up; the physical key is unchanged.
         window.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(type: .keyUp, keyCode: 33,
             characters: "[", windowNumber: window.windowNumber)))
         let dismissDeadline = Date().addingTimeInterval(10)
         while window.isQuickPickerOpen && Date() < dismissDeadline {
-            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+            // Yield the main actor so the picker's main-queue dismissal can run.
+            try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertFalse(window.isQuickPickerOpen, "The held picker must commit on release of its activation key")
     }
