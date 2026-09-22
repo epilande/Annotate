@@ -656,6 +656,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     @objc func toggleBoardVisibility(_ sender: Any?) {
         BoardManager.shared.toggle()
         updateBoardMenuItems()
+        let boardEnabled = BoardManager.shared.isEnabled
+        overlayWindows.values.forEach {
+            $0.overlayView.updateAdaptColors(boardEnabled: boardEnabled)
+        }
     }
 
     func updateBoardMenuItems() {

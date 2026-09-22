@@ -23,6 +23,14 @@ final class ShortcutBindingTests: XCTestCase {
         super.tearDown()
     }
 
+    func testCustomStoredXLeavesRedactUnbound() {
+        defaults.set("x", forKey: "shortcut.p")
+        let migrated = ShortcutManager(userDefaults: defaults)
+        XCTAssertEqual(migrated.binding(for: .pen), ShortcutBinding("x"))
+        XCTAssertEqual(migrated.binding(for: .redact), .unassigned)
+        XCTAssertEqual(defaults.string(forKey: "shortcut.x"), "")
+    }
+
     func testLegacyBindingsAndClearedValuesSurviveReload() {
         defaults.set("j", forKey: "shortcut.p")
         defaults.set("", forKey: "shortcut.a")

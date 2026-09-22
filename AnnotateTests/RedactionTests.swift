@@ -288,6 +288,17 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(center.blueComponent, 0, accuracy: 0.01)
     }
 
+    func testRedactionPaintsOverLaterAnnotations() throws {
+        overlayView.circles = [
+            TestFactory.createCircle(
+                start: NSPoint(x: 80, y: 80), end: NSPoint(x: 120, y: 120), color: .systemRed)
+        ]
+        overlayView.rectangles = [makeRectangle(style: .solid)]
+        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
+        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
+        XCTAssertEqual(center.redComponent, 0, accuracy: 0.01, "A redaction hides a circle drawn later")
+    }
+
     func testSolidRendersOpaqueBlackAndOutlineStaysClear() throws {
         overlayView.rectangles = [makeRectangle(style: .solid)]
         let solid = try renderedColor(at: NSPoint(x: 100, y: 100))
@@ -351,6 +362,23 @@ final class RedactionTests: XCTestCase, Sendable {
         overlayView.selectionDragOffset = nil
         _ = try renderedColor(at: .zero)
         XCTAssertEqual(sampler.requests.count, 1)
+    }
+
+    func testBoardEnabledDrawsSolidOnlyAndDoesNotSample() throws {
+        BoardManager.shared.isEnabled = true
+        overlayView.updateAdaptColors(boardEnabled: true)
+        overlayView.rectangles = [makeRectangle(style: .pixelate)]
+
+        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
+        XCTAssertTrue(sampler.requests.isEmpty, "A visible board never captures the screen")
+        XCTAssertNil(overlayView.rectangles[0].sample)
+
+        let expected = try XCTUnwrap(
+            overlayView.redactionPlaceholderColor.usingColorSpace(.deviceRGB))
+        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
+        XCTAssertEqual(center.redComponent, expected.redComponent, accuracy: 0.02)
+        XCTAssertEqual(center.greenComponent, expected.greenComponent, accuracy: 0.02)
+        XCTAssertEqual(center.blueComponent, expected.blueComponent, accuracy: 0.02)
     }
 
     func testMovingClearsTheSampleSoItResamples() throws {

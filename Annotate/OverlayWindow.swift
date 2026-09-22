@@ -1410,6 +1410,7 @@ class OverlayWindow: NSPanel {
             }
             overlayView.selectionDragOffset = nil
             overlayView.selectionOriginalData.removeAll()
+            overlayView.needsDisplay = true
             return
         }
 

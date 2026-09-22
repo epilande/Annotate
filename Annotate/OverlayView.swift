@@ -754,14 +754,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
         }
 
-        for rectangle in rectangles {
+        for rectangle in rectangles where !rectangle.isRedaction {
             guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
             guard intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect) else { continue }
-            requestSampleIfNeeded(for: rectangle)
             drawRectangle(rectangle, alpha: alpha)
         }
 
-        if let rectangle = currentRectangle,
+        if let rectangle = currentRectangle, !rectangle.isRedaction,
             intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect)
         {
             drawRectangle(rectangle, alpha: 1)
@@ -791,6 +790,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
             guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
             drawCounter(counter, alpha: alpha)
+        }
+
+        // Redactions paint last among content so they fully hide later annotations.
+        // Selection chrome stays after this pass.
+        for rectangle in rectangles where rectangle.isRedaction {
+            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect) else { continue }
+            requestSampleIfNeeded(for: rectangle)
+            drawRectangle(rectangle, alpha: alpha)
+        }
+
+        if let rectangle = currentRectangle, rectangle.isRedaction,
+            intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawRectangle(rectangle, alpha: 1)
         }
 
         if !selectedObjects.isEmpty {
