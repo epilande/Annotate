@@ -8,6 +8,7 @@ enum ToolType: String, CaseIterable {
     case highlighter
     case rectangle
     case circle
+    case redact
     case text
     case counter
     case select
@@ -21,6 +22,7 @@ enum ToolType: String, CaseIterable {
         case .line: return "Line"
         case .rectangle: return "Rectangle"
         case .circle: return "Circle"
+        case .redact: return "Redact"
         case .text: return "Text"
         case .counter: return "Counter"
         case .eraser: return "Eraser"
@@ -38,6 +40,7 @@ enum ToolType: String, CaseIterable {
         case .highlighter: return .highlighter
         case .rectangle: return .rectangle
         case .circle: return .circle
+        case .redact: return .redact
         case .text: return .text
         case .counter: return .counter
         case .select: return .select
@@ -54,6 +57,7 @@ enum ToolType: String, CaseIterable {
         case .highlighter: return "highlighter"
         case .rectangle: return "rectangle"
         case .circle: return "circle"
+        case .redact: return "eye.slash"
         case .text: return "textformat"
         case .counter: return "number"
         case .select: return "cursorarrow"
@@ -178,6 +182,24 @@ struct Line {
     var creationTime: CFTimeInterval?
 }
 
+/// How a rectangle annotation is filled. `.outline` is the plain Rectangle tool; the
+/// other three are the Redact tool's styles and hide whatever sits under the rectangle.
+enum RectangleStyle: String, CaseIterable {
+    case outline
+    case solid
+    case pixelate
+    case blur
+
+    var displayName: String {
+        switch self {
+        case .outline: return "Outline"
+        case .solid: return "Solid"
+        case .pixelate: return "Pixelate"
+        case .blur: return "Blur"
+        }
+    }
+}
+
 /// Represents a rectangle annotation defined by two corner points.
 struct Rectangle {
     var startPoint: NSPoint
@@ -185,6 +207,28 @@ struct Rectangle {
     var color: NSColor
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
+    var style: RectangleStyle = .outline
+    /// Filtered screen pixels for `.pixelate` and `.blur`, captured after the rectangle
+    /// settles. Nil until then, and cleared whenever the rectangle moves so it resamples.
+    /// Deliberately not part of `==`: the same annotation with or without its sample is
+    /// the same annotation for undo, selection and clipboard purposes.
+    var sample: CGImage? = nil
+
+    /// Whether this rectangle hides content instead of outlining it.
+    var isRedaction: Bool { style != .outline }
+
+    /// Whether this rectangle needs captured screen pixels to render its style.
+    var needsSample: Bool { style == .pixelate || style == .blur }
+
+    /// The normalized bounds spanned by the two corner points.
+    var bounds: NSRect {
+        NSRect(
+            x: min(startPoint.x, endPoint.x),
+            y: min(startPoint.y, endPoint.y),
+            width: abs(endPoint.x - startPoint.x),
+            height: abs(endPoint.y - startPoint.y)
+        )
+    }
 }
 
 /// Represents a circular annotation defined by two corner points of its bounding box.
@@ -342,6 +386,7 @@ extension Rectangle: Equatable {
     public static func == (lhs: Rectangle, rhs: Rectangle) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
             && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
+            && lhs.style == rhs.style
     }
 }
 

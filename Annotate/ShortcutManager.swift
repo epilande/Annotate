@@ -104,6 +104,7 @@ enum ShortcutKey: String, CaseIterable {
     case highlighter = "h"
     case rectangle = "r"
     case circle = "o"
+    case redact = "x"
     case counter = "n"
     case text = "t"
     case select = "v"
@@ -119,7 +120,9 @@ enum ShortcutKey: String, CaseIterable {
     case increaseSize
     case clearAll
 
-    static let newlyEditable: [ShortcutKey] = [.toggleFade, .toggleToolbar, .decreaseSize, .increaseSize, .clearAll]
+    /// Actions whose default binding arrived after users could already customize shortcuts.
+    /// An existing custom binding on the same key wins over the new default (see `init`).
+    static let newlyEditable: [ShortcutKey] = [.toggleFade, .toggleToolbar, .decreaseSize, .increaseSize, .clearAll, .redact]
 
     var defaultBinding: ShortcutBinding {
         switch self {
@@ -143,6 +146,7 @@ enum ShortcutKey: String, CaseIterable {
         case .highlighter: return "Highlighter"
         case .rectangle: return "Rectangle"
         case .circle: return "Circle"
+        case .redact: return "Redact"
         case .counter: return "Counter"
         case .text: return "Text"
         case .select: return "Select"

@@ -109,6 +109,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var rectangles: [Rectangle] = []
     var currentRectangle: Rectangle?
 
+    /// Supplies pixels for pixelate/blur redactions. Tests swap in a stub so drawing a
+    /// redaction never asks for Screen Recording access.
+    var redactionSampler: RedactionSampling = ScreenSampler.shared
+    /// Captures that have been requested and not yet answered, keyed by geometry and style.
+    private(set) var pendingSampleKeys: Set<RedactionSampleKey> = []
+    /// Captures that came back empty. Retried only once the rectangle moves or restyles,
+    /// so a failing capture does not spin on every redraw.
+    private var failedSampleKeys: Set<RedactionSampleKey> = []
+
     var circles: [Circle] = []
     var currentCircle: Circle?
 
@@ -451,6 +460,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.rectangles.count {
                         target.rectangles[index].startPoint = fromStart
                         target.rectangles[index].endPoint = fromEnd
+                        target.rectangles[index].sample = nil
                         target.registerUndo(action: .moveRectangle(index, toStart, toEnd, fromStart, fromEnd))
                         target.needsDisplay = true
                     }
@@ -745,8 +755,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         for rectangle in rectangles {
-            guard let alpha = fadeAlphaIfVisible(creationTime: rectangle.creationTime, now: now) else { continue }
+            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
             guard intersectsDirtyRect(boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6), dirtyRect) else { continue }
+            requestSampleIfNeeded(for: rectangle)
             drawRectangle(rectangle, alpha: alpha)
         }
 
@@ -953,6 +964,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return alphaForAge(age)
     }
 
+    /// Redactions never fade: a hidden secret that reappears on its own defeats the point.
+    /// They still go away with Clear All, delete, the eraser and undo like everything else.
+    private func fadeAlphaIfVisible(for rectangle: Rectangle, now: CFTimeInterval) -> CGFloat? {
+        if rectangle.isRedaction { return 1 }
+        return fadeAlphaIfVisible(creationTime: rectangle.creationTime, now: now)
+    }
+
     private func intersectsDirtyRect(_ bounds: NSRect, _ dirtyRect: NSRect) -> Bool {
         if bounds.isNull { return false }
         return bounds.intersects(dirtyRect)
@@ -1003,7 +1021,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         )
         compactItems(
             &rectangles,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fadeAlphaIfVisible(for: $0, now: now) != nil },
             extractIndex: { if case .rectangle(let index) = $0 { return index }; return nil },
             make: { .rectangle(index: $0) }
         )
@@ -1190,19 +1208,78 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func drawRectangle(_ rectangle: Rectangle, alpha: CGFloat) {
+        let rect = rectangle.bounds
+        guard rectangle.style == .outline else {
+            drawRedaction(rectangle, in: rect)
+            return
+        }
+
         let adaptedColor = adaptColorForBoard(rectangle.color, boardType: currentBoardType)
-
-        let rect = NSRect(
-            x: min(rectangle.startPoint.x, rectangle.endPoint.x),
-            y: min(rectangle.startPoint.y, rectangle.endPoint.y),
-            width: abs(rectangle.endPoint.x - rectangle.startPoint.x),
-            height: abs(rectangle.endPoint.y - rectangle.startPoint.y)
-        )
-
         let path = NSBezierPath(rect: rect)
         adaptedColor.withAlphaComponent(alpha).setStroke()
         path.lineWidth = rectangle.lineWidth
         path.stroke()
+    }
+
+    /// Fill used for solid redactions and as the stand-in while a sample is missing. Plain
+    /// black everywhere except on a visible blackboard, where a dark gray keeps the
+    /// redaction distinguishable from the board itself.
+    var redactionPlaceholderColor: NSColor {
+        isBoardVisible && currentBoardType == .blackboard ? NSColor(white: 0.25, alpha: 1) : .black
+    }
+
+    /// Whether the board currently covers the screen. Sampling behind our own app while a
+    /// board is up would reveal what the board hides, so redactions draw solid then.
+    private var isBoardVisible: Bool {
+        BoardManager.shared.isEnabled
+    }
+
+    /// Always lays down the opaque placeholder first so nothing shows through, then paints
+    /// the filtered pixels over it when they are available and safe to show.
+    private func drawRedaction(_ rectangle: Rectangle, in rect: NSRect) {
+        redactionPlaceholderColor.setFill()
+        rect.fill()
+
+        guard rectangle.needsSample, let sample = rectangle.sample, !isBoardVisible,
+            let context = NSGraphicsContext.current?.cgContext
+        else { return }
+        // The capture was clipped to the display, which is the window, which is this view.
+        let target = rect.intersection(bounds)
+        guard !target.isEmpty else { return }
+        context.saveGState()
+        context.interpolationQuality = rectangle.style == .pixelate ? .none : .default
+        context.draw(sample, in: target)
+        context.restoreGState()
+    }
+
+    /// Asks the sampler for the pixels under a settled pixelate/blur redaction. Runs from
+    /// the draw loop so creation, moves, undo/redo and paste all funnel through one path:
+    /// whatever lacks a sample and is not mid-drag gets exactly one request in flight.
+    private func requestSampleIfNeeded(for rectangle: Rectangle) {
+        guard rectangle.needsSample, rectangle.sample == nil, !isBoardVisible,
+            selectionDragOffset == nil
+        else { return }
+        let key = RedactionSampleKey(rectangle)
+        guard !pendingSampleKeys.contains(key), !failedSampleKeys.contains(key) else { return }
+        guard redactionSampler.prepareForSampling() else { return }
+
+        pendingSampleKeys.insert(key)
+        redactionSampler.requestSample(for: rectangle, in: self) { [weak self] image in
+            guard let self else { return }
+            self.pendingSampleKeys.remove(key)
+            guard let image else {
+                self.failedSampleKeys.insert(key)
+                return
+            }
+            for index in self.rectangles.indices
+            where self.rectangles[index].sample == nil && RedactionSampleKey(self.rectangles[index]) == key {
+                self.rectangles[index].sample = image
+                self.setNeedsDisplay(
+                    self.rectangles[index].bounds.insetBy(
+                        dx: -(self.rectangles[index].lineWidth / 2 + 6),
+                        dy: -(self.rectangles[index].lineWidth / 2 + 6)))
+            }
+        }
     }
 
     private func drawCircle(_ circle: Circle, alpha: CGFloat) {
@@ -1400,7 +1477,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastHighlight = highlightPaths.last!
             registerUndo(action: .removeHighlight(lastHighlight))
             highlightPaths.removeLast()
-        case .rectangle:
+        case .rectangle, .redact:
             guard !rectangles.isEmpty else { return }
             let lastRectangle = rectangles.last!
             registerUndo(action: .removeRectangle(lastRectangle))
@@ -1619,6 +1696,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             case .rectangle(var rect):
                 rect.startPoint = NSPoint(x: rect.startPoint.x + offsetX, y: rect.startPoint.y + offsetY)
                 rect.endPoint = NSPoint(x: rect.endPoint.x + offsetX, y: rect.endPoint.y + offsetY)
+                rect.sample = nil
                 rect.creationTime = fadeMode ? CACurrentMediaTime() : nil
                 rectangles.append(rect)
                 registerUndo(action: .addRectangle(rect))
@@ -2106,6 +2184,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
         let stillFadingRectangles = rectangles.contains { rect in
+            if rect.isRedaction { return false }
             if let creationTime = rect.creationTime {
                 return (now - creationTime) < fadeDuration
             }
@@ -2182,7 +2261,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return fadeAlphaIfVisible(creationTime: lines[index].creationTime, now: now) == nil
         case .rectangle(let index):
             guard index < rectangles.count else { return true }
-            return fadeAlphaIfVisible(creationTime: rectangles[index].creationTime, now: now) == nil
+            return fadeAlphaIfVisible(for: rectangles[index], now: now) == nil
         case .circle(let index):
             guard index < circles.count else { return true }
             return fadeAlphaIfVisible(creationTime: circles[index].creationTime, now: now) == nil
@@ -2504,7 +2583,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Expand and shrink to create edge zone
         let outerBounds = bounds.insetBy(dx: -edgeTolerance, dy: -edgeTolerance)
         let innerBounds = bounds.insetBy(dx: edgeTolerance, dy: edgeTolerance)
-        
+
+        // A redaction is a filled block, so its whole area is clickable.
+        if rect.isRedaction { return outerBounds.contains(point) }
+
         // Point is on edge if it's in outer but not in inner
         return outerBounds.contains(point) && !innerBounds.contains(point)
     }
@@ -2714,6 +2796,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             height: abs(rectangle.endPoint.y - rectangle.startPoint.y)
         )
 
+        // A redaction is a filled block, so the eraser removes it from anywhere inside.
+        if rectangle.isRedaction && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
+            return true
+        }
+
         let topLeft = NSPoint(x: bounds.minX, y: bounds.minY)
         let topRight = NSPoint(x: bounds.maxX, y: bounds.minY)
         let bottomLeft = NSPoint(x: bounds.minX, y: bounds.maxY)
@@ -2791,6 +2878,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             rectangles[index].startPoint.y += delta.y
             rectangles[index].endPoint.x += delta.x
             rectangles[index].endPoint.y += delta.y
+            // The pixels belong to the old spot; resample once the drag settles.
+            rectangles[index].sample = nil
             
         case .circle(let index):
             guard index < circles.count else { return }

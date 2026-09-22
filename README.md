@@ -22,6 +22,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🟨 **Highlighter** for emphasizing content.
   - 🔲 **Rectangle** shapes for boxing content.
   - ⭕ **Circle** shapes for highlighting areas.
+  - 🕶️ **Redact** rectangles that hide confidential content with a solid, pixelated, or blurred fill, so screenshots of the overlay stay safe to share.
   - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support, live resizing, and an optional background pill.
   - 👆 **Select** tool for moving and managing objects.
@@ -128,6 +129,7 @@ brew install --cask annotate
 | <kbd>H</kbd> | **Highlighter** | Highlight areas with semi-transparent brush                                |
 | <kbd>R</kbd> | **Rectangle**   | Draw rectangles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: square)      |
 | <kbd>O</kbd> | **Circle**      | Draw circles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: perfect circle) |
+| <kbd>X</kbd> | **Redact**      | Hide content behind a solid, pixelated, or blurred rectangle               |
 | <kbd>A</kbd> | **Arrow**       | Draw directional arrows                                                    |
 | <kbd>N</kbd> | **Counter**     | Add sequential numbered circles (1, 2, 3...)                               |
 | <kbd>T</kbd> | **Text**        | Add text annotations                                                       |
@@ -225,6 +227,21 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 - Hold <kbd>Shift</kbd> while drawing to constrain rectangles to squares and circles to perfect circles
 - Hold <kbd>Option</kbd> while drawing to expand from the center point
 - Combine <kbd>Shift</kbd> + <kbd>Option</kbd> for constrained shapes that expand from center
+
+#### Redact
+
+Hide confidential content before you take a screenshot or share your screen:
+
+- Press <kbd>X</kbd>, then click and drag a rectangle over the content you want to hide. <kbd>Shift</kbd> and <kbd>Option</kbd> work the same as for other shapes
+- Pick the fill in **Settings → Tools → Redact Tool**:
+  - **Solid** (default): an opaque black block
+  - **Pixelate**: a coarse mosaic of the pixels under the rectangle
+  - **Blur**: a heavy blur of the pixels under the rectangle
+- Redactions never fade, even in Fade Mode. Remove them with Delete, the Eraser, Clear All, or undo
+- Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
+
+> [!NOTE]
+> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles, and uses a solid black fill until it is granted (macOS may ask you to relaunch Annotate). If the request came while the overlay was up, the system dialog is behind it; grant access from Settings → Tools instead. With a whiteboard or blackboard showing, redactions always draw solid.
 
 #### Arrow & Line
 
@@ -354,6 +371,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Default Text Size**: Adjust the default font size for text annotations.
 - **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
+- **Redact Tool Style**: Choose Solid, Pixelate, or Blur for new redactions. Pixelate and Blur show the Screen Recording permission status with a shortcut to System Settings.
 
 ### Board
 

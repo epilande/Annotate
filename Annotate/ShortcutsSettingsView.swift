@@ -125,6 +125,13 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .redact,
+                    label: "Redact",
+                    description: "Hide on-screen content behind a rectangle",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "square.on.circle",

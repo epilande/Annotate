@@ -721,6 +721,7 @@ class OverlayWindow: NSPanel {
         case .highlighter: AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
         case .rectangle: AppDelegate.shared?.enableRectangleMode(NSMenuItem())
         case .circle: AppDelegate.shared?.enableCircleMode(NSMenuItem())
+        case .redact: AppDelegate.shared?.enableRedactMode(NSMenuItem())
         case .counter: AppDelegate.shared?.enableCounterMode(NSMenuItem())
         case .text: AppDelegate.shared?.enableTextMode(NSMenuItem())
         case .select: AppDelegate.shared?.enableSelectMode(NSMenuItem())
@@ -1022,9 +1023,11 @@ class OverlayWindow: NSPanel {
                 ),
                 tool: .highlighter
             )
-        case .rectangle:
+        case .rectangle, .redact:
             overlayView.currentRectangle = Rectangle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
+                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
+                lineWidth: overlayView.currentLineWidth, creationTime: nil,
+                style: overlayView.currentTool == .redact ? overlayView.pickerUserDefaults.redactionStyle : .outline)
         case .circle:
             overlayView.currentCircle = Circle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
@@ -1146,7 +1149,7 @@ class OverlayWindow: NSPanel {
                     )
                 )
             }
-        case .rectangle:
+        case .rectangle, .redact:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1443,7 +1446,7 @@ class OverlayWindow: NSPanel {
                 overlayView.lines.append(currentLine)
                 overlayView.currentLine = nil
             }
-        case .rectangle:
+        case .rectangle, .redact:
             if var currentRectangle = overlayView.currentRectangle {
                 currentRectangle.creationTime = CACurrentMediaTime()
                 overlayView.registerUndo(action: .addRectangle(currentRectangle))
@@ -1869,6 +1872,9 @@ class OverlayWindow: NSPanel {
         case .circle:
             toolName = "Circle"
             icon = "⭕"
+        case .redact:
+            toolName = "Redact"
+            icon = "🕶️"
         case .counter:
             toolName = "Counter"
             icon = "🔢"
@@ -1890,7 +1896,7 @@ class OverlayWindow: NSPanel {
             let widthText = String(format: "%.2f px", currentWidth)
             let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)
-        case .counter, .text, .select, .eraser:
+        case .redact, .counter, .text, .select, .eraser:
             let text = "\(icon) \(toolName)"
             showFeedback(text, lineColor: overlayView.currentColor)
         }

@@ -406,9 +406,9 @@ final class ToolbarTests: XCTestCase {
 
         XCTAssertEqual(window.toolbarModel.shortcuts[.pen], ShortcutKey.pen.defaultKey)
 
-        ShortcutManager.shared.setShortcut("x", for: .pen)
+        ShortcutManager.shared.setShortcut("g", for: .pen)
         XCTAssertEqual(
-            window.toolbarModel.shortcuts[.pen], "x",
+            window.toolbarModel.shortcuts[.pen], "g",
             "The toolbar snapshot must refresh on .shortcutsDidChange")
     }
 

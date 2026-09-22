@@ -215,6 +215,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             circleModeItem.keyEquivalentModifierMask = []
             menu.addItem(circleModeItem)
 
+            let redactModeItem = NSMenuItem(
+                title: "Redact",
+                action: #selector(enableRedactMode(_:)),
+                keyEquivalent: ShortcutManager.shared.getShortcut(for: .redact))
+            redactModeItem.keyEquivalentModifierMask = []
+            menu.addItem(redactModeItem)
+
             let counterModeItem = NSMenuItem(
                 title: "Counter",
                 action: #selector(enableCounterMode(_:)),
@@ -626,6 +633,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switchTool(to: .circle)
     }
 
+    @objc func enableRedactMode(_ sender: NSMenuItem) {
+        switchTool(to: .redact)
+    }
+
     @objc func enableCounterMode(_ sender: NSMenuItem) {
         switchTool(to: .counter)
     }
@@ -810,6 +821,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 action = .rectangle
             case #selector(enableCircleMode(_:)):
                 action = .circle
+            case #selector(enableRedactMode(_:)):
+                action = .redact
             case #selector(enableCounterMode(_:)):
                 action = .counter
             case #selector(enableTextMode(_:)):

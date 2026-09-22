@@ -41,6 +41,8 @@ extension UserDefaults {
     static let defaultCounterFontSizeKey = "CounterFontSize"
     static let defaultToolKey = "DefaultTool"
     static let lastUsedToolKey = "LastUsedTool"
+    static let redactionStyleKey = "RedactionStyle"
+    static let redactionStyleDefault = RectangleStyle.solid
 }
 
 let colorPalette: [NSColor] = [
@@ -128,6 +130,21 @@ extension UserDefaults {
         }
         set {
             set(newValue.rawValue, forKey: Self.defaultToolKey)
+        }
+    }
+
+    /// The fill the Redact tool gives new rectangles. Never `.outline`: a stored outline
+    /// (or an unknown value) falls back to the solid default so a redaction always hides.
+    var redactionStyle: RectangleStyle {
+        get {
+            let stored = string(forKey: Self.redactionStyleKey) ?? ""
+            guard let style = RectangleStyle(rawValue: stored), style != .outline else {
+                return Self.redactionStyleDefault
+            }
+            return style
+        }
+        set {
+            set(newValue.rawValue, forKey: Self.redactionStyleKey)
         }
     }
 
