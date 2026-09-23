@@ -2,28 +2,52 @@ import XCTest
 
 @testable import Annotate
 
-/// Records sample requests instead of touching Screen Recording. Requests stay pending
-/// until the test answers them, mirroring the asynchronous capture in production.
+/// Records capture and filter requests instead of touching Screen Recording. Both stay
+/// pending until the test answers them, mirroring the asynchronous work in production.
+/// Filters run the real crop and filter code against the snapshot they were given.
 @MainActor
 final class StubRedactionSampler: RedactionSampling {
     var isAvailable = true
-    var requests: [Rectangle] = []
-    private var completions: [@MainActor (CGImage?) -> Void] = []
+    private(set) var captureCount = 0
+    private(set) var filterRequests: [[RedactionFilterRequest]] = []
+    private var captureCompletions: [@MainActor (DisplaySnapshot?) -> Void] = []
+    private var filterCompletions: [(requests: [RedactionFilterRequest], snapshot: DisplaySnapshot, completion: @MainActor ([RedactionFilterResult?]) -> Void)] = []
 
     var canSample: Bool { isAvailable }
+    var hasPendingFilters: Bool { !filterCompletions.isEmpty }
 
-    func requestSample(
-        for rectangle: Rectangle, in view: NSView,
-        completion: @escaping @MainActor (CGImage?) -> Void
-    ) {
-        requests.append(rectangle)
-        completions.append(completion)
+    func captureDisplay(under view: NSView, completion: @escaping @MainActor (DisplaySnapshot?) -> Void) {
+        captureCount += 1
+        captureCompletions.append(completion)
     }
 
-    func completeAll(with image: CGImage?) {
-        let pending = completions
-        completions.removeAll()
-        pending.forEach { $0(image) }
+    func filter(
+        _ requests: [RedactionFilterRequest], from snapshot: DisplaySnapshot,
+        completion: @escaping @MainActor ([RedactionFilterResult?]) -> Void
+    ) {
+        filterRequests.append(requests)
+        filterCompletions.append((requests, snapshot, completion))
+    }
+
+    func completeCaptures(with snapshot: DisplaySnapshot?) {
+        let pending = captureCompletions
+        captureCompletions.removeAll()
+        pending.forEach { $0(snapshot) }
+    }
+
+    /// Answers the oldest pending filter pass with real results.
+    func completeNextFilter() {
+        guard !filterCompletions.isEmpty else { return }
+        let next = filterCompletions.removeFirst()
+        next.completion(next.requests.map {
+            ScreenSampler.makeSample(from: next.snapshot, screenRect: $0.screenRect, style: $0.style)
+        })
+    }
+
+    func failNextFilter() {
+        guard !filterCompletions.isEmpty else { return }
+        let next = filterCompletions.removeFirst()
+        next.completion(next.requests.map { _ in nil })
     }
 }
 
@@ -66,10 +90,12 @@ final class RedactionTests: XCTestCase, Sendable {
             color: .systemRed, lineWidth: 3, creationTime: creationTime, style: style)
     }
 
-    /// Renders the overlay into a bitmap and returns the color at a view point.
-    private func renderedColor(at point: NSPoint) throws -> NSColor {
-        let width = Int(overlayView.bounds.width)
-        let height = Int(overlayView.bounds.height)
+    /// Renders an overlay (the test's own by default) into a bitmap and returns the color
+    /// at a view point.
+    private func renderedColor(at point: NSPoint, in view: OverlayView? = nil) throws -> NSColor {
+        let view = view ?? overlayView!
+        let width = Int(view.bounds.width)
+        let height = Int(view.bounds.height)
         let rep = try XCTUnwrap(
             NSBitmapImageRep(
                 bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
@@ -78,7 +104,7 @@ final class RedactionTests: XCTestCase, Sendable {
         let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: rep))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        overlayView.draw(overlayView.bounds)
+        view.draw(view.bounds)
         context.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
         // Bitmap rows run top-down while the view is bottom-up.
@@ -105,12 +131,76 @@ final class RedactionTests: XCTestCase, Sendable {
         return try XCTUnwrap(context.makeImage())
     }
 
+    /// A display image with one color per quadrant as seen on screen: red top-left, green
+    /// top-right, blue bottom-left, yellow bottom-right.
+    private func makeQuadrantImage(width: Int, height: Int) throws -> CGImage {
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let halfWidth = width / 2
+        let halfHeight = height / 2
+        // CGContext is bottom-up, so the top half starts at halfHeight.
+        let quadrants: [(CGRect, CGColor)] = [
+            (CGRect(x: 0, y: halfHeight, width: halfWidth, height: halfHeight), CGColor(red: 1, green: 0, blue: 0, alpha: 1)),
+            (CGRect(x: halfWidth, y: halfHeight, width: halfWidth, height: halfHeight), CGColor(red: 0, green: 1, blue: 0, alpha: 1)),
+            (CGRect(x: 0, y: 0, width: halfWidth, height: halfHeight), CGColor(red: 0, green: 0, blue: 1, alpha: 1)),
+            (CGRect(x: halfWidth, y: 0, width: halfWidth, height: halfHeight), CGColor(red: 1, green: 1, blue: 0, alpha: 1)),
+        ]
+        for (rect, color) in quadrants {
+            context.setFillColor(color)
+            context.fill(rect)
+        }
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    /// A 2x capture of a display that exactly matches `frame`, quadrant colored.
+    private func makeSnapshot(frame: CGRect? = nil) throws -> DisplaySnapshot {
+        let frame = frame ?? overlayView.bounds
+        return DisplaySnapshot(
+            image: try makeQuadrantImage(width: Int(frame.width) * 2, height: Int(frame.height) * 2),
+            displayFrame: frame)
+    }
+
+    /// A ready-made sample that matches `rectangle` where it sits.
+    private func makeSample(for rectangle: Rectangle) throws -> RedactionSample {
+        RedactionSample(
+            image: try makeGradientImage(size: 8), bounds: rectangle.bounds, key: RedactionSampleKey(rectangle))
+    }
+
+    /// Plays the display cycle until every redaction has its sample: draw, answer the
+    /// capture, answer each filter pass.
+    private func settleSamples() throws {
+        _ = try renderedColor(at: .zero)
+        sampler.completeCaptures(with: try makeSnapshot())
+        while sampler.hasPendingFilters {
+            sampler.completeNextFilter()
+        }
+    }
+
     /// Reads a pixel by bottom-up coordinates, matching Core Image and CGContext; bitmap
     /// rows run top-down.
     private func pixel(_ image: CGImage, x: Int, y: Int) throws -> NSColor {
         let rep = NSBitmapImageRep(cgImage: image)
         let color = try XCTUnwrap(rep.colorAt(x: x, y: image.height - 1 - y))
         return try XCTUnwrap(color.usingColorSpace(.deviceRGB))
+    }
+
+    /// Asserts an opaque color whose channels are clearly on (1) or off (0). Core Image
+    /// color-matches its output, so pure primaries come back a little off.
+    private func assertColor(
+        _ color: NSColor, red: CGFloat, green: CGFloat, blue: CGFloat, _ message: String = "",
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(color.alphaComponent, 1, accuracy: 0.01, message, file: file, line: line)
+        for (actual, expected) in [(color.redComponent, red), (color.greenComponent, green), (color.blueComponent, blue)] {
+            if expected > 0.5 {
+                XCTAssertGreaterThan(actual, 0.75, message, file: file, line: line)
+            } else {
+                XCTAssertLessThan(actual, 0.3, message, file: file, line: line)
+            }
+        }
     }
 
     private func assertBlack(_ color: NSColor, _ message: String = "", file: StaticString = #filePath, line: UInt = #line) {
@@ -150,7 +240,7 @@ final class RedactionTests: XCTestCase, Sendable {
 
     func testEqualityComparesStyleButIgnoresSample() throws {
         var withSample = makeRectangle(style: .pixelate)
-        withSample.sample = try makeGradientImage(size: 8)
+        withSample.sample = try makeSample(for: withSample)
         let withoutSample = makeRectangle(style: .pixelate)
         XCTAssertEqual(withSample, withoutSample, "The sample is derived data, not identity")
 
@@ -254,50 +344,146 @@ final class RedactionTests: XCTestCase, Sendable {
                 screenRect: CGRect(x: 10, y: 10, width: 0.5, height: 20), displayFrame: display))
     }
 
+    func testPixelRectOnA2xMainDisplay() throws {
+        let display = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
+        let screenRect = CGRect(x: 100, y: 980, width: 200, height: 50.5)
+        let rect = try XCTUnwrap(ScreenSampler.pixelRect(screenRect: screenRect, displayFrame: display, scale: 2))
+        XCTAssertEqual(rect, CGRect(x: 200, y: 99, width: 400, height: 101), "Top-left origin, in pixels")
+        XCTAssertEqual(ScreenSampler.screenRect(pixelRect: rect, displayFrame: display, scale: 2), screenRect)
+    }
+
+    func testPixelRectOnAPortraitSecondaryDisplayWithNegativeOrigin() throws {
+        // A 1440x2560 pt portrait display at 2x, right of a 1920x1080 main display and
+        // hanging below it, so its frame starts below the main display's origin.
+        let display = CGRect(x: 1_920, y: -693, width: 1_440, height: 2_560)
+        let nearTop = CGRect(x: 2_020, y: 1_767, width: 300, height: 50)
+        let rect = try XCTUnwrap(ScreenSampler.pixelRect(screenRect: nearTop, displayFrame: display, scale: 2))
+        XCTAssertEqual(rect, CGRect(x: 200, y: 100, width: 600, height: 100))
+        XCTAssertEqual(ScreenSampler.screenRect(pixelRect: rect, displayFrame: display, scale: 2), nearTop)
+
+        let bottomLeft = CGRect(x: 1_920, y: -693, width: 10, height: 10)
+        XCTAssertEqual(
+            ScreenSampler.pixelRect(screenRect: bottomLeft, displayFrame: display, scale: 2),
+            CGRect(x: 0, y: 5_100, width: 20, height: 20), "The bottom-left corner is the last pixel rows")
+        XCTAssertNil(
+            ScreenSampler.pixelRect(
+                screenRect: CGRect(x: 100, y: 100, width: 50, height: 50), displayFrame: display, scale: 2),
+            "A rect on the main display is not on this one")
+    }
+
     // MARK: - Filters
 
-    func testPixelateStoresOnePixelPerBlockAlignedToTheOrigin() throws {
-        let source = try makeGradientImage(size: 64)
-        let block = Int(ScreenSampler.pixelBlockSize(forPixelWidth: 64, height: 64, scale: 1))
-        XCTAssertEqual(block, 10, "A 64 px capture at 1x uses the 10 pt minimum block")
-
-        let output = try XCTUnwrap(ScreenSampler.pixelate(source, scale: 1))
-        XCTAssertEqual(output.width, 7, "Six full blocks plus the partial one at the far edge")
-        XCTAssertEqual(output.height, 7)
-
-        // Each output pixel is one block whose grid starts at the bottom-left origin, so its
-        // color comes from inside the matching source block on both axes. Interior blocks only;
-        // the partial far-edge cells sample clamped pixels.
-        for (blockX, blockY) in [(1, 1), (2, 4), (4, 2), (5, 5)] {
-            let actual = try pixel(output, x: blockX, y: blockY)
-            let expected = try pixel(source, x: blockX * block + block / 2, y: blockY * block + block / 2)
-            XCTAssertEqual(actual.redComponent, expected.redComponent, accuracy: 0.1, "block \(blockX),\(blockY)")
-            XCTAssertEqual(actual.greenComponent, expected.greenComponent, accuracy: 0.1, "block \(blockX),\(blockY)")
-        }
-
-        let origin = try pixel(output, x: 1, y: 1)
-        XCTAssertGreaterThan(try pixel(output, x: 2, y: 1).redComponent - origin.redComponent, 0.1)
-        XCTAssertEqual(try pixel(output, x: 2, y: 1).greenComponent, origin.greenComponent, accuracy: 0.02)
-        XCTAssertGreaterThan(try pixel(output, x: 1, y: 2).greenComponent - origin.greenComponent, 0.1)
-        XCTAssertEqual(try pixel(output, x: 1, y: 2).redComponent, origin.redComponent, accuracy: 0.02)
-    }
-
-    func testBlurStoresAReducedResolutionThatStaysOpaqueToTheCorners() throws {
-        let source = try makeGradientImage(size: 48)
-        let output = try XCTUnwrap(ScreenSampler.blur(source, scale: 2))
-        // A 40 px sigma is stored at a fifth of the capture resolution.
-        XCTAssertEqual(output.width, 10)
-        XCTAssertEqual(output.height, 10)
-        for (x, y) in [(0, 0), (9, 9), (0, 9), (9, 0), (5, 5)] {
-            XCTAssertEqual(
-                try pixel(output, x: x, y: y).alphaComponent, 1, accuracy: 0.01,
-                "Clamping keeps the edges opaque at \(x),\(y)")
+    func testCropKeepsRegionForBothStyles() throws {
+        let snapshot = try makeSnapshot()
+        let cases: [(CGRect, (CGFloat, CGFloat, CGFloat), String)] = [
+            (CGRect(x: 10, y: 120, width: 60, height: 60), (1, 0, 0), "top-left is red"),
+            (CGRect(x: 130, y: 120, width: 60, height: 60), (0, 1, 0), "top-right is green"),
+            (CGRect(x: 10, y: 10, width: 60, height: 60), (0, 0, 1), "bottom-left is blue"),
+            (CGRect(x: 130, y: 10, width: 60, height: 60), (1, 1, 0), "bottom-right is yellow"),
+        ]
+        for style in [RectangleStyle.pixelate, .blur] {
+            for (rect, (red, green, blue), message) in cases {
+                let result = try XCTUnwrap(ScreenSampler.makeSample(from: snapshot, screenRect: rect, style: style))
+                XCTAssertTrue(result.screenRect.contains(rect), "\(style): covers the rectangle")
+                let center = try pixel(result.image, x: result.image.width / 2, y: result.image.height / 2)
+                assertColor(center, red: red, green: green, blue: blue, "\(style): \(message)")
+            }
         }
     }
 
-    func testPixelBlockSizeGrowsWithLargeCaptures() {
+    func testPixelateSpansQuadrantsRightSideUp() throws {
+        let rect = CGRect(x: 50, y: 50, width: 100, height: 100)
+        let result = try XCTUnwrap(ScreenSampler.makeSample(from: try makeSnapshot(), screenRect: rect, style: .pixelate))
+        // 200 px at 2x uses the 20 px minimum block: ten blocks a side, one pixel each.
+        XCTAssertEqual(result.image.width, 10)
+        XCTAssertEqual(result.image.height, 10)
+        XCTAssertEqual(result.screenRect, rect, "Already on the display's block grid")
+        assertColor(try pixel(result.image, x: 0, y: 9), red: 1, green: 0, blue: 0, "top-left")
+        assertColor(try pixel(result.image, x: 9, y: 9), red: 0, green: 1, blue: 0, "top-right")
+        assertColor(try pixel(result.image, x: 0, y: 0), red: 0, green: 0, blue: 1, "bottom-left")
+        assertColor(try pixel(result.image, x: 9, y: 0), red: 1, green: 1, blue: 0, "bottom-right")
+    }
+
+    func testPixelateAveragesEachBlock() throws {
+        // One-pixel black and white stripes: any single pixel is black or white, the average gray.
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: 40, height: 40, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        for x in stride(from: 0, to: 40, by: 2) {
+            context.fill(CGRect(x: x, y: 0, width: 1, height: 40))
+        }
+        let snapshot = DisplaySnapshot(
+            image: try XCTUnwrap(context.makeImage()), displayFrame: CGRect(x: 0, y: 0, width: 20, height: 20))
+        let rect = CGRect(x: 0, y: 10, width: 10, height: 10)
+        let result = try XCTUnwrap(ScreenSampler.makeSample(from: snapshot, screenRect: rect, style: .pixelate))
+        XCTAssertEqual(result.screenRect, rect, "One 20 px block")
+        let block = try pixel(result.image, x: 0, y: 0)
+        for channel in [block.redComponent, block.greenComponent, block.blueComponent] {
+            XCTAssertGreaterThan(channel, 0.2, "Averaged, not a single sampled pixel")
+            XCTAssertLessThan(channel, 0.9, "Averaged, not a single sampled pixel")
+        }
+    }
+
+    func testPixelateGridIsAnchoredToTheDisplay() throws {
+        let snapshot = try makeSnapshot()
+        let first = try XCTUnwrap(
+            ScreenSampler.makeSample(from: snapshot, screenRect: CGRect(x: 55, y: 43, width: 100, height: 100), style: .pixelate))
+        let nudged = try XCTUnwrap(
+            ScreenSampler.makeSample(from: snapshot, screenRect: CGRect(x: 57, y: 45, width: 100, height: 100), style: .pixelate))
+        // Both round out to the same 20 px (10 pt) blocks counted from the display's top-left.
+        XCTAssertEqual(first.screenRect, CGRect(x: 50, y: 40, width: 110, height: 110))
+        XCTAssertEqual(nudged.screenRect, first.screenRect, "Blocks stay put as the rectangle moves")
+        XCTAssertEqual(first.image.width, 11)
+        for (x, y) in [(0, 0), (5, 5), (10, 10), (2, 8)] {
+            let a = try pixel(first.image, x: x, y: y)
+            let b = try pixel(nudged.image, x: x, y: y)
+            XCTAssertEqual(a.redComponent, b.redComponent, accuracy: 0.01)
+            XCTAssertEqual(a.greenComponent, b.greenComponent, accuracy: 0.01)
+            XCTAssertEqual(a.blueComponent, b.blueComponent, accuracy: 0.01)
+        }
+    }
+
+    func testBlurReadsPastTheCropForNaturalEdges() throws {
+        // Inside the red quadrant, with the right edge on the green one.
+        let rect = CGRect(x: 40, y: 120, width: 60, height: 60)
+        let result = try XCTUnwrap(ScreenSampler.makeSample(from: try makeSnapshot(), screenRect: rect, style: .blur))
+        XCTAssertEqual(result.screenRect, rect)
+        // A 40 px sigma is stored at a fifth of the crop resolution.
+        XCTAssertEqual(result.image.width, 24)
+        XCTAssertEqual(result.image.height, 24)
+        let middleRow = result.image.height / 2
+        let rightEdge = try pixel(result.image, x: result.image.width - 1, y: middleRow)
+        XCTAssertGreaterThan(rightEdge.greenComponent, 0.2, "Green from beyond the crop blends in, instead of clamped red")
+        let leftEdge = try pixel(result.image, x: 0, y: middleRow)
+        assertColor(leftEdge, red: 1, green: 0, blue: 0, "Three sigma from the boundary stays red")
+        XCTAssertGreaterThan(rightEdge.greenComponent - leftEdge.greenComponent, 0.2)
+        for (x, y) in [(0, 0), (23, 23), (0, 23), (23, 0)] {
+            XCTAssertEqual(try pixel(result.image, x: x, y: y).alphaComponent, 1, accuracy: 0.01, "Opaque at \(x),\(y)")
+        }
+    }
+
+    func testFiltersStayOpaqueWhereTheRectangleLeavesTheDisplay() throws {
+        let rect = CGRect(x: 170, y: -20, width: 60, height: 60)
+        for style in [RectangleStyle.pixelate, .blur] {
+            let result = try XCTUnwrap(ScreenSampler.makeSample(from: try makeSnapshot(), screenRect: rect, style: style))
+            XCTAssertEqual(result.screenRect, CGRect(x: 170, y: 0, width: 30, height: 40), "\(style): clipped to the display")
+            let corner = try pixel(result.image, x: result.image.width - 1, y: 0)
+            assertColor(corner, red: 1, green: 1, blue: 0, "\(style): the display edge repeats instead of fading")
+        }
+    }
+
+    func testPixelBlockSizeGrowsInPowerOfTwoSteps() {
+        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 64, height: 64, scale: 1), 10)
         XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 100, height: 100, scale: 2), 20)
-        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 1_200, height: 600, scale: 2), 50)
+        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 1_200, height: 600, scale: 2), 40)
+        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 1_200, height: 959, scale: 2), 40)
+        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 1_200, height: 960, scale: 2), 80)
+        XCTAssertEqual(ScreenSampler.pixelBlockSize(forPixelWidth: 3_840, height: 2_160, scale: 2), 160)
     }
 
     func testBlurSigmaGrowsWithLargeCaptures() {
@@ -305,21 +491,21 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(ScreenSampler.blurSigma(forPixelWidth: 1_200, height: 800, scale: 2), 100)
     }
 
-    func testFilterSkipsStylesThatNeedNoSample() throws {
-        let source = try makeGradientImage(size: 8)
-        XCTAssertNil(ScreenSampler.filter(source, style: .outline, scale: 1))
-        XCTAssertNil(ScreenSampler.filter(source, style: .solid, scale: 1))
+    func testMakeSampleSkipsStylesThatNeedNoPixelsAndRectsOffTheDisplay() throws {
+        let snapshot = try makeSnapshot()
+        let rect = CGRect(x: 10, y: 10, width: 50, height: 50)
+        XCTAssertNil(ScreenSampler.makeSample(from: snapshot, screenRect: rect, style: .outline))
+        XCTAssertNil(ScreenSampler.makeSample(from: snapshot, screenRect: rect, style: .solid))
+        XCTAssertNil(
+            ScreenSampler.makeSample(
+                from: snapshot, screenRect: CGRect(x: 300, y: 10, width: 50, height: 50), style: .blur))
     }
 
     // MARK: - Rendering
 
     func testSampleLessPixelateRendersOpaqueBlackPlaceholder() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
-        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
-        XCTAssertEqual(center.redComponent, 0, accuracy: 0.01)
-        XCTAssertEqual(center.greenComponent, 0, accuracy: 0.01)
-        XCTAssertEqual(center.blueComponent, 0, accuracy: 0.01)
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
     }
 
     func testRedactionPaintsOverLaterAnnotations() throws {
@@ -335,45 +521,47 @@ final class RedactionTests: XCTestCase, Sendable {
 
     func testSolidRendersOpaqueBlackAndOutlineStaysClear() throws {
         overlayView.rectangles = [makeRectangle(style: .solid)]
-        let solid = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertEqual(solid.alphaComponent, 1, accuracy: 0.01)
-        XCTAssertEqual(solid.redComponent, 0, accuracy: 0.01)
-        XCTAssertEqual(solid.greenComponent, 0, accuracy: 0.01)
-        XCTAssertEqual(solid.blueComponent, 0, accuracy: 0.01)
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
 
         overlayView.rectangles = [makeRectangle(style: .outline)]
         let outline = try renderedColor(at: NSPoint(x: 100, y: 100))
         XCTAssertEqual(outline.alphaComponent, 0, accuracy: 0.01, "An outline leaves its interior clear")
     }
 
-    func testDrawRequestsOneSamplePerRedactionAndAppliesTheResult() throws {
+    func testDrawCapturesOnceFiltersTheCropAndReleasesTheSnapshot() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate), makeRectangle(style: .solid)]
         _ = try renderedColor(at: .zero)
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1, "One request per rectangle while it is in flight")
-        XCTAssertEqual(sampler.requests.first?.style, .pixelate)
-        XCTAssertTrue(overlayView.pendingSampleKeys.contains(RedactionSampleKey(overlayView.rectangles[0])))
+        XCTAssertEqual(sampler.captureCount, 1, "One display capture while it is in flight")
+        XCTAssertTrue(sampler.filterRequests.isEmpty)
 
-        let image = try makeGradientImage(size: 16)
-        sampler.completeAll(with: image)
-        XCTAssertTrue(overlayView.pendingSampleKeys.isEmpty)
-        XCTAssertNotNil(overlayView.rectangles[0].sample)
-        XCTAssertNil(overlayView.rectangles[1].sample, "Solid never needs a sample")
+        sampler.completeCaptures(with: try makeSnapshot())
+        XCTAssertNotNil(overlayView.redactionSnapshot)
+        XCTAssertEqual(sampler.filterRequests.count, 1)
+        XCTAssertEqual(sampler.filterRequests.first?.count, 1, "Solid never needs pixels")
+        XCTAssertEqual(sampler.filterRequests.first?.first?.screenRect, overlayView.rectangles[0].bounds)
+        XCTAssertEqual(sampler.filterRequests.first?.first?.style, .pixelate)
 
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1, "A sampled rectangle is not requested again")
+        XCTAssertEqual(sampler.filterRequests.count, 1, "One filter pass at a time")
+
+        sampler.completeNextFilter()
+        XCTAssertEqual(overlayView.rectangles[0].sample?.key, RedactionSampleKey(overlayView.rectangles[0]))
+        XCTAssertNil(overlayView.rectangles[1].sample)
+        XCTAssertNil(overlayView.redactionSnapshot, "Released once nothing needs it")
+
+        _ = try renderedColor(at: .zero)
+        XCTAssertEqual(sampler.captureCount, 1, "A sampled rectangle is not captured again")
+        XCTAssertEqual(sampler.filterRequests.count, 1)
     }
 
-    func testAppliedSampleIsDrawnOverThePlaceholder() throws {
+    func testAppliedSampleShowsTheContentUnderTheRectangle() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
-        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)), "Placeholder before the sample")
+        assertBlack(try renderedColor(at: NSPoint(x: 70, y: 130)), "Placeholder before the sample")
 
-        sampler.completeAll(with: try makeGradientImage(size: 16))
-        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
-        XCTAssertGreaterThan(
-            center.redComponent + center.greenComponent + center.blueComponent, 0.5,
-            "The sample replaces the black placeholder")
+        try settleSamples()
+        assertColor(try renderedColor(at: NSPoint(x: 70, y: 130)), red: 1, green: 0, blue: 0, "Top-left of the display")
+        assertColor(try renderedColor(at: NSPoint(x: 130, y: 70)), red: 1, green: 1, blue: 0, "Bottom-right of the display")
     }
 
     func testSolidRedactionStaysOnTopOfALaterSampledOne() throws {
@@ -383,72 +571,96 @@ final class RedactionTests: XCTestCase, Sendable {
                 startPoint: NSPoint(x: 100, y: 100), endPoint: NSPoint(x: 190, y: 190),
                 color: .systemRed, lineWidth: 3, style: .pixelate),
         ]
-        _ = try renderedColor(at: .zero)
-        sampler.completeAll(with: try makeGradientImage(size: 16))
+        try settleSamples()
 
         assertBlack(
             try renderedColor(at: NSPoint(x: 120, y: 120)),
             "A sampled redaction never shows real content over a solid one")
-        let sampledOnly = try renderedColor(at: NSPoint(x: 170, y: 170))
-        XCTAssertGreaterThan(sampledOnly.redComponent + sampledOnly.greenComponent + sampledOnly.blueComponent, 0.5)
+        assertColor(try renderedColor(at: NSPoint(x: 170, y: 170)), red: 0, green: 1, blue: 0)
+    }
+
+    func testLiveRedactionStaysUnderSolidOnes() throws {
+        overlayView.rectangles = [makeRectangle(style: .solid)]
+        var live = Rectangle(
+            startPoint: NSPoint(x: 100, y: 100), endPoint: NSPoint(x: 190, y: 190),
+            color: .systemRed, lineWidth: 3, style: .blur)
+        live.sample = try makeSample(for: live)
+        overlayView.currentRectangle = live
+
+        assertBlack(try renderedColor(at: NSPoint(x: 120, y: 120)), "The solid block still hides the overlap")
+        let liveOnly = try renderedColor(at: NSPoint(x: 170, y: 170))
+        XCTAssertGreaterThan(liveOnly.redComponent + liveOnly.greenComponent + liveOnly.blueComponent, 0.5)
     }
 
     func testSuccessfulCaptureAndClearAllResetFailedKeys() throws {
         overlayView.rectangles = [makeRectangle(style: .blur)]
         _ = try renderedColor(at: .zero)
-        sampler.completeAll(with: nil)
+        sampler.completeCaptures(with: nil)
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1)
+        XCTAssertEqual(sampler.captureCount, 1)
 
         overlayView.clearAll()
         overlayView.rectangles = [makeRectangle(style: .blur)]
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 2, "Clear All forgets earlier failures")
+        XCTAssertEqual(sampler.captureCount, 2, "Clear All forgets earlier failures")
 
-        sampler.completeAll(with: nil)
+        sampler.completeCaptures(with: nil)
         overlayView.rectangles.append(
             Rectangle(
                 startPoint: NSPoint(x: 0, y: 0), endPoint: NSPoint(x: 40, y: 40),
                 color: .systemRed, lineWidth: 3, style: .pixelate))
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 3)
-        sampler.completeAll(with: try makeGradientImage(size: 8))
-        _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 4, "A successful capture lets the failed one retry")
+        XCTAssertEqual(sampler.captureCount, 3)
+        sampler.completeCaptures(with: try makeSnapshot())
+        XCTAssertEqual(sampler.filterRequests.last?.count, 2, "A successful capture lets the failed one retry")
     }
 
-    func testFailedCaptureLeavesPlaceholderAndDoesNotRetryUntilTheRectangleChanges() throws {
+    func testFailuresLeaveThePlaceholderAndDoNotRetryUntilTheRectangleChanges() throws {
         overlayView.rectangles = [makeRectangle(style: .blur)]
         _ = try renderedColor(at: .zero)
-        sampler.completeAll(with: nil)
+        sampler.completeCaptures(with: nil)
         XCTAssertNil(overlayView.rectangles[0].sample)
-
-        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
-        XCTAssertEqual(center.redComponent, 0, accuracy: 0.01)
-        XCTAssertEqual(sampler.requests.count, 1, "A failed key is not spammed on every redraw")
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
+        XCTAssertEqual(sampler.captureCount, 1, "A failed key is not spammed on every redraw")
 
         overlayView.selectedObjects = [.rectangle(index: 0)]
         overlayView.moveSelectedObjects(by: NSPoint(x: 10, y: 0))
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 2, "Moving yields a new key and a fresh request")
+        XCTAssertEqual(sampler.captureCount, 2, "Moving yields a new key and a fresh capture")
+
+        sampler.completeCaptures(with: try makeSnapshot())
+        sampler.failNextFilter()
+        _ = try renderedColor(at: .zero)
+        XCTAssertEqual(sampler.filterRequests.count, 1, "A failed filter is not retried either")
+        XCTAssertNil(overlayView.redactionSnapshot)
     }
 
-    func testNoRequestWithoutScreenCaptureAccessOrDuringADrag() throws {
+    func testFailedCaptureIsNotRetriedForTheRestOfADrag() throws {
+        overlayView.currentRectangle = makeRectangle(style: .pixelate)
+        overlayView.beginRedactionDrag()
+        XCTAssertEqual(sampler.captureCount, 1, "The drag captures right away")
+        sampler.completeCaptures(with: nil)
+
+        overlayView.currentRectangle?.endPoint = NSPoint(x: 170, y: 170)
+        _ = try renderedColor(at: .zero)
+        XCTAssertEqual(sampler.captureCount, 1)
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
+    }
+
+    func testNoCaptureWithoutScreenCaptureAccess() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
 
         sampler.isAvailable = false
         _ = try renderedColor(at: .zero)
-        XCTAssertTrue(sampler.requests.isEmpty, "No access means the placeholder stays")
+        overlayView.currentRectangle = makeRectangle(style: .blur)
+        overlayView.beginRedactionDrag()
+        XCTAssertEqual(sampler.captureCount, 0, "No access means the placeholder stays")
+        overlayView.endRedactionDrag()
+        overlayView.currentRectangle = nil
 
         sampler.isAvailable = true
-        overlayView.selectionDragOffset = NSPoint(x: 1, y: 1)
         _ = try renderedColor(at: .zero)
-        XCTAssertTrue(sampler.requests.isEmpty, "Never sample while the rectangle is being dragged")
-
-        overlayView.selectionDragOffset = nil
-        _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1)
+        XCTAssertEqual(sampler.captureCount, 1)
     }
 
     func testBoardEnabledDrawsSolidOnlyAndDoesNotSample() throws {
@@ -457,7 +669,7 @@ final class RedactionTests: XCTestCase, Sendable {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
 
         let center = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertTrue(sampler.requests.isEmpty, "A visible board never captures the screen")
+        XCTAssertEqual(sampler.captureCount, 0, "A visible board never captures the screen")
         XCTAssertNil(overlayView.rectangles[0].sample)
 
         let expected = try XCTUnwrap(
@@ -473,17 +685,17 @@ final class RedactionTests: XCTestCase, Sendable {
         overlayView.updateAdaptColors(boardEnabled: true)
         overlayView.rectangles = [makeRectangle(style: .blur)]
         _ = try renderedColor(at: .zero)
-        XCTAssertTrue(sampler.requests.isEmpty)
+        XCTAssertEqual(sampler.captureCount, 0)
 
         BoardManager.shared.isEnabled = false
         overlayView.updateAdaptColors(boardEnabled: false)
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1, "The first draw without the board samples")
+        XCTAssertEqual(sampler.captureCount, 1, "The first draw without the board samples")
     }
 
     func testPasteClearsTheSampleAndResamples() throws {
         var rect = makeRectangle(style: .pixelate)
-        rect.sample = try makeGradientImage(size: 8)
+        rect.sample = try makeSample(for: rect)
         overlayView.rectangles = [rect]
         overlayView.selectedObjects = [.rectangle(index: 0)]
 
@@ -493,8 +705,8 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertNil(overlayView.rectangles[1].sample, "The copy's pixels belong to the original spot")
 
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1)
-        XCTAssertEqual(sampler.requests.first?.bounds, overlayView.rectangles[1].bounds)
+        sampler.completeCaptures(with: try makeSnapshot())
+        XCTAssertEqual(sampler.filterRequests.first?.map(\.screenRect), [overlayView.rectangles[1].bounds])
     }
 
     func testUndoingAMoveClearsTheSampleAndResamples() throws {
@@ -504,7 +716,7 @@ final class RedactionTests: XCTestCase, Sendable {
         var moved = original
         moved.startPoint = NSPoint(x: 60, y: 60)
         moved.endPoint = NSPoint(x: 160, y: 160)
-        moved.sample = try makeGradientImage(size: 8)
+        moved.sample = try makeSample(for: moved)
         overlayView.rectangles = [moved]
         overlayView.registerMoveUndo(
             object: .rectangle(index: 0),
@@ -514,18 +726,134 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.rectangles[0].bounds, original.bounds)
         XCTAssertNil(overlayView.rectangles[0].sample)
         _ = try renderedColor(at: .zero)
-        XCTAssertEqual(sampler.requests.count, 1)
+        XCTAssertEqual(sampler.captureCount, 1)
     }
 
-    func testMovingClearsTheSampleSoItResamples() throws {
+    func testMovingKeepsTheOldSampleWhereItCameFromUntilTheNewOneLands() throws {
         var rect = makeRectangle(style: .pixelate)
-        rect.sample = try makeGradientImage(size: 8)
+        rect.sample = try makeSample(for: rect)
         overlayView.rectangles = [rect]
         overlayView.selectedObjects = [.rectangle(index: 0)]
 
-        overlayView.moveSelectedObjects(by: NSPoint(x: 5, y: 5))
+        overlayView.moveSelectedObjects(by: NSPoint(x: 10, y: 0))
+        XCTAssertEqual(overlayView.rectangles[0].bounds.origin, NSPoint(x: 60, y: 50))
+        XCTAssertEqual(overlayView.rectangles[0].sample?.bounds, rect.bounds, "Still where its pixels came from")
+
+        let overlap = try renderedColor(at: NSPoint(x: 100, y: 100))
+        XCTAssertGreaterThan(overlap.redComponent + overlap.greenComponent + overlap.blueComponent, 0.5)
+        assertBlack(
+            try renderedColor(at: NSPoint(x: 155, y: 100)),
+            "Newly covered ground stays on the placeholder until its sample lands")
+        XCTAssertEqual(sampler.captureCount, 1, "The new spot is sampled")
+    }
+
+    func testHidingTheOverlayDiscardsSamplesSoTheyAreRetaken() throws {
+        overlayView.rectangles = [makeRectangle(style: .blur)]
+        try settleSamples()
+        XCTAssertNotNil(overlayView.rectangles[0].sample)
+
+        overlayView.discardRedactionSamples()
+        XCTAssertNil(overlayView.rectangles[0].sample, "What was under it may have changed while hidden")
+        _ = try renderedColor(at: .zero)
+        XCTAssertEqual(sampler.captureCount, 2, "Shown again, it samples from a fresh capture")
+    }
+
+    // MARK: - Live preview
+
+    func testDraggingARedactionPreviewsLiveFromOneSnapshot() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .pixelate
+        view.pickerUserDefaultsOverride = defaults
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .redact
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        XCTAssertEqual(sampler.captureCount, 1, "The drag captures the display as it starts")
+        sampler.completeCaptures(with: try makeSnapshot(frame: window.frame))
+
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+        _ = try renderedColor(at: .zero, in: view)
+        XCTAssertEqual(sampler.filterRequests.last?.first?.screenRect, window.convertToScreen(CGRect(x: 20, y: 20, width: 100, height: 70)))
+        sampler.completeNextFilter()
+        XCTAssertNotNil(view.currentRectangle?.sample)
+        assertColor(try renderedColor(at: NSPoint(x: 60, y: 50), in: view), red: 0, green: 0, blue: 1, "Live preview of the bottom-left")
+
+        // Two more drag events while a pass runs: only the newest geometry is filtered next.
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 300, y: 250))))
+        _ = try renderedColor(at: .zero, in: view)
+        XCTAssertEqual(sampler.filterRequests.count, 2)
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 320, y: 260))))
+        _ = try renderedColor(at: .zero, in: view)
+        XCTAssertEqual(sampler.filterRequests.count, 2, "Nothing queues behind the pass in flight")
+
+        sampler.completeNextFilter()
+        XCTAssertEqual(
+            view.currentRectangle?.sample?.key.bounds, CGRect(x: 20, y: 20, width: 280, height: 230),
+            "The dragged rectangle takes the newer sample even though it has moved on")
+        XCTAssertEqual(sampler.filterRequests.count, 3)
+        XCTAssertEqual(sampler.filterRequests.last?.first?.screenRect, window.convertToScreen(CGRect(x: 20, y: 20, width: 300, height: 240)))
+        sampler.completeNextFilter()
+
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 320, y: 260))))
+        XCTAssertEqual(view.rectangles.count, 1)
+        XCTAssertEqual(view.rectangles[0].sample?.key, RedactionSampleKey(view.rectangles[0]), "Placed with its final sample")
+        XCTAssertFalse(view.isRedactionDragActive)
+        XCTAssertNil(view.redactionSnapshot, "The snapshot is released after the drag")
+        XCTAssertEqual(sampler.captureCount, 1, "The whole drag used one capture")
+        assertColor(try renderedColor(at: NSPoint(x: 280, y: 230), in: view), red: 0, green: 1, blue: 0, "Top-right")
+        assertColor(try renderedColor(at: NSPoint(x: 40, y: 230), in: view), red: 1, green: 0, blue: 0, "Top-left")
+    }
+
+    func testStaleResultsNeverLandOnTheWrongRectangle() throws {
+        overlayView.rectangles = [makeRectangle(style: .pixelate)]
+        _ = try renderedColor(at: .zero)
+        sampler.completeCaptures(with: try makeSnapshot())
+
+        // Moved without a drag while its filter pass ran: that result depicts the old spot.
+        overlayView.selectedObjects = [.rectangle(index: 0)]
+        overlayView.moveSelectedObjects(by: NSPoint(x: 30, y: 0))
+        sampler.completeNextFilter()
         XCTAssertNil(overlayView.rectangles[0].sample)
-        XCTAssertEqual(overlayView.rectangles[0].bounds.origin, NSPoint(x: 55, y: 55))
+        XCTAssertEqual(sampler.filterRequests.count, 2, "The new spot is filtered from the same snapshot")
+        sampler.completeNextFilter()
+        XCTAssertEqual(overlayView.rectangles[0].sample?.key, RedactionSampleKey(overlayView.rectangles[0]))
+
+        // Hidden while a pass ran: the result belongs to a picture that is gone.
+        overlayView.moveSelectedObjects(by: NSPoint(x: -30, y: 0))
+        _ = try renderedColor(at: .zero)
+        sampler.completeCaptures(with: try makeSnapshot())
+        XCTAssertTrue(sampler.hasPendingFilters)
+        overlayView.discardRedactionSamples()
+        sampler.completeNextFilter()
+        XCTAssertNil(overlayView.rectangles[0].sample)
+
+        // A pass from an earlier drag never lands on the rectangle of the next one.
+        overlayView.rectangles = []
+        overlayView.selectedObjects = []
+        overlayView.currentRectangle = makeRectangle(style: .blur)
+        overlayView.beginRedactionDrag()
+        sampler.completeCaptures(with: try makeSnapshot())
+        _ = try renderedColor(at: .zero)
+        XCTAssertTrue(sampler.hasPendingFilters)
+        overlayView.currentRectangle = nil
+        overlayView.endRedactionDrag()
+        overlayView.currentRectangle = Rectangle(
+            startPoint: NSPoint(x: 10, y: 10), endPoint: NSPoint(x: 40, y: 40),
+            color: .systemRed, lineWidth: 3, style: .blur)
+        overlayView.beginRedactionDrag()
+        sampler.completeNextFilter()
+        XCTAssertNil(overlayView.currentRectangle?.sample)
     }
 
     // MARK: - Hit testing

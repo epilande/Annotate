@@ -294,6 +294,7 @@ class OverlayWindow: NSPanel {
     override func orderOut(_ sender: Any?) {
         cancelQuickPicker()
         restoreMouseCoalescing()
+        overlayView.discardRedactionSamples()
         super.orderOut(sender)
     }
 
@@ -1031,6 +1032,9 @@ class OverlayWindow: NSPanel {
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
                 lineWidth: overlayView.currentLineWidth, creationTime: nil,
                 style: overlayView.currentTool == .redact ? overlayView.pickerUserDefaults.redactionStyle : .outline)
+            if overlayView.currentRectangle?.needsSample == true {
+                overlayView.beginRedactionDrag()
+            }
         case .circle:
             overlayView.currentCircle = Circle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
@@ -1091,6 +1095,9 @@ class OverlayWindow: NSPanel {
                 y: currentPoint.y - dragStart.y
             )
             
+            if overlayView.selectionHasSampledRedaction {
+                overlayView.beginRedactionDrag()
+            }
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
             overlayView.needsDisplay = true
@@ -1291,6 +1298,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentLine = nil
         overlayView.currentRectangle = nil
         overlayView.currentCircle = nil
+        overlayView.endRedactionDrag()
         lastLiveShapeRect = nil
         overlayView.needsDisplay = true
     }
@@ -1413,6 +1421,7 @@ class OverlayWindow: NSPanel {
             }
             overlayView.selectionDragOffset = nil
             overlayView.selectionOriginalData.removeAll()
+            overlayView.endRedactionDrag()
             overlayView.needsDisplay = true
             return
         }
@@ -1457,6 +1466,7 @@ class OverlayWindow: NSPanel {
                 overlayView.rectangles.append(currentRectangle)
                 overlayView.currentRectangle = nil
             }
+            overlayView.endRedactionDrag()
         case .circle:
             if var currentCircle = overlayView.currentCircle {
                 currentCircle.creationTime = CACurrentMediaTime()

@@ -112,9 +112,26 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Supplies pixels for pixelate/blur redactions. Tests swap in a stub so drawing a
     /// redaction never asks for Screen Recording access.
     var redactionSampler: RedactionSampling = ScreenSampler.shared
-    /// Captures that have been requested and not yet answered, keyed by geometry and style.
-    private(set) var pendingSampleKeys: Set<RedactionSampleKey> = []
-    /// Captures that came back empty. A failed key is not retried on every redraw; the set
+    /// Capture of this overlay's display that every sample is cropped from. A full-display
+    /// capture weighs tens of megabytes, so it is held only while a redaction drag is active
+    /// or samples are outstanding, then released.
+    private(set) var redactionSnapshot: DisplaySnapshot?
+    private(set) var isCapturingSnapshot = false
+    /// Only one filter pass runs at a time. The next pass reads the newest geometry, so
+    /// drag positions that went by while a pass ran are skipped rather than queued.
+    private(set) var isFilteringSamples = false
+    /// Set while a pixelate or blur redaction is being drawn or moved, which keeps the
+    /// snapshot alive between drag events.
+    private(set) var isRedactionDragActive = false
+    /// Bumped when outstanding captures and filters must be ignored (overlay hidden, Clear
+    /// All), so their results never land on what is there now.
+    private var redactionSampleGeneration = 0
+    /// Bumped per drag. Only results from the current drag may update a dragged redaction
+    /// whose bounds have moved on since the request.
+    private var redactionDragID = 0
+    /// Keeps a drag from retrying a failed capture on every mouse event.
+    private var snapshotFailedDuringDrag = false
+    /// Samples that could not be made. A failed key is not retried on every redraw; the set
     /// clears on Clear All and after any successful capture, and a moved rectangle gets a
     /// new key anyway.
     private var failedSampleKeys: Set<RedactionSampleKey> = []
@@ -802,20 +819,31 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         // Redactions paint last among content so they fully hide later annotations.
-        // Selection chrome stays after this pass.
-        for index in redactionIndicesInPaintOrder {
-            let rectangle = rectangles[index]
-            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
-            guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
-            requestSampleIfNeeded(for: rectangle)
-            drawRectangle(rectangle, alpha: alpha)
+        // Selection chrome stays after this pass. The one being drawn joins its own kind:
+        // a live pixelate or blur shows real screen content, so it must stay under every
+        // solid block too.
+        let redactionOrder = redactionIndicesInPaintOrder
+        let firstSolid = redactionOrder.firstIndex { rectangles[$0].style == .solid } ?? redactionOrder.endIndex
+        func drawRedactions(_ indices: ArraySlice<Int>) {
+            for index in indices {
+                let rectangle = rectangles[index]
+                guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
+                guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
+                drawRectangle(rectangle, alpha: alpha)
+            }
         }
-
-        if let rectangle = currentRectangle, rectangle.isRedaction,
-            intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-        {
+        func drawLiveRedaction(solid: Bool) {
+            guard let rectangle = currentRectangle, rectangle.isRedaction,
+                (rectangle.style == .solid) == solid,
+                intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
+            else { return }
             drawRectangle(rectangle, alpha: 1)
         }
+        drawRedactions(redactionOrder[..<firstSolid])
+        drawLiveRedaction(solid: false)
+        drawRedactions(redactionOrder[firstSolid...])
+        drawLiveRedaction(solid: true)
+        updateRedactionSamples()
 
         if !selectedObjects.isEmpty {
             let box = calculateSelectionBoundingBox()
@@ -1281,47 +1309,220 @@ class OverlayView: NSView, NSTextFieldDelegate {
         redactionPlaceholderColor.setFill()
         rect.fill()
 
-        guard rectangle.needsSample, let sample = rectangle.sample, !isBoardVisible,
+        guard rectangle.needsSample, let sample = rectangle.sample,
+            sample.key.style == rectangle.style, !isBoardVisible,
             let context = NSGraphicsContext.current?.cgContext
         else { return }
-        // The capture was clipped to the display, which is the window, which is this view.
-        let target = rect.intersection(bounds)
-        guard !target.isEmpty else { return }
+        let visible = rect.intersection(bounds)
+        guard !visible.isEmpty else { return }
         context.saveGState()
+        // The sample paints where its pixels came from. Mid-drag it can lag behind the
+        // rectangle, so clipping leaves any part it does not cover on the placeholder.
+        context.clip(to: visible)
         // Pixelate is stored one pixel per block and blur at reduced resolution, so both
         // scale up here: hard edges keep the blocks, smooth interpolation keeps the blur soft.
         context.interpolationQuality = rectangle.style == .pixelate ? .none : .high
-        context.draw(sample, in: target)
+        context.draw(sample.image, in: sample.bounds)
         context.restoreGState()
     }
 
-    /// Asks the sampler for the pixels under a settled pixelate/blur redaction. Runs from
-    /// the draw loop so creation, moves, undo/redo and paste all funnel through one path:
-    /// whatever lacks a sample and is not mid-drag gets exactly one request in flight.
-    private func requestSampleIfNeeded(for rectangle: Rectangle) {
-        guard rectangle.needsSample, rectangle.sample == nil, !isBoardVisible,
-            selectionDragOffset == nil
-        else { return }
-        let key = RedactionSampleKey(rectangle)
-        guard !pendingSampleKeys.contains(key), !failedSampleKeys.contains(key) else { return }
-        guard redactionSampler.canSample else { return }
+    // MARK: - Redaction sampling
 
-        pendingSampleKeys.insert(key)
-        redactionSampler.requestSample(for: rectangle, in: self) { [weak self] image in
+    /// A redaction that can receive a sample: the one being drawn, or a settled one.
+    private enum RedactionSampleTarget {
+        case current
+        case settled(Int)
+
+        var isCurrent: Bool {
+            if case .current = self { return true }
+            return false
+        }
+
+        var settledIndex: Int? {
+            if case .settled(let index) = self { return index }
+            return nil
+        }
+    }
+
+    /// Whether a pixelate or blur redaction lacks a sample for where it sits now.
+    private func needsFreshSample(_ rectangle: Rectangle) -> Bool {
+        guard rectangle.needsSample, rectangle.bounds.width >= 1, rectangle.bounds.height >= 1 else {
+            return false
+        }
+        let key = RedactionSampleKey(rectangle)
+        return rectangle.sample?.key != key && !failedSampleKeys.contains(key)
+    }
+
+    private func redactionsNeedingSamples() -> [(target: RedactionSampleTarget, key: RedactionSampleKey)] {
+        var needed: [(target: RedactionSampleTarget, key: RedactionSampleKey)] = []
+        if let rectangle = currentRectangle, needsFreshSample(rectangle) {
+            needed.append((.current, RedactionSampleKey(rectangle)))
+        }
+        for index in rectangles.indices where needsFreshSample(rectangles[index]) {
+            needed.append((.settled(index), RedactionSampleKey(rectangles[index])))
+        }
+        return needed
+    }
+
+    /// Keeps every pixelate and blur redaction's sample in step with where it sits. Runs
+    /// from the draw loop, so creation, drags, undo/redo and paste all funnel through one
+    /// path: capture the display once, crop and filter from that capture, and release it
+    /// once nothing needs it.
+    private func updateRedactionSamples() {
+        guard !isBoardVisible, redactionSampler.canSample else {
+            redactionSnapshot = nil
+            return
+        }
+        let needed = redactionsNeedingSamples()
+        guard !needed.isEmpty else {
+            if !isRedactionDragActive && !isFilteringSamples {
+                redactionSnapshot = nil
+            }
+            return
+        }
+        guard let snapshot = redactionSnapshot else {
+            captureRedactionSnapshot()
+            return
+        }
+        guard !isFilteringSamples else { return }
+        filterRedactionSamples(needed, from: snapshot)
+    }
+
+    private func captureRedactionSnapshot() {
+        guard redactionSnapshot == nil, !isCapturingSnapshot, !isBoardVisible,
+            redactionSampler.canSample, !(isRedactionDragActive && snapshotFailedDuringDrag)
+        else { return }
+        isCapturingSnapshot = true
+        let generation = redactionSampleGeneration
+        redactionSampler.captureDisplay(under: self) { [weak self] snapshot in
             guard let self else { return }
-            self.pendingSampleKeys.remove(key)
-            guard let image else {
-                self.failedSampleKeys.insert(key)
+            self.isCapturingSnapshot = false
+            guard generation == self.redactionSampleGeneration else {
+                self.setNeedsDisplayForSampledRedactions()
+                return
+            }
+            guard let snapshot else {
+                if self.isRedactionDragActive {
+                    self.snapshotFailedDuringDrag = true
+                }
+                for item in self.redactionsNeedingSamples() {
+                    self.failedSampleKeys.insert(item.key)
+                }
                 return
             }
             // A capture works again, so earlier failures deserve another try.
             self.failedSampleKeys.removeAll()
-            for index in self.rectangles.indices
-            where self.rectangles[index].sample == nil && RedactionSampleKey(self.rectangles[index]) == key {
-                self.rectangles[index].sample = image
-                self.setNeedsDisplay(self.redrawBounds(for: self.rectangles[index]))
+            self.redactionSnapshot = snapshot
+            self.updateRedactionSamples()
+        }
+    }
+
+    private func filterRedactionSamples(
+        _ needed: [(target: RedactionSampleTarget, key: RedactionSampleKey)], from snapshot: DisplaySnapshot
+    ) {
+        isFilteringSamples = true
+        let generation = redactionSampleGeneration
+        let dragID = redactionDragID
+        let requests = needed.map {
+            RedactionFilterRequest(screenRect: screenRect(fromView: $0.key.bounds), style: $0.key.style)
+        }
+        redactionSampler.filter(requests, from: snapshot) { [weak self] results in
+            guard let self else { return }
+            self.isFilteringSamples = false
+            guard generation == self.redactionSampleGeneration else {
+                self.setNeedsDisplayForSampledRedactions()
+                return
+            }
+            for (item, result) in zip(needed, results) {
+                guard let result else {
+                    self.failedSampleKeys.insert(item.key)
+                    continue
+                }
+                let sample = RedactionSample(
+                    image: result.image, bounds: self.viewRect(fromScreen: result.screenRect), key: item.key)
+                self.applySample(sample, to: item.target, fromDrag: dragID)
+            }
+            self.setNeedsDisplayForSampledRedactions()
+            // Filter the newest geometry next, or release the snapshot if all caught up.
+            self.updateRedactionSamples()
+        }
+    }
+
+    /// Stores a sample on every redaction it matches exactly. A redaction still being
+    /// dragged in the same drag also takes it when its bounds have moved on: the sample
+    /// paints only where its pixels came from, and the newest geometry is filtered next.
+    private func applySample(_ sample: RedactionSample, to target: RedactionSampleTarget, fromDrag dragID: Int) {
+        let isSameDrag = isRedactionDragActive && dragID == redactionDragID
+        if let rectangle = currentRectangle, rectangle.style == sample.key.style,
+            RedactionSampleKey(rectangle) == sample.key || (isSameDrag && target.isCurrent)
+        {
+            currentRectangle?.sample = sample
+        }
+        for index in rectangles.indices where rectangles[index].style == sample.key.style {
+            let isDraggedTarget =
+                isSameDrag && target.settledIndex == index
+                && selectedObjects.contains(.rectangle(index: index))
+            if RedactionSampleKey(rectangles[index]) == sample.key || isDraggedTarget {
+                rectangles[index].sample = sample
             }
         }
+    }
+
+    private func setNeedsDisplayForSampledRedactions() {
+        for rectangle in rectangles where rectangle.needsSample {
+            setNeedsDisplay(redrawBounds(for: rectangle))
+        }
+        if let rectangle = currentRectangle, rectangle.needsSample {
+            setNeedsDisplay(redrawBounds(for: rectangle))
+        }
+    }
+
+    /// Starts a live preview when a pixelate or blur redaction begins being drawn or moved.
+    /// The display is captured right away so the preview can show within the first frames.
+    func beginRedactionDrag() {
+        guard !isRedactionDragActive else { return }
+        isRedactionDragActive = true
+        redactionDragID += 1
+        snapshotFailedDuringDrag = false
+        // Always start from a fresh picture; a pass still using the old one keeps its own copy.
+        redactionSnapshot = nil
+        captureRedactionSnapshot()
+    }
+
+    /// Ends the live preview. The snapshot stays until the settled geometry has its sample.
+    func endRedactionDrag() {
+        guard isRedactionDragActive else { return }
+        isRedactionDragActive = false
+        snapshotFailedDuringDrag = false
+        updateRedactionSamples()
+        setNeedsDisplayForSampledRedactions()
+    }
+
+    /// Drops every sample, the snapshot and anything in flight. Called when the overlay
+    /// hides: what sat under a redaction may have changed by the time it shows again, so
+    /// its pixels are retaken from a fresh capture instead of showing a stale picture.
+    func discardRedactionSamples() {
+        redactionSampleGeneration += 1
+        redactionSnapshot = nil
+        isRedactionDragActive = false
+        snapshotFailedDuringDrag = false
+        failedSampleKeys.removeAll()
+        for index in rectangles.indices {
+            rectangles[index].sample = nil
+        }
+        currentRectangle?.sample = nil
+    }
+
+    /// Maps a view rect to Cocoa screen coordinates. Without a window (tests) the view is
+    /// treated as sitting at the screen origin.
+    private func screenRect(fromView rect: NSRect) -> NSRect {
+        guard let window else { return rect }
+        return window.convertToScreen(convert(rect, to: nil))
+    }
+
+    private func viewRect(fromScreen rect: NSRect) -> NSRect {
+        guard let window else { return rect }
+        return convert(window.convertFromScreen(rect), from: nil)
     }
 
     private func drawCircle(_ circle: Circle, alpha: CGFloat) {
@@ -2891,6 +3092,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     // MARK: - Object Movement
     
+    /// Whether the selection includes a pixelate or blur redaction, which previews live
+    /// while it is dragged.
+    var selectionHasSampledRedaction: Bool {
+        selectedObjects.contains {
+            guard case .rectangle(let index) = $0, index < rectangles.count else { return false }
+            return rectangles[index].needsSample
+        }
+    }
+
     func moveSelectedObjects(by delta: NSPoint) {
         for selectedObj in selectedObjects {
             moveObject(selectedObj, by: delta)
@@ -2919,8 +3129,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             rectangles[index].startPoint.y += delta.y
             rectangles[index].endPoint.x += delta.x
             rectangles[index].endPoint.y += delta.y
-            // The pixels belong to the old spot; resample once the drag settles.
-            rectangles[index].sample = nil
+            // The sample keeps painting where it came from until the new spot's sample lands.
             
         case .circle(let index):
             guard index < circles.count else { return }

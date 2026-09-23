@@ -208,11 +208,11 @@ struct Rectangle {
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
     var style: RectangleStyle = .outline
-    /// Filtered screen pixels for `.pixelate` and `.blur`, captured after the rectangle
-    /// settles. Nil until then, and cleared whenever the rectangle moves so it resamples.
+    /// Filtered screen pixels for `.pixelate` and `.blur`. Updated live while the rectangle
+    /// is drawn or moved; whenever its key no longer matches the rectangle, it is retaken.
     /// Deliberately not part of `==`: the same annotation with or without its sample is
     /// the same annotation for undo, selection and clipboard purposes.
-    var sample: CGImage? = nil
+    var sample: RedactionSample? = nil
 
     /// Whether this rectangle hides content instead of outlining it.
     var isRedaction: Bool { style != .outline }
