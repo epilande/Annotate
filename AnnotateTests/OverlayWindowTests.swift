@@ -177,38 +177,6 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
-    /// A hotkey switching tools mid-drag used to skip `endRedactionDrag()` entirely, since it
-    /// only ran inside the `.rectangle, .redact` branch of `mouseUp`. It must now end
-    /// regardless of which tool is active by the time the mouse comes up.
-    func testMouseUpAfterSwitchingToolsMidRedactionDragStillEndsTheDrag() {
-        let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .blur
-        window.overlayView.pickerUserDefaultsOverride = defaults
-        window.overlayView.currentTool = .redact
-
-        window.mouseDown(with: TestEvents.createMouseEvent(
-            type: .leftMouseDown,
-            location: NSPoint(x: 100, y: 100)
-        )!)
-        window.mouseDragged(with: TestEvents.createMouseEvent(
-            type: .leftMouseDragged,
-            location: NSPoint(x: 150, y: 150)
-        )!)
-        XCTAssertTrue(window.overlayView.isRedactionDragActive, "A blur/pixelate drag starts a live preview")
-
-        // A tool-switch hotkey fires before the mouse comes up.
-        window.overlayView.currentTool = .pen
-
-        window.mouseUp(with: TestEvents.createMouseEvent(
-            type: .leftMouseUp,
-            location: NSPoint(x: 150, y: 150)
-        )!)
-
-        XCTAssertFalse(
-            window.overlayView.isRedactionDragActive,
-            "Mouse-up must end the drag even when it lands off the redact tool's own branch")
-    }
-
     func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
         window.overlayView.currentTool = .pen
         window.mouseDown(with: TestEvents.createMouseEvent(
@@ -234,6 +202,35 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.paths.last?.points.count, 2)
         XCTAssertTrue(window.overlayView.highlightPaths.isEmpty)
         XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testToolSwitchMidDragKeepsShapeOnItsOriginalTool() {
+        window.overlayView.currentTool = .arrow
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        // A switch to Select must not turn the rest of the drag into a selection move.
+        window.overlayView.currentTool = .select
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 180, y: 140)
+        )!)
+        XCTAssertEqual(window.overlayView.currentArrow?.endPoint, NSPoint(x: 180, y: 140))
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 180, y: 140)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentArrow)
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.last?.endPoint, NSPoint(x: 180, y: 140))
+        XCTAssertTrue(window.undoManager?.canUndo ?? false)
+
+        window.overlayView.undo()
+        XCTAssertTrue(window.overlayView.arrows.isEmpty, "The arrow is on the undo stack")
     }
 
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {

@@ -922,6 +922,52 @@ final class RedactionTests: XCTestCase, Sendable {
         assertColor(try renderedColor(at: NSPoint(x: 40, y: 230), in: view), red: 1, green: 0, blue: 0, "Top-left")
     }
 
+    /// A tool-switch hotkey mid-drag used to route mouse-up to the new tool's branch, which
+    /// neither released the snapshot nor committed the redaction. The redaction then stayed
+    /// painted but out of reach of select, erase, and undo, and vanished on the next drag.
+    func testToolSwitchMidRedactionDragStillCommitsAndEndsTheDrag() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .blur
+        view.pickerUserDefaultsOverride = defaults
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .redact
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        sampler.completeCaptures(with: try makeSnapshot(frame: window.frame))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+        XCTAssertTrue(view.isRedactionDragActive, "A blur/pixelate drag starts a live preview")
+        XCTAssertNotNil(view.redactionSnapshot)
+
+        view.currentTool = .pen
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 120, y: 90))))
+
+        XCTAssertFalse(view.isRedactionDragActive)
+        XCTAssertNil(view.currentRectangle)
+        XCTAssertEqual(view.rectangles.count, 1, "Committed on the tool the drag started with")
+        // The snapshot stays until the settled geometry has its sample, then goes.
+        while sampler.hasPendingFilters {
+            sampler.completeNextFilter()
+        }
+        XCTAssertNotNil(view.rectangles.first?.sample)
+        XCTAssertNil(view.redactionSnapshot, "The snapshot is released after the drag")
+        XCTAssertEqual(view.rectangles.first?.style, .blur)
+        XCTAssertEqual(view.rectangles.first?.bounds, NSRect(x: 20, y: 20, width: 100, height: 70))
+        XCTAssertTrue(view.paths.isEmpty)
+        XCTAssertTrue(window.undoManager?.canUndo ?? false)
+
+        view.undo()
+        XCTAssertTrue(view.rectangles.isEmpty, "The redaction is on the undo stack")
+    }
+
     func testStaleResultsNeverLandOnTheWrongRectangle() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
         _ = try renderedColor(at: .zero)

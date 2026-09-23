@@ -41,6 +41,7 @@ class OverlayWindow: NSPanel {
     private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
+    private var activeShapeTool: ToolType?
     
     private(set) var toolbarPanel: ToolbarPanel?
     let toolbarModel = ToolbarModel()
@@ -275,6 +276,7 @@ class OverlayWindow: NSPanel {
 
     func performClearAll() {
         cancelFreehandStroke()
+        activeShapeTool = nil
         if overlayView.clearAll() {
             SoundPlayer.shared.playClearAll()
         }
@@ -823,6 +825,7 @@ class OverlayWindow: NSPanel {
 
         lastLiveShapeRect = nil
         activeFreehandTool = nil
+        activeShapeTool = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -1011,9 +1014,11 @@ class OverlayWindow: NSPanel {
                 tool: .pen
             )
         case .arrow:
+            activeShapeTool = .arrow
             overlayView.currentArrow = Arrow(
                 startPoint: startPoint, endPoint: startPoint, color: currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .line:
+            activeShapeTool = .line
             overlayView.currentLine = Line(
                 startPoint: startPoint, endPoint: startPoint, color: currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .highlighter:
@@ -1028,6 +1033,7 @@ class OverlayWindow: NSPanel {
                 tool: .highlighter
             )
         case .rectangle, .redact:
+            activeShapeTool = overlayView.currentTool
             overlayView.currentRectangle = Rectangle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
                 lineWidth: overlayView.currentLineWidth, creationTime: nil,
@@ -1036,6 +1042,7 @@ class OverlayWindow: NSPanel {
                 overlayView.beginRedactionDrag()
             }
         case .circle:
+            activeShapeTool = .circle
             overlayView.currentCircle = Circle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
         case .text:
@@ -1073,6 +1080,16 @@ class OverlayWindow: NSPanel {
 
         let currentPoint = event.locationInWindow
         overlayView.lastMousePosition = currentPoint  // Track mouse position for paste
+
+        // Ahead of the selection branches, which a mid-drag switch to Select would reach.
+        if let strokeTool = activeFreehandTool {
+            continueFreehandStroke(strokeTool, to: currentPoint, timestamp: event.timestamp)
+            return
+        }
+        if let shapeTool = activeShapeTool {
+            continueShape(shapeTool, to: currentPoint)
+            return
+        }
         
         // Handle rectangle selection drawing
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
@@ -1124,15 +1141,15 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        if let strokeTool = activeFreehandTool {
-            continueFreehandStroke(strokeTool, to: currentPoint, timestamp: event.timestamp)
-            return
+        // Drawing tools latch at mouseDown above, so only the eraser acts on currentTool here.
+        if overlayView.currentTool == .eraser {
+            overlayView.eraseAtPoint(currentPoint)
+            overlayView.needsDisplay = true
         }
+    }
 
-        switch overlayView.currentTool {
-        case .pen, .highlighter:
-            // The tool was selected after mouseDown, so no stroke is in flight.
-            break
+    private func continueShape(_ tool: ToolType, to currentPoint: NSPoint) {
+        switch tool {
         case .arrow:
             overlayView.currentArrow?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
@@ -1217,11 +1234,8 @@ class OverlayWindow: NSPanel {
                     padding: overlayView.currentLineWidth / 2 + 6
                 )
             )
-        case .text, .counter, .select:
+        default:
             break
-        case .eraser:
-            overlayView.eraseAtPoint(currentPoint)
-            overlayView.needsDisplay = true
         }
     }
 
@@ -1280,6 +1294,44 @@ class OverlayWindow: NSPanel {
         }
     }
 
+    private func commitShape(_ tool: ToolType) {
+        switch tool {
+        case .arrow:
+            if var currentArrow = overlayView.currentArrow {
+                currentArrow.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addArrow(currentArrow))
+                overlayView.arrows.append(currentArrow)
+                overlayView.currentArrow = nil
+            }
+        case .line:
+            if var currentLine = overlayView.currentLine {
+                currentLine.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addLine(currentLine))
+                overlayView.lines.append(currentLine)
+                overlayView.currentLine = nil
+            }
+        case .rectangle, .redact:
+            if var currentRectangle = overlayView.currentRectangle {
+                currentRectangle.creationTime = CACurrentMediaTime()
+                // Keep the live sample on screen, but not on the undo stack.
+                var undoRectangle = currentRectangle
+                undoRectangle.sample = nil
+                overlayView.registerUndo(action: .addRectangle(undoRectangle))
+                overlayView.rectangles.append(currentRectangle)
+                overlayView.currentRectangle = nil
+            }
+        case .circle:
+            if var currentCircle = overlayView.currentCircle {
+                currentCircle.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addCircle(currentCircle))
+                overlayView.circles.append(currentCircle)
+                overlayView.currentCircle = nil
+            }
+        default:
+            break
+        }
+    }
+
     // Discards the in-flight stroke and restores mouse coalescing. Dropping the
     // latch alone would freeze the stroke on screen with no commit, fade, or clear path.
     private func cancelFreehandStroke() {
@@ -1293,6 +1345,7 @@ class OverlayWindow: NSPanel {
     /// Drops live freehand and shape previews without committing them.
     private func discardLiveDrawing() {
         cancelFreehandStroke()
+        activeShapeTool = nil
         _ = overlayView.endFreehandStroke(tool: .pen)
         _ = overlayView.endFreehandStroke(tool: .highlighter)
         overlayView.currentArrow = nil
@@ -1362,6 +1415,10 @@ class OverlayWindow: NSPanel {
         if let strokeTool = activeFreehandTool {
             commitFreehandStroke(strokeTool, timestamp: event.timestamp)
             activeFreehandTool = nil
+        }
+        if let shapeTool = activeShapeTool {
+            commitShape(shapeTool)
+            activeShapeTool = nil
         }
 
         if overlayView.fadeMode {
@@ -1445,43 +1502,6 @@ class OverlayWindow: NSPanel {
             overlayView.dragOffset = nil
         }
 
-        switch overlayView.currentTool {
-        case .pen, .highlighter:
-            break
-        case .arrow:
-            if var currentArrow = overlayView.currentArrow {
-                currentArrow.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addArrow(currentArrow))
-                overlayView.arrows.append(currentArrow)
-                overlayView.currentArrow = nil
-            }
-        case .line:
-            if var currentLine = overlayView.currentLine {
-                currentLine.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addLine(currentLine))
-                overlayView.lines.append(currentLine)
-                overlayView.currentLine = nil
-            }
-        case .rectangle, .redact:
-            if var currentRectangle = overlayView.currentRectangle {
-                currentRectangle.creationTime = CACurrentMediaTime()
-                // Keep the live sample on screen, but not on the undo stack.
-                var undoRectangle = currentRectangle
-                undoRectangle.sample = nil
-                overlayView.registerUndo(action: .addRectangle(undoRectangle))
-                overlayView.rectangles.append(currentRectangle)
-                overlayView.currentRectangle = nil
-            }
-        case .circle:
-            if var currentCircle = overlayView.currentCircle {
-                currentCircle.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addCircle(currentCircle))
-                overlayView.circles.append(currentCircle)
-                overlayView.currentCircle = nil
-            }
-        case .text, .counter, .select, .eraser:
-            break
-        }
         overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false
         isCenterModeActive = false
