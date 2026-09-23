@@ -183,9 +183,9 @@ class ShortcutManager: @unchecked Sendable {
         self.globalShortcutProvider = globalShortcutProvider
         // Existing assignments win over newly introduced defaults. Persist the unbound state
         // so clearing the old assignment later does not silently enable a second action.
-        let existing = ShortcutKey.allCases.filter { !ShortcutKey.newlyEditable.contains($0) }
+        // Every other action counts, including other newly editable ones a user already customized.
         for action in ShortcutKey.newlyEditable where defaults.object(forKey: shortcutPrefix + action.rawValue) == nil {
-            if existing.contains(where: { binding(for: $0) == action.defaultBinding })
+            if ShortcutKey.allCases.contains(where: { $0 != action && binding(for: $0) == action.defaultBinding })
                 || globalShortcutConflict(for: action.defaultBinding) != nil {
                 defaults.set("", forKey: shortcutPrefix + action.rawValue)
             }

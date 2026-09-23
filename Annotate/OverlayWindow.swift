@@ -949,7 +949,10 @@ class OverlayWindow: NSPanel {
         }
 
         if overlayView.currentTool == .text {
-            for (index, annotation) in overlayView.textAnnotations.enumerated() {
+            // A label under a redaction stays out of reach, so a double-click there can never
+            // open its hidden text for editing.
+            let isRedacted = overlayView.isPointCoveredByRedaction(startPoint)
+            for (index, annotation) in overlayView.textAnnotations.enumerated() where !isRedacted {
                 let textRect = getTextRect(for: annotation)
                 if textRect.contains(startPoint) {
                     if clickCount == 1 {

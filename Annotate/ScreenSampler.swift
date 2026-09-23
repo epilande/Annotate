@@ -21,9 +21,9 @@ struct RedactionSampleKey: Hashable {
 /// talks to this protocol so tests can substitute a stub and never touch Screen Recording.
 @MainActor
 protocol RedactionSampling: AnyObject {
-    /// Whether a capture can succeed right now. The live sampler asks for Screen Recording
-    /// access once per app run when it is missing; the answer stays false until granted.
-    func prepareForSampling() -> Bool
+    /// Whether a capture can succeed right now. Checked from the draw loop, so it must be
+    /// cheap and must never prompt; asking for Screen Recording access lives in Settings.
+    var canSample: Bool { get }
 
     /// Captures and filters the screen content under `rectangle` (in `view` coordinates).
     /// `completion` runs on the main actor with nil on any failure, in which case the caller
@@ -44,23 +44,42 @@ private let sharedCIContext = CIContext(options: [.cacheIntermediates: false])
 final class ScreenSampler: RedactionSampling {
     static let shared = ScreenSampler()
 
-    /// Gaussian blur radius in points; scaled by the backing factor at capture time.
-    nonisolated static let blurRadiusPoints: CGFloat = 20
+    /// Smallest Gaussian blur radius in points; scaled by the backing factor at capture time.
+    nonisolated static let minimumBlurRadiusPoints: CGFloat = 20
     /// Smallest pixelate block in points, so small type is unreadable on any display.
     nonisolated static let minimumPixelBlockPoints: CGFloat = 10
 
-    private var hasRequestedAccess = false
+    /// Last known Screen Recording state. The draw loop asks per rectangle, so the answer is
+    /// cached and refreshed whenever the app becomes active, which is when the user returns
+    /// from granting (or revoking) access in System Settings.
+    private(set) var hasScreenCaptureAccess = CGPreflightScreenCaptureAccess()
 
-    var hasScreenCaptureAccess: Bool { CGPreflightScreenCaptureAccess() }
+    var canSample: Bool { hasScreenCaptureAccess }
 
-    func prepareForSampling() -> Bool {
-        if hasScreenCaptureAccess { return true }
-        if !hasRequestedAccess {
-            hasRequestedAccess = true
-            log.notice("Screen Recording access missing; asking once. Redactions stay solid until granted.")
-            CGRequestScreenCaptureAccess()
-        }
-        return false
+    private init() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(applicationDidBecomeActive),
+            name: NSApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func applicationDidBecomeActive() {
+        refreshScreenCaptureAccess()
+    }
+
+    /// Re-reads the permission. Callers that react to activation themselves use the return
+    /// value, since notification observers run in no particular order.
+    @discardableResult
+    func refreshScreenCaptureAccess() -> Bool {
+        hasScreenCaptureAccess = CGPreflightScreenCaptureAccess()
+        return hasScreenCaptureAccess
+    }
+
+    /// Shows the system Screen Recording prompt (macOS only does so the first time). Only
+    /// Settings calls this: from the overlay the prompt would open behind the overlay window.
+    @discardableResult
+    func requestScreenCaptureAccess() -> Bool {
+        hasScreenCaptureAccess = CGRequestScreenCaptureAccess()
+        return hasScreenCaptureAccess
     }
 
     func requestSample(
@@ -81,11 +100,6 @@ final class ScreenSampler: RedactionSampling {
             completion(nil)
             return
         }
-        guard prepareForSampling() else {
-            completion(nil)
-            return
-        }
-
         let scale = window.backingScaleFactor
         let style = rectangle.style
         Task { @MainActor in
@@ -116,6 +130,14 @@ final class ScreenSampler: RedactionSampling {
     nonisolated static func pixelBlockSize(forPixelWidth width: Int, height: Int, scale: CGFloat) -> CGFloat {
         let minimum = minimumPixelBlockPoints * scale
         let proportional = CGFloat(min(width, height)) / 12
+        return max(minimum, proportional).rounded()
+    }
+
+    /// Blur sigma in pixels for a capture of the given pixel size: at least twenty points,
+    /// growing with the rectangle so large type under a large blur does not stay legible.
+    nonisolated static func blurSigma(forPixelWidth width: Int, height: Int, scale: CGFloat) -> CGFloat {
+        let minimum = minimumBlurRadiusPoints * scale
+        let proportional = CGFloat(min(width, height)) / 8
         return max(minimum, proportional).rounded()
     }
 
@@ -169,7 +191,8 @@ final class ScreenSampler: RedactionSampling {
 
     // MARK: - Filters
 
-    /// Applies the redaction style's filter and returns an image with the input's extent.
+    /// Applies the redaction style's filter. The result covers the input's extent at a
+    /// reduced resolution (see `pixelate` and `blur`) and is scaled up when drawn.
     nonisolated static func filter(_ image: CGImage, style: RectangleStyle, scale: CGFloat) -> CGImage? {
         switch style {
         case .pixelate: return pixelate(image, scale: scale)
@@ -178,28 +201,45 @@ final class ScreenSampler: RedactionSampling {
         }
     }
 
+    /// Returns one pixel per block (a full-screen sample stays a few kilobytes instead of
+    /// tens of megabytes); drawing it with interpolation off restores the blocks.
     nonisolated static func pixelate(_ image: CGImage, scale: CGFloat) -> CGImage? {
         let input = CIImage(cgImage: image)
+        let block = pixelBlockSize(forPixelWidth: image.width, height: image.height, scale: scale)
         let filter = CIFilter.pixellate()
         // Each cell takes the color at its center. Clamping first means the partial cells
         // along the far edges still land on real pixels instead of transparent nothing.
         filter.inputImage = input.clampedToExtent()
-        filter.scale = Float(pixelBlockSize(forPixelWidth: image.width, height: image.height, scale: scale))
-        // Anchoring the grid at the origin keeps block edges on multiples of the block size,
-        // so the rectangle's own edges stay crisp instead of showing partial cells.
+        filter.scale = Float(block)
+        // Anchoring the grid at the origin puts every block on a multiple of the block size,
+        // so shrinking by the block size maps each block onto exactly one output pixel.
         filter.center = .zero
         guard let output = filter.outputImage else { return nil }
-        return sharedCIContext.createCGImage(output.cropped(to: input.extent), from: input.extent)
+        let grid = CGRect(
+            x: 0, y: 0,
+            width: (CGFloat(image.width) / block).rounded(.up),
+            height: (CGFloat(image.height) / block).rounded(.up))
+        let blocks = output.samplingNearest()
+            .transformed(by: CGAffineTransform(scaleX: 1 / block, y: 1 / block))
+        return sharedCIContext.createCGImage(blocks, from: grid)
     }
 
+    /// Returns the blur at a fraction of the capture resolution. The blur has already
+    /// removed the detail the extra pixels would hold, so it scales back up smoothly.
     nonisolated static func blur(_ image: CGImage, scale: CGFloat) -> CGImage? {
         let input = CIImage(cgImage: image)
+        let sigma = blurSigma(forPixelWidth: image.width, height: image.height, scale: scale)
+        let downscale = max(1, (sigma / 8).rounded(.down))
         // Clamping first stops the blur from pulling transparent black in from outside
         // the extent, which would otherwise darken the border of the sample.
         let output = input.clampedToExtent()
-            .applyingGaussianBlur(sigma: blurRadiusPoints * scale)
-            .cropped(to: input.extent)
-        return sharedCIContext.createCGImage(output, from: input.extent)
+            .applyingGaussianBlur(sigma: sigma)
+            .transformed(by: CGAffineTransform(scaleX: 1 / downscale, y: 1 / downscale))
+        let extent = CGRect(
+            x: 0, y: 0,
+            width: (CGFloat(image.width) / downscale).rounded(.up),
+            height: (CGFloat(image.height) / downscale).rounded(.up))
+        return sharedCIContext.createCGImage(output, from: extent)
     }
 }
 

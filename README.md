@@ -241,7 +241,7 @@ Hide confidential content before you take a screenshot or share your screen:
 - Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
 
 > [!NOTE]
-> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles, and uses a solid black fill until it is granted (macOS may ask you to relaunch Annotate). If the request came while the overlay was up, the system dialog is behind it; grant access from Settings → Tools instead. With a whiteboard or blackboard showing, redactions always draw solid.
+> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles in Settings → Tools (never from the overlay, where the system dialog would be hidden), and uses a solid black fill until it is granted (macOS may ask you to relaunch Annotate). With a whiteboard or blackboard showing, redactions always draw solid.
 
 #### Arrow & Line
 

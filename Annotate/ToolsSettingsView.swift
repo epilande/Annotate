@@ -9,7 +9,7 @@ struct ToolsSettingsView: View {
     private var defaultCounterSize: Double = Double(defaultCounterFontSize)
     @AppStorage(UserDefaults.redactionStyleKey)
     private var redactionStyle: RectangleStyle = UserDefaults.redactionStyleDefault
-    @State private var hasScreenCaptureAccess = CGPreflightScreenCaptureAccess()
+    @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
 
     /// The Redact tool's fills. `.outline` is the plain Rectangle tool, not a redaction.
     static let redactionStyles = RectangleStyle.allCases.filter { $0 != .outline }
@@ -86,13 +86,13 @@ struct ToolsSettingsView: View {
         .settingsScrollEdgeEffect()
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // The user comes back here after flipping the switch in System Settings.
-            hasScreenCaptureAccess = CGPreflightScreenCaptureAccess()
+            hasScreenCaptureAccess = ScreenSampler.shared.refreshScreenCaptureAccess()
         }
         .onChange(of: redactionStyle) { _, style in
-            // Ask here rather than only from the overlay: the system prompt sits below the
-            // fullscreen overlay window, so from there the user would never see it.
-            guard style != .solid, !CGPreflightScreenCaptureAccess() else { return }
-            hasScreenCaptureAccess = CGRequestScreenCaptureAccess()
+            // Ask here, never from the overlay: the system prompt sits below the fullscreen
+            // overlay window, so from there the user would never see it.
+            guard style != .solid, !ScreenSampler.shared.refreshScreenCaptureAccess() else { return }
+            hasScreenCaptureAccess = ScreenSampler.shared.requestScreenCaptureAccess()
         }
     }
 
