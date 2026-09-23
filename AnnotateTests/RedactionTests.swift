@@ -210,6 +210,14 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(color.blueComponent, 0, accuracy: 0.01, message, file: file, line: line)
     }
 
+    private func makeDoubleClick(at location: NSPoint) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown, location: location, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
+                eventNumber: 0, clickCount: 2, pressure: 1))
+    }
+
     /// Hosts the view in a window with its own undo manager so undo actions register.
     private func makeUndoWindow() -> TestWindow {
         let window = TestWindow(
@@ -508,15 +516,85 @@ final class RedactionTests: XCTestCase, Sendable {
         assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
     }
 
-    func testRedactionPaintsOverLaterAnnotations() throws {
+    func testRedactionHidesOlderAnnotations() throws {
+        overlayView.fadeMode = false
+        var stroke = TestFactory.createDrawingPath(
+            points: [TestFactory.createTimedPoint(x: 60, y: 90), TestFactory.createTimedPoint(x: 140, y: 90)],
+            color: .red, lineWidth: 6)
+        stroke.creationTime = 1
+        overlayView.paths = [stroke]
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 60, y: 110), end: NSPoint(x: 140, y: 110), color: .red, lineWidth: 6, time: 1)
+        ]
+        overlayView.rectangles = [makeRectangle(style: .solid, creationTime: 2)]
+
+        assertBlack(try renderedColor(at: NSPoint(x: 80, y: 90)), "A pen stroke drawn before is hidden")
+        assertBlack(try renderedColor(at: NSPoint(x: 80, y: 110)), "An arrow drawn before is hidden")
+    }
+
+    func testAnnotationsDrawnAfterARedactionShowOnTop() throws {
+        overlayView.fadeMode = false
+        var stroke = TestFactory.createDrawingPath(
+            points: [TestFactory.createTimedPoint(x: 60, y: 90), TestFactory.createTimedPoint(x: 140, y: 90)],
+            color: .red, lineWidth: 6)
+        stroke.creationTime = 3
+        overlayView.paths = [stroke]
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 60, y: 110), end: NSPoint(x: 140, y: 110), color: .red, lineWidth: 6, time: 3)
+        ]
+        overlayView.rectangles = [makeRectangle(style: .solid, creationTime: 2)]
+
+        assertColor(try renderedColor(at: NSPoint(x: 80, y: 90)), red: 1, green: 0, blue: 0, "A later pen stroke")
+        assertColor(try renderedColor(at: NSPoint(x: 80, y: 110)), red: 1, green: 0, blue: 0, "A later arrow")
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 130)), "The redaction still hides the screen around them")
+    }
+
+    func testInProgressAnnotationsDrawOverRedactions() throws {
+        overlayView.rectangles = [makeRectangle(style: .solid, creationTime: CACurrentMediaTime())]
+        overlayView.currentArrow = TestFactory.createArrow(
+            start: NSPoint(x: 60, y: 100), end: NSPoint(x: 140, y: 100), color: .red, lineWidth: 6)
+
+        assertColor(try renderedColor(at: NSPoint(x: 80, y: 100)), red: 1, green: 0, blue: 0)
+    }
+
+    func testRedactionsLayerByCreationNotByKind() throws {
+        overlayView.fadeMode = false
+        // An older redaction under a circle, a newer one over it, side by side.
         overlayView.circles = [
             TestFactory.createCircle(
-                start: NSPoint(x: 80, y: 80), end: NSPoint(x: 120, y: 120), color: .systemRed)
+                start: NSPoint(x: 20, y: 20), end: NSPoint(x: 180, y: 180), color: .red, lineWidth: 6, time: 2)
         ]
-        overlayView.rectangles = [makeRectangle(style: .solid)]
-        let center = try renderedColor(at: NSPoint(x: 100, y: 100))
-        XCTAssertEqual(center.alphaComponent, 1, accuracy: 0.01)
-        XCTAssertEqual(center.redComponent, 0, accuracy: 0.01, "A redaction hides a circle drawn later")
+        overlayView.rectangles = [
+            Rectangle(
+                startPoint: NSPoint(x: 0, y: 80), endPoint: NSPoint(x: 40, y: 120),
+                color: .systemRed, lineWidth: 3, creationTime: 3, style: .solid),
+            Rectangle(
+                startPoint: NSPoint(x: 160, y: 80), endPoint: NSPoint(x: 200, y: 120),
+                color: .systemRed, lineWidth: 3, creationTime: 1, style: .solid),
+        ]
+        XCTAssertEqual(overlayView.redactionIndicesByCreation, [1, 0])
+
+        assertBlack(try renderedColor(at: NSPoint(x: 20, y: 100)), "The newer redaction covers the circle")
+        assertColor(try renderedColor(at: NSPoint(x: 180, y: 100)), red: 1, green: 0, blue: 0, "The older one sits under it")
+    }
+
+    func testWithoutRedactionsKindsKeepTheirPaintOrder() throws {
+        overlayView.fadeMode = false
+        // A newer arrow still paints under an older circle: kinds keep their fixed order.
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 20, y: 100), end: NSPoint(x: 180, y: 100), color: .blue, lineWidth: 8, time: 2)
+        ]
+        overlayView.circles = [
+            TestFactory.createCircle(
+                start: NSPoint(x: 40, y: 40), end: NSPoint(x: 160, y: 160), color: .red, lineWidth: 8, time: 1)
+        ]
+        XCTAssertTrue(overlayView.redactionIndicesByCreation.isEmpty)
+
+        assertColor(try renderedColor(at: NSPoint(x: 40, y: 100)), red: 1, green: 0, blue: 0, "The circle paints last")
+        assertColor(try renderedColor(at: NSPoint(x: 100, y: 100)), red: 0, green: 0, blue: 1)
     }
 
     func testSolidRendersOpaqueBlackAndOutlineStaysClear() throws {
@@ -564,22 +642,30 @@ final class RedactionTests: XCTestCase, Sendable {
         assertColor(try renderedColor(at: NSPoint(x: 130, y: 70)), red: 1, green: 1, blue: 0, "Bottom-right of the display")
     }
 
-    func testSolidRedactionStaysOnTopOfALaterSampledOne() throws {
+    func testNewerSampledRedactionKeepsAnOlderSolidOneOpaque() throws {
+        overlayView.fadeMode = false
         overlayView.rectangles = [
-            makeRectangle(style: .solid),
+            makeRectangle(style: .solid, creationTime: 1),
             Rectangle(
                 startPoint: NSPoint(x: 100, y: 100), endPoint: NSPoint(x: 190, y: 190),
-                color: .systemRed, lineWidth: 3, style: .pixelate),
+                color: .systemRed, lineWidth: 3, creationTime: 3, style: .pixelate),
+        ]
+        // Drawn between the two: over the solid block, but under the newer pixelate.
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 60, y: 120), end: NSPoint(x: 185, y: 120), color: .red, lineWidth: 6, time: 2)
         ]
         try settleSamples()
 
         assertBlack(
-            try renderedColor(at: NSPoint(x: 120, y: 120)),
+            try renderedColor(at: NSPoint(x: 120, y: 140)),
             "A sampled redaction never shows real content over a solid one")
-        assertColor(try renderedColor(at: NSPoint(x: 170, y: 170)), red: 0, green: 1, blue: 0)
+        assertBlack(try renderedColor(at: NSPoint(x: 120, y: 120)), "The overlap hides the arrow too")
+        assertColor(try renderedColor(at: NSPoint(x: 70, y: 120)), red: 1, green: 0, blue: 0, "The arrow over the solid block alone")
+        assertColor(try renderedColor(at: NSPoint(x: 170, y: 170)), red: 0, green: 1, blue: 0, "The pixelate alone shows its sample")
     }
 
-    func testLiveRedactionStaysUnderSolidOnes() throws {
+    func testLiveSampledRedactionNeverCoversASolidOne() throws {
         overlayView.rectangles = [makeRectangle(style: .solid)]
         var live = Rectangle(
             startPoint: NSPoint(x: 100, y: 100), endPoint: NSPoint(x: 190, y: 190),
@@ -868,21 +954,31 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 10, y: 10)), .none)
     }
 
-    func testHitTestPrefersARedactionOverWhatItCovers() {
+    func testHitTestFollowsCreationOrderAroundARedaction() {
+        overlayView.fadeMode = false
         overlayView.counterAnnotations = [
-            CounterAnnotation(number: 1, position: NSPoint(x: 100, y: 100), color: .systemRed)
+            CounterAnnotation(number: 1, position: NSPoint(x: 100, y: 100), color: .systemRed, creationTime: 1)
         ]
         let textPoint = NSPoint(x: 75, y: 75)
-        overlayView.textAnnotations = [
-            TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 70, y: 70))
-        ]
+        var label = TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 70, y: 70))
+        label.creationTime = 1
+        overlayView.textAnnotations = [label]
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 100)), .counter(index: 0))
         XCTAssertEqual(overlayView.findObjectAt(point: textPoint), .text(index: 0))
 
-        overlayView.rectangles = [makeRectangle(style: .solid)]
+        overlayView.rectangles = [makeRectangle(style: .solid, creationTime: 2)]
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 100)), .rectangle(index: 0))
         XCTAssertEqual(overlayView.findObjectAt(point: textPoint), .rectangle(index: 0))
-        XCTAssertTrue(overlayView.isPointCoveredByRedaction(textPoint))
+        XCTAssertTrue(overlayView.isPointCoveredByRedaction(textPoint, over: label.creationTime))
+
+        // Created after the redaction, so drawn and hit on top of it.
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 60, y: 130), end: NSPoint(x: 140, y: 130), color: .red, lineWidth: 6, time: 3)
+        ]
+        XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 130)), .arrow(index: 0))
+        XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 140)), .rectangle(index: 0))
+        XCTAssertFalse(overlayView.isPointCoveredByRedaction(NSPoint(x: 100, y: 130), over: 3))
     }
 
     func testTextToolDoubleClickNeverEditsALabelUnderARedaction() throws {
@@ -893,36 +989,74 @@ final class RedactionTests: XCTestCase, Sendable {
         let view: OverlayView = window.overlayView
         view.pickerUserDefaultsOverride = TestUserDefaults.create()
         view.redactionSampler = sampler
-        view.textAnnotations = [
-            TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 70, y: 70))
-        ]
-        view.rectangles = [makeRectangle(style: .solid)]
+        var label = TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 70, y: 70))
+        label.creationTime = 1
+        view.textAnnotations = [label]
+        view.rectangles = [makeRectangle(style: .solid, creationTime: 2)]
         view.currentTool = .text
 
-        let doubleClick = try XCTUnwrap(
-            NSEvent.mouseEvent(
-                with: .leftMouseDown, location: NSPoint(x: 75, y: 75), modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
-                eventNumber: 0, clickCount: 2, pressure: 1))
-        window.mouseDown(with: doubleClick)
+        window.mouseDown(with: try makeDoubleClick(at: NSPoint(x: 75, y: 75)))
 
         XCTAssertNil(view.editingTextAnnotationIndex, "The hidden label must not open for editing")
         XCTAssertNil(view.draggedTextAnnotationIndex)
         XCTAssertEqual(view.currentTextAnnotation?.text, "", "The click starts a new label instead")
     }
 
-    func testHitTestFollowsRedactionPaintOrder() {
+    func testTextToolDoubleClickEditsALabelNewerThanTheRedaction() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        view.pickerUserDefaultsOverride = TestUserDefaults.create()
+        view.redactionSampler = sampler
+        var label = TestFactory.createTextAnnotation(text: "Visible", position: NSPoint(x: 70, y: 70))
+        label.creationTime = 3
+        view.textAnnotations = [label]
+        view.rectangles = [makeRectangle(style: .solid, creationTime: 2)]
+        view.currentTool = .text
+
+        window.mouseDown(with: try makeDoubleClick(at: NSPoint(x: 75, y: 75)))
+
+        XCTAssertEqual(view.editingTextAnnotationIndex, 0, "A label drawn over the redaction stays editable")
+    }
+
+    func testHitTestPicksTheNewerOfOverlappingRedactions() {
         overlayView.rectangles = [
-            makeRectangle(style: .solid),
+            makeRectangle(style: .solid, creationTime: 2),
             Rectangle(
                 startPoint: NSPoint(x: 100, y: 100), endPoint: NSPoint(x: 190, y: 190),
-                color: .systemRed, lineWidth: 3, style: .blur),
+                color: .systemRed, lineWidth: 3, creationTime: 1, style: .blur),
         ]
-        XCTAssertEqual(overlayView.redactionIndicesInPaintOrder, [1, 0], "Solid paints last")
+        XCTAssertEqual(overlayView.redactionIndicesByCreation, [1, 0], "Oldest first")
         XCTAssertEqual(
             overlayView.findObjectAt(point: NSPoint(x: 120, y: 120)), .rectangle(index: 0),
-            "The solid block on top wins the overlap")
+            "The newer redaction wins the overlap")
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 170, y: 170)), .rectangle(index: 1))
+
+        overlayView.rectangles[1].creationTime = 3
+        XCTAssertEqual(
+            overlayView.findObjectAt(point: NSPoint(x: 120, y: 120)), .rectangle(index: 1),
+            "Style does not matter for which one is on top")
+    }
+
+    func testPastedObjectsLandOnTopAndKeepTheirOrder() throws {
+        overlayView.fadeMode = false
+        let past = CACurrentMediaTime() - 10
+        overlayView.arrows = [
+            TestFactory.createArrow(
+                start: NSPoint(x: 60, y: 100), end: NSPoint(x: 140, y: 100), color: .red, time: past)
+        ]
+        overlayView.rectangles = [makeRectangle(style: .solid, creationTime: past + 1)]
+
+        overlayView.selectedObjects = [.arrow(index: 0), .rectangle(index: 0)]
+        overlayView.duplicateSelectedObjects()
+
+        XCTAssertEqual(overlayView.arrows.count, 2)
+        let pastedArrow = try XCTUnwrap(overlayView.arrows.last?.creationTime)
+        let pastedRedaction = try XCTUnwrap(overlayView.rectangles.last?.creationTime)
+        XCTAssertGreaterThan(pastedArrow, past + 1, "A paste is new even in persist mode")
+        XCTAssertGreaterThan(pastedRedaction, pastedArrow, "The copied redaction still covers the copied arrow")
     }
 
     func testEraserRemovesRedactionFromItsInterior() {

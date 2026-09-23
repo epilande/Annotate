@@ -237,6 +237,7 @@ Hide confidential content before you take a screenshot or share your screen:
   - **Solid** (default): an opaque black block
   - **Pixelate**: a coarse mosaic of the pixels under the rectangle
   - **Blur**: a heavy blur of the pixels under the rectangle
+- A redaction hides whatever was drawn before it; annotations you add afterwards draw on top of it
 - Redactions never fade, even in Fade Mode. Remove them with Delete, the Eraser, Clear All, or undo
 - Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
 

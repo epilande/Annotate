@@ -714,135 +714,26 @@ class OverlayView: NSView, NSTextFieldDelegate {
         super.draw(dirtyRect)
         let now = fadeMode ? CACurrentMediaTime() : 0
 
-        for arrow in arrows {
-            guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect) else { continue }
-            drawArrow(
-                from: arrow.startPoint,
-                to: arrow.endPoint,
-                color: arrow.color.withAlphaComponent(alpha),
-                lineWidth: arrow.lineWidth
-            )
+        // Each redaction hides what was created before it and sits under what came after,
+        // so content paints in layers split at every redaction's creation time. Without
+        // redactions this is a single pass in the usual order.
+        var layer = RedactionLayer()
+        for index in redactionIndicesByCreation {
+            let rectangle = rectangles[index]
+            layer.end = RedactionLayer.time(of: rectangle.creationTime)
+            drawAnnotations(in: layer, includingCurrent: false, now: now, dirtyRect: dirtyRect)
+            if intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) {
+                drawRectangle(rectangle, alpha: 1)
+            }
+            layer = RedactionLayer(start: layer.end)
         }
-
-        if let arrow = currentArrow,
-            intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect)
-        {
-            drawArrow(
-                from: arrow.startPoint,
-                to: arrow.endPoint,
-                color: arrow.color,
-                lineWidth: arrow.lineWidth
-            )
-        }
-
-        for line in lines {
-            guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect) else { continue }
-            drawLine(
-                from: line.startPoint,
-                to: line.endPoint,
-                color: line.color.withAlphaComponent(alpha),
-                lineWidth: line.lineWidth
-            )
-        }
-
-        if let line = currentLine,
-            intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect)
-        {
-            drawLine(
-                from: line.startPoint,
-                to: line.endPoint,
-                color: line.color,
-                lineWidth: line.lineWidth
-            )
-        }
-
-        for path in paths {
-            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
-            drawPath(path, tool: .pen, bezierPath: path.bezierPath)
-        }
-
-        if let path = currentPath,
-            intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
-        {
-            drawPath(path, tool: .pen, bezierPath: currentPathBezier)
-        }
-
-        for path in highlightPaths {
-            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
-            drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
-        }
-
-        if let highlight = currentHighlight,
-            intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
-        {
-            drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
-        }
-
-        for rectangle in rectangles where !rectangle.isRedaction {
-            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
-            guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
-            drawRectangle(rectangle, alpha: alpha)
-        }
-
-        if let rectangle = currentRectangle, !rectangle.isRedaction,
+        // Items still being drawn are the newest of all, so they join the top layer.
+        drawAnnotations(in: layer, includingCurrent: true, now: now, dirtyRect: dirtyRect)
+        if let rectangle = currentRectangle, rectangle.isRedaction,
             intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
         {
             drawRectangle(rectangle, alpha: 1)
         }
-
-        for circle in circles {
-            guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect) else { continue }
-            drawCircle(circle, alpha: alpha)
-        }
-
-        if let circle = currentCircle,
-            intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect)
-        {
-            drawCircle(circle, alpha: 1)
-        }
-
-        for (index, annotation) in textAnnotations.enumerated() {
-            if index == editingTextAnnotationIndex { continue }
-            guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
-            let textRect = getTextRect(for: annotation)
-            guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
-            drawText(annotation, alpha: alpha, bounds: textRect)
-        }
-
-        for counter in counterAnnotations {
-            guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
-            drawCounter(counter, alpha: alpha)
-        }
-
-        // Redactions paint last among content so they fully hide later annotations.
-        // Selection chrome stays after this pass. The one being drawn joins its own kind:
-        // a live pixelate or blur shows real screen content, so it must stay under every
-        // solid block too.
-        let redactionOrder = redactionIndicesInPaintOrder
-        let firstSolid = redactionOrder.firstIndex { rectangles[$0].style == .solid } ?? redactionOrder.endIndex
-        func drawRedactions(_ indices: ArraySlice<Int>) {
-            for index in indices {
-                let rectangle = rectangles[index]
-                guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
-                guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
-                drawRectangle(rectangle, alpha: alpha)
-            }
-        }
-        func drawLiveRedaction(solid: Bool) {
-            guard let rectangle = currentRectangle, rectangle.isRedaction,
-                (rectangle.style == .solid) == solid,
-                intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-            else { return }
-            drawRectangle(rectangle, alpha: 1)
-        }
-        drawRedactions(redactionOrder[..<firstSolid])
-        drawLiveRedaction(solid: false)
-        drawRedactions(redactionOrder[firstSolid...])
-        drawLiveRedaction(solid: true)
         updateRedactionSamples()
 
         if !selectedObjects.isEmpty {
@@ -872,6 +763,116 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
     
+    /// Paints the non-redaction annotations created within `layer`, each kind in its usual
+    /// order. `includingCurrent` adds the items still being drawn, which belong on top.
+    private func drawAnnotations(
+        in layer: RedactionLayer, includingCurrent: Bool, now: CFTimeInterval, dirtyRect: NSRect
+    ) {
+        for arrow in arrows where layer.contains(arrow.creationTime) {
+            guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect) else { continue }
+            drawArrow(
+                from: arrow.startPoint,
+                to: arrow.endPoint,
+                color: arrow.color.withAlphaComponent(alpha),
+                lineWidth: arrow.lineWidth
+            )
+        }
+
+        if includingCurrent, let arrow = currentArrow,
+            intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect)
+        {
+            drawArrow(
+                from: arrow.startPoint,
+                to: arrow.endPoint,
+                color: arrow.color,
+                lineWidth: arrow.lineWidth
+            )
+        }
+
+        for line in lines where layer.contains(line.creationTime) {
+            guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect) else { continue }
+            drawLine(
+                from: line.startPoint,
+                to: line.endPoint,
+                color: line.color.withAlphaComponent(alpha),
+                lineWidth: line.lineWidth
+            )
+        }
+
+        if includingCurrent, let line = currentLine,
+            intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawLine(
+                from: line.startPoint,
+                to: line.endPoint,
+                color: line.color,
+                lineWidth: line.lineWidth
+            )
+        }
+
+        for path in paths where layer.contains(path.creationTime) {
+            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
+            drawPath(path, tool: .pen, bezierPath: path.bezierPath)
+        }
+
+        if includingCurrent, let path = currentPath,
+            intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
+        {
+            drawPath(path, tool: .pen, bezierPath: currentPathBezier)
+        }
+
+        for path in highlightPaths where layer.contains(path.creationTime) {
+            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
+            drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
+        }
+
+        if includingCurrent, let highlight = currentHighlight,
+            intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
+        {
+            drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
+        }
+
+        for rectangle in rectangles where !rectangle.isRedaction && layer.contains(rectangle.creationTime) {
+            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
+            guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
+            drawRectangle(rectangle, alpha: alpha)
+        }
+
+        if includingCurrent, let rectangle = currentRectangle, !rectangle.isRedaction,
+            intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
+        {
+            drawRectangle(rectangle, alpha: 1)
+        }
+
+        for circle in circles where layer.contains(circle.creationTime) {
+            guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect) else { continue }
+            drawCircle(circle, alpha: alpha)
+        }
+
+        if includingCurrent, let circle = currentCircle,
+            intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect)
+        {
+            drawCircle(circle, alpha: 1)
+        }
+
+        for (index, annotation) in textAnnotations.enumerated() where layer.contains(annotation.creationTime) {
+            if index == editingTextAnnotationIndex { continue }
+            guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
+            let textRect = getTextRect(for: annotation)
+            guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
+            drawText(annotation, alpha: alpha, bounds: textRect)
+        }
+
+        for counter in counterAnnotations where layer.contains(counter.creationTime) {
+            guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
+            guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
+            drawCounter(counter, alpha: alpha)
+        }
+    }
+
     // MARK: - Selection Bounding Box
     
     func calculateSelectionBoundingBox() -> NSRect {
@@ -1016,17 +1017,40 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return alphaForAge(age)
     }
 
-    /// Redaction indices in the order they paint. Solid ones go last: a pixelate or blur
-    /// sample shows filtered real screen content, so it must never draw over a solid block.
-    var redactionIndicesInPaintOrder: [Int] {
-        let redactions = rectangles.indices.filter { rectangles[$0].isRedaction }
-        return redactions.filter { rectangles[$0].style != .solid }
-            + redactions.filter { rectangles[$0].style == .solid }
+    /// A stretch of creation times between two consecutive redactions. Everything created
+    /// in `start..<end` paints over the redaction made at `start` and under the one at `end`.
+    private struct RedactionLayer {
+        var start: CFTimeInterval = -.infinity
+        var end: CFTimeInterval = .infinity
+
+        /// Only test fixtures leave a committed object without a creation time; those
+        /// count as the oldest.
+        static func time(of creationTime: CFTimeInterval?) -> CFTimeInterval {
+            creationTime ?? -.infinity
+        }
+
+        func contains(_ creationTime: CFTimeInterval?) -> Bool {
+            let time = Self.time(of: creationTime)
+            return time >= start && time < end
+        }
     }
 
-    /// Whether a redaction covers `point`, so interactions do not reach what it hides.
-    func isPointCoveredByRedaction(_ point: NSPoint) -> Bool {
-        rectangles.contains { $0.isRedaction && $0.bounds.contains(point) }
+    /// Redaction indices from oldest to newest, which is the order they paint in.
+    var redactionIndicesByCreation: [Int] {
+        rectangles.indices.filter { rectangles[$0].isRedaction }.sorted {
+            let lhs = RedactionLayer.time(of: rectangles[$0].creationTime)
+            let rhs = RedactionLayer.time(of: rectangles[$1].creationTime)
+            return lhs != rhs ? lhs < rhs : $0 < $1
+        }
+    }
+
+    /// Whether a redaction newer than something created at `creationTime` covers `point`,
+    /// so interactions do not reach what that redaction hides.
+    func isPointCoveredByRedaction(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
+        let time = RedactionLayer.time(of: creationTime)
+        return rectangles.contains {
+            $0.isRedaction && RedactionLayer.time(of: $0.creationTime) > time && $0.bounds.contains(point)
+        }
     }
 
     /// Redactions never fade: a hidden secret that reappears on its own defeats the point.
@@ -1304,7 +1328,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     /// Always lays down the opaque placeholder first so nothing shows through, then paints
-    /// the filtered pixels over it when they are available and safe to show.
+    /// the filtered pixels over it when they are available and safe to show. Solid stays
+    /// solid: wherever a solid redaction overlaps, the placeholder goes back on top, even
+    /// over an older one, since the sample shows filtered real screen content.
     private func drawRedaction(_ rectangle: Rectangle, in rect: NSRect) {
         redactionPlaceholderColor.setFill()
         rect.fill()
@@ -1324,6 +1350,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
         context.interpolationQuality = rectangle.style == .pixelate ? .none : .high
         context.draw(sample.image, in: sample.bounds)
         context.restoreGState()
+
+        redactionPlaceholderColor.setFill()
+        func fillOverlap(with solid: Rectangle) {
+            let overlap = rect.intersection(solid.bounds)
+            if !overlap.isEmpty { overlap.fill() }
+        }
+        for solid in rectangles where solid.style == .solid {
+            fillOverlap(with: solid)
+        }
+        if let solid = currentRectangle, solid.style == .solid {
+            fillOverlap(with: solid)
+        }
     }
 
     // MARK: - Redaction sampling
@@ -1913,18 +1951,37 @@ class OverlayView: NSView, NSTextFieldDelegate {
         pasteObjectsWithOffset(offsetX: offsetX, offsetY: offsetY)
     }
     
+    /// Fresh creation times for pasted objects, so they land above everything already
+    /// drawn. They keep their original creation order a microsecond apart, so a pasted
+    /// redaction still hides the copies of what it covered.
+    private static func pasteCreationTimes(
+        for items: [ClipboardItem], now: CFTimeInterval = CACurrentMediaTime()
+    ) -> [CFTimeInterval] {
+        let oldestFirst = items.indices.sorted {
+            let lhs = RedactionLayer.time(of: items[$0].creationTime)
+            let rhs = RedactionLayer.time(of: items[$1].creationTime)
+            return lhs != rhs ? lhs < rhs : $0 < $1
+        }
+        var times = [CFTimeInterval](repeating: now, count: items.count)
+        for (rank, index) in oldestFirst.enumerated() {
+            times[index] = now + CFTimeInterval(rank) * 1e-6
+        }
+        return times
+    }
+
     /// Internal method to paste objects with specific offset
     private func pasteObjectsWithOffset(offsetX: CGFloat, offsetY: CGFloat) {
         guard !clipboard.isEmpty else { return }
 
         var pastedObjects: [SelectedObject] = []
+        let pasteTimes = Self.pasteCreationTimes(for: clipboard)
 
-        for item in clipboard {
+        for (item, pasteTime) in zip(clipboard, pasteTimes) {
             switch item {
             case .arrow(var arrow):
                 arrow.startPoint = NSPoint(x: arrow.startPoint.x + offsetX, y: arrow.startPoint.y + offsetY)
                 arrow.endPoint = NSPoint(x: arrow.endPoint.x + offsetX, y: arrow.endPoint.y + offsetY)
-                arrow.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                arrow.creationTime = pasteTime
                 arrows.append(arrow)
                 registerUndo(action: .addArrow(arrow))
                 pastedObjects.append(.arrow(index: arrows.count - 1))
@@ -1932,7 +1989,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             case .line(var line):
                 line.startPoint = NSPoint(x: line.startPoint.x + offsetX, y: line.startPoint.y + offsetY)
                 line.endPoint = NSPoint(x: line.endPoint.x + offsetX, y: line.endPoint.y + offsetY)
-                line.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                line.creationTime = pasteTime
                 lines.append(line)
                 registerUndo(action: .addLine(line))
                 pastedObjects.append(.line(index: lines.count - 1))
@@ -1941,7 +1998,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 rect.startPoint = NSPoint(x: rect.startPoint.x + offsetX, y: rect.startPoint.y + offsetY)
                 rect.endPoint = NSPoint(x: rect.endPoint.x + offsetX, y: rect.endPoint.y + offsetY)
                 rect.sample = nil
-                rect.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                rect.creationTime = pasteTime
                 rectangles.append(rect)
                 registerUndo(action: .addRectangle(rect))
                 pastedObjects.append(.rectangle(index: rectangles.count - 1))
@@ -1949,7 +2006,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             case .circle(var circle):
                 circle.startPoint = NSPoint(x: circle.startPoint.x + offsetX, y: circle.startPoint.y + offsetY)
                 circle.endPoint = NSPoint(x: circle.endPoint.x + offsetX, y: circle.endPoint.y + offsetY)
-                circle.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                circle.creationTime = pasteTime
                 circles.append(circle)
                 registerUndo(action: .addCircle(circle))
                 pastedObjects.append(.circle(index: circles.count - 1))
@@ -1962,6 +2019,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     )
                 }
                 rebuildPathGeometry(&path)
+                path.creationTime = pasteTime
                 paths.append(path)
                 registerUndo(action: .addPath(path))
                 pastedObjects.append(.path(index: paths.count - 1))
@@ -1974,13 +2032,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     )
                 }
                 rebuildPathGeometry(&highlight)
+                highlight.creationTime = pasteTime
                 highlightPaths.append(highlight)
                 registerUndo(action: .addHighlight(highlight))
                 pastedObjects.append(.highlight(index: highlightPaths.count - 1))
 
             case .text(var text):
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
-                text.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                text.creationTime = pasteTime
                 textAnnotations.append(text)
                 registerUndo(action: .addText(text))
                 pastedObjects.append(.text(index: textAnnotations.count - 1))
@@ -1988,7 +2047,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             case .counter(var counter):
                 counter.position = NSPoint(x: counter.position.x + offsetX, y: counter.position.y + offsetY)
                 counter.number = nextCounterNumber
-                counter.creationTime = fadeMode ? CACurrentMediaTime() : nil
+                counter.creationTime = pasteTime
                 counterAnnotations.append(counter)
                 registerUndo(action: .addCounter(counter))
                 pastedObjects.append(.counter(index: counterAnnotations.count - 1))
@@ -2533,18 +2592,26 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Find object at point, checking in reverse order (topmost/latest first)
     func findObjectAt(point: NSPoint) -> SelectedObject {
-        // Check in reverse order - last drawn is on top
-
-        // 0. Check redactions, which paint over everything else
-        for index in redactionIndicesInPaintOrder.reversed() {
-            if isFadedOut(.rectangle(index: index)) { continue }
-            if hitTestRectangle(rectangles[index], point: point) {
+        // Walk the redaction layers newest first, mirroring how draw stacks them: the
+        // annotations above a redaction, then the redaction itself, then what it covers.
+        var layer = RedactionLayer()
+        for index in redactionIndicesByCreation.reversed() {
+            layer.start = RedactionLayer.time(of: rectangles[index].creationTime)
+            if let object = findAnnotation(at: point, in: layer) { return object }
+            if !isFadedOut(.rectangle(index: index)) && hitTestRectangle(rectangles[index], point: point) {
                 return .rectangle(index: index)
             }
+            layer = RedactionLayer(end: layer.start)
         }
+        return findAnnotation(at: point, in: layer) ?? .none
+    }
+
+    /// The topmost non-redaction annotation created within `layer` that contains `point`.
+    private func findAnnotation(at point: NSPoint, in layer: RedactionLayer) -> SelectedObject? {
+        // Check in reverse order - last drawn is on top
 
         // 1. Check counters
-        for (index, counter) in counterAnnotations.enumerated().reversed() {
+        for (index, counter) in counterAnnotations.enumerated().reversed() where layer.contains(counter.creationTime) {
             if isFadedOut(.counter(index: index)) { continue }
             if hitTestCounter(counter, point: point) {
                 return .counter(index: index)
@@ -2552,14 +2619,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 2. Check text annotations
-        for (index, text) in textAnnotations.enumerated().reversed() {
+        for (index, text) in textAnnotations.enumerated().reversed() where layer.contains(text.creationTime) {
             if hitTestText(text, point: point) {
                 return .text(index: index)
             }
         }
         
         // 3. Check circles
-        for (index, circle) in circles.enumerated().reversed() {
+        for (index, circle) in circles.enumerated().reversed() where layer.contains(circle.creationTime) {
             if isFadedOut(.circle(index: index)) { continue }
             if hitTestCircle(circle, point: point) {
                 return .circle(index: index)
@@ -2567,7 +2634,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 4. Check rectangles
-        for (index, rect) in rectangles.enumerated().reversed() {
+        for (index, rect) in rectangles.enumerated().reversed()
+            where !rect.isRedaction && layer.contains(rect.creationTime)
+        {
             if isFadedOut(.rectangle(index: index)) { continue }
             if hitTestRectangle(rect, point: point) {
                 return .rectangle(index: index)
@@ -2575,7 +2644,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 5. Check highlight paths
-        for (index, path) in highlightPaths.enumerated().reversed() {
+        for (index, path) in highlightPaths.enumerated().reversed() where layer.contains(path.creationTime) {
             if isFadedOut(.highlight(index: index)) { continue }
             if hitTestPath(path, tool: .highlighter, point: point) {
                 return .highlight(index: index)
@@ -2583,7 +2652,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 6. Check regular paths
-        for (index, path) in paths.enumerated().reversed() {
+        for (index, path) in paths.enumerated().reversed() where layer.contains(path.creationTime) {
             if isFadedOut(.path(index: index)) { continue }
             if hitTestPath(path, tool: .pen, point: point) {
                 return .path(index: index)
@@ -2591,7 +2660,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 7. Check lines
-        for (index, line) in lines.enumerated().reversed() {
+        for (index, line) in lines.enumerated().reversed() where layer.contains(line.creationTime) {
             if isFadedOut(.line(index: index)) { continue }
             if hitTestLine(line, point: point) {
                 return .line(index: index)
@@ -2599,14 +2668,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 8. Check arrows
-        for (index, arrow) in arrows.enumerated().reversed() {
+        for (index, arrow) in arrows.enumerated().reversed() where layer.contains(arrow.creationTime) {
             if isFadedOut(.arrow(index: index)) { continue }
             if hitTestArrow(arrow, point: point) {
                 return .arrow(index: index)
             }
         }
         
-        return .none
+        return nil
     }
     
     func findObjectsInRect(_ rect: NSRect) -> Set<SelectedObject> {

@@ -144,6 +144,9 @@ struct DrawingPath {
     var lineWidth: CGFloat
     var bezierPath: NSBezierPath? = nil
     var cachedBounds: NSRect = .null
+    /// When the stroke was committed. Point timestamps cannot stand in for it: they are
+    /// rebased to start at mouseUp and fading drops the oldest ones, so they drift later.
+    var creationTime: CFTimeInterval? = nil
 
     mutating func recacheBounds() {
         cachedBounds = DrawingPath.bounds(of: points)
@@ -314,6 +317,19 @@ enum ClipboardItem {
     case circle(Circle)
     case text(TextAnnotation)
     case counter(CounterAnnotation)
+
+    /// The copied object's creation time, which decides its layer against redactions.
+    var creationTime: CFTimeInterval? {
+        switch self {
+        case .arrow(let arrow): return arrow.creationTime
+        case .line(let line): return line.creationTime
+        case .path(let path), .highlight(let path): return path.creationTime
+        case .rectangle(let rectangle): return rectangle.creationTime
+        case .circle(let circle): return circle.creationTime
+        case .text(let text): return text.creationTime
+        case .counter(let counter): return counter.creationTime
+        }
+    }
 }
 
 /// Describes actions that can be used for undo/redo operations.
@@ -365,6 +381,7 @@ extension TimedPoint: Equatable {
 extension DrawingPath: Equatable {
     public static func == (lhs: DrawingPath, rhs: DrawingPath) -> Bool {
         return lhs.points == rhs.points && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth
+            && lhs.creationTime == rhs.creationTime
     }
 }
 
