@@ -161,8 +161,8 @@ Fade mode, toolbar visibility, size stepping, and Clear All can be rebound in **
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
 | Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
 | <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
-| <kbd>[</kbd>                                         | **Decrease Size**    | Step stroke width, text size, or counter size down                          |
-| <kbd>]</kbd>                                         | **Increase Size**    | Step stroke width, text size, or counter size up                            |
+| <kbd>[</kbd>                                          | **Decrease Size**    | Step stroke width, text size, or counter size down                         |
+| <kbd>]</kbd>                                          | **Increase Size**    | Step stroke width, text size, or counter size up                           |
 | <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
 | <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
@@ -316,7 +316,7 @@ The Eraser tool allows you to remove specific annotations by dragging over them:
 
 - **Activate Eraser**: Press <kbd>E</kbd> to enter eraser mode
 - **Erase Annotations**: Click and drag over any annotation to remove it
-  - Works with all annotation types (pen, arrows, lines, highlighters, shapes, text, counters)
+  - Works with all annotation types (pen, arrows, lines, highlighters, shapes, redactions, text, counters)
   - Annotations are removed instantly as you drag over them
   - Supports undo (<kbd>Command</kbd> + <kbd>Z</kbd>) to restore erased items
 

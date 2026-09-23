@@ -1343,6 +1343,9 @@ class OverlayWindow: NSPanel {
     }
 
     override func mouseUp(with event: NSEvent) {
+        // Before any early return, so a tool switch mid-drag never leaves the snapshot held.
+        overlayView.endRedactionDrag()
+
         if pickerConsumedMouseDown {
             pickerConsumedMouseDown = false
             restoreMouseCoalescing()
@@ -1422,7 +1425,6 @@ class OverlayWindow: NSPanel {
             }
             overlayView.selectionDragOffset = nil
             overlayView.selectionOriginalData.removeAll()
-            overlayView.endRedactionDrag()
             overlayView.needsDisplay = true
             return
         }
@@ -1463,11 +1465,13 @@ class OverlayWindow: NSPanel {
         case .rectangle, .redact:
             if var currentRectangle = overlayView.currentRectangle {
                 currentRectangle.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addRectangle(currentRectangle))
+                // Keep the live sample on screen, but not on the undo stack.
+                var undoRectangle = currentRectangle
+                undoRectangle.sample = nil
+                overlayView.registerUndo(action: .addRectangle(undoRectangle))
                 overlayView.rectangles.append(currentRectangle)
                 overlayView.currentRectangle = nil
             }
-            overlayView.endRedactionDrag()
         case .circle:
             if var currentCircle = overlayView.currentCircle {
                 currentCircle.creationTime = CACurrentMediaTime()

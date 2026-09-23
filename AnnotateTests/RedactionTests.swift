@@ -815,6 +815,27 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(sampler.captureCount, 1)
     }
 
+    func testUndoingADeleteRestoresARedactionWithoutItsStaleSample() throws {
+        let window = makeUndoWindow()
+        defer { window.close() }
+        var rect = makeRectangle(style: .pixelate)
+        rect.sample = try makeSample(for: rect)
+        overlayView.rectangles = [rect]
+        overlayView.selectedObjects = [.rectangle(index: 0)]
+
+        overlayView.deleteSelectedObjects()
+        XCTAssertTrue(overlayView.rectangles.isEmpty)
+
+        overlayView.undo()
+        XCTAssertEqual(overlayView.rectangles.count, 1)
+        XCTAssertNil(overlayView.rectangles[0].sample, "Undo must not bring back the old captured image")
+
+        // A cleared sample means the draw loop asks for a fresh one instead of reusing the
+        // stale picture that was on the undo stack.
+        _ = try renderedColor(at: .zero)
+        XCTAssertEqual(sampler.captureCount, 1)
+    }
+
     func testMovingKeepsTheOldSampleWhereItCameFromUntilTheNewOneLands() throws {
         var rect = makeRectangle(style: .pixelate)
         rect.sample = try makeSample(for: rect)
@@ -1066,6 +1087,32 @@ final class RedactionTests: XCTestCase, Sendable {
         overlayView.eraseAtPoint(NSPoint(x: 100, y: 100))
         XCTAssertEqual(overlayView.rectangles.count, 1)
         XCTAssertEqual(overlayView.rectangles.first?.style, .outline, "Interior erasing spares the outline")
+    }
+
+    // MARK: - Delete last item
+
+    func testDeleteLastItemWithRectangleToolRemovesTheNewestOutlineSkippingARedaction() {
+        overlayView.currentTool = .rectangle
+        let outline = makeRectangle(style: .outline)
+        let redaction = makeRectangle(style: .pixelate)
+        overlayView.rectangles = [outline, redaction]
+
+        overlayView.deleteLastItem()
+
+        XCTAssertEqual(overlayView.rectangles.count, 1)
+        XCTAssertEqual(overlayView.rectangles.first?.style, .pixelate, "The newer redaction is untouched")
+    }
+
+    func testDeleteLastItemWithRedactToolRemovesTheNewestRedactionSkippingAnOutline() {
+        overlayView.currentTool = .redact
+        let redaction = makeRectangle(style: .pixelate)
+        let outline = makeRectangle(style: .outline)
+        overlayView.rectangles = [redaction, outline]
+
+        overlayView.deleteLastItem()
+
+        XCTAssertEqual(overlayView.rectangles.count, 1)
+        XCTAssertEqual(overlayView.rectangles.first?.style, .outline, "The newer outline is untouched")
     }
 
     // MARK: - Fade

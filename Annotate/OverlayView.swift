@@ -1700,7 +1700,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let oldArrows = arrows
             let oldLines = lines
             let oldHighlights = highlightPaths
-            let oldRectangles = rectangles
+            // Undo resamples instead of restoring an old capture.
+            let oldRectangles = rectangles.map { rectangle -> Rectangle in
+                var rectangle = rectangle
+                rectangle.sample = nil
+                return rectangle
+            }
             let oldCircles = circles
             let oldTextAnnotations = textAnnotations
             let oldCounterAnnotations = counterAnnotations
@@ -1760,10 +1765,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             registerUndo(action: .removeHighlight(lastHighlight))
             highlightPaths.removeLast()
         case .rectangle, .redact:
-            guard !rectangles.isEmpty else { return }
-            let lastRectangle = rectangles.last!
+            // Only the active tool's kind, so the Rectangle tool never deletes a redaction.
+            let wantsRedaction = currentTool == .redact
+            guard let index = rectangles.lastIndex(where: { $0.isRedaction == wantsRedaction }) else { return }
+            var lastRectangle = rectangles[index]
+            // Undo resamples instead of restoring an old capture.
+            lastRectangle.sample = nil
             registerUndo(action: .removeRectangle(lastRectangle))
-            rectangles.removeLast()
+            rectangles.remove(at: index)
         case .circle:
             guard !circles.isEmpty else { return }
             let lastCircle = circles.last!
@@ -1828,7 +1837,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .rectangle(let index):
             guard index < rectangles.count else { return }
-            let rect = rectangles[index]
+            var rect = rectangles[index]
+            // Undo resamples instead of restoring an old capture.
+            rect.sample = nil
             registerUndo(action: .removeRectangle(rect))
             rectangles.remove(at: index)
             
@@ -3041,7 +3052,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Check rectangles
         for (index, rectangle) in rectangles.enumerated().reversed() {
             if rectangleIntersectsPoint(rectangle, point: point, radius: eraserRadius) {
-                deletedRectangles.append(rectangle)
+                // Undo resamples instead of restoring an old capture.
+                var erased = rectangle
+                erased.sample = nil
+                deletedRectangles.append(erased)
                 rectangles.remove(at: index)
             }
         }

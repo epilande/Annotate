@@ -177,6 +177,38 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
+    /// A hotkey switching tools mid-drag used to skip `endRedactionDrag()` entirely, since it
+    /// only ran inside the `.rectangle, .redact` branch of `mouseUp`. It must now end
+    /// regardless of which tool is active by the time the mouse comes up.
+    func testMouseUpAfterSwitchingToolsMidRedactionDragStillEndsTheDrag() {
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .blur
+        window.overlayView.pickerUserDefaultsOverride = defaults
+        window.overlayView.currentTool = .redact
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+        XCTAssertTrue(window.overlayView.isRedactionDragActive, "A blur/pixelate drag starts a live preview")
+
+        // A tool-switch hotkey fires before the mouse comes up.
+        window.overlayView.currentTool = .pen
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 150, y: 150)
+        )!)
+
+        XCTAssertFalse(
+            window.overlayView.isRedactionDragActive,
+            "Mouse-up must end the drag even when it lands off the redact tool's own branch")
+    }
+
     func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
         window.overlayView.currentTool = .pen
         window.mouseDown(with: TestEvents.createMouseEvent(
