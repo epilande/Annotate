@@ -22,7 +22,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🟨 **Highlighter** for emphasizing content.
   - 🔲 **Rectangle** shapes for boxing content.
   - ⭕ **Circle** shapes for highlighting areas.
-  - 🕶️ **Redact** rectangles that hide confidential content with a solid, pixelated, or blurred fill, so screenshots of the overlay stay safe to share.
+  - 🕶️ **Redact** rectangles that hide confidential content with a solid, pixelated, or blurred fill. Use Solid for passwords and other secrets.
   - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support, live resizing, and an optional background pill.
   - 👆 **Select** tool for moving and managing objects.
@@ -237,6 +237,7 @@ Hide confidential content before you take a screenshot or share your screen:
   - **Solid** (default): an opaque black block
   - **Pixelate**: a coarse mosaic of the pixels under the rectangle
   - **Blur**: a heavy blur of the pixels under the rectangle
+- Use **Solid** for passwords and other secrets. Pixelate and Blur keep the rough shape of the content, which can sometimes be partly recovered
 - A redaction hides whatever was drawn before it; annotations you add afterwards draw on top of it
 - Redactions never fade, even in Fade Mode. Remove them with Delete, the Eraser, Clear All, or undo
 - Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
@@ -372,7 +373,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Default Text Size**: Adjust the default font size for text annotations.
 - **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
-- **Redact Tool Style**: Choose Solid, Pixelate, or Blur for new redactions. Pixelate and Blur show the Screen Recording permission status with a shortcut to System Settings.
+- **Redact Tool**: Pick the **Style** (Solid, Pixelate, or Blur) for new redactions. Solid is the one to use for passwords and other secrets. Pixelate and Blur show the Screen Recording permission status with a shortcut to System Settings.
 
 ### Board
 

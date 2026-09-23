@@ -70,6 +70,10 @@ struct ToolsSettingsView: View {
                         Text(style.displayName).tag(style)
                     }
                 }
+                Text("Use Solid for passwords and other secrets. Pixelate and Blur keep the rough shape of the content, which can sometimes be partly recovered.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if redactionStyle != .solid {
                     screenRecordingRow
                 }
