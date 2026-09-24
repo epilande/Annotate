@@ -177,6 +177,31 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
+    /// A lost mouse-up must not cost the stroke: the next mouse-down commits it first.
+    func testMouseDownAfterALostMouseUpCommitsTheLiveStroke() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 300, y: 300)
+        )!)
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.paths.last?.points.map(\.point), [
+            NSPoint(x: 100, y: 100), NSPoint(x: 140, y: 130),
+        ])
+        XCTAssertEqual(window.overlayView.currentPath?.points.map(\.point), [NSPoint(x: 300, y: 300)])
+    }
+
     func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
         window.overlayView.currentTool = .pen
         window.mouseDown(with: TestEvents.createMouseEvent(

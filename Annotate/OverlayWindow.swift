@@ -823,9 +823,13 @@ class OverlayWindow: NSPanel {
             NotificationCenter.default.post(name: .cursorHighlightNeedsUpdate, object: nil)
         }
 
+        // A drag whose mouse-up never arrived is still live: macOS can drop a mouse-up, for
+        // example a synthesized one. Finish it as that mouse-up would have, so starting the
+        // next gesture never silently throws away a finished stroke, shape, or redaction.
+        if commitLiveDrawing(timestamp: event.timestamp), overlayView.fadeMode {
+            startFadeLoop()
+        }
         lastLiveShapeRect = nil
-        activeFreehandTool = nil
-        activeShapeTool = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -1342,6 +1346,26 @@ class OverlayWindow: NSPanel {
         overlayView.needsDisplay = true
     }
 
+    /// Commits the live freehand stroke or shape on the tool its drag started with, and ends
+    /// any redaction preview. Returns whether anything was committed.
+    @discardableResult
+    private func commitLiveDrawing(timestamp: TimeInterval) -> Bool {
+        overlayView.endRedactionDrag()
+        restoreMouseCoalescing()
+        var committed = false
+        if let strokeTool = activeFreehandTool {
+            commitFreehandStroke(strokeTool, timestamp: timestamp)
+            activeFreehandTool = nil
+            committed = true
+        }
+        if let shapeTool = activeShapeTool {
+            commitShape(shapeTool)
+            activeShapeTool = nil
+            committed = true
+        }
+        return committed
+    }
+
     /// Drops live freehand and shape previews without committing them.
     private func discardLiveDrawing() {
         cancelFreehandStroke()
@@ -1409,17 +1433,8 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        restoreMouseCoalescing()
-
         // Commit before the selection and text branches below, which return early.
-        if let strokeTool = activeFreehandTool {
-            commitFreehandStroke(strokeTool, timestamp: event.timestamp)
-            activeFreehandTool = nil
-        }
-        if let shapeTool = activeShapeTool {
-            commitShape(shapeTool)
-            activeShapeTool = nil
-        }
+        commitLiveDrawing(timestamp: event.timestamp)
 
         if overlayView.fadeMode {
             startFadeLoop()

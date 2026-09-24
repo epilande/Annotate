@@ -968,6 +968,98 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertTrue(view.rectangles.isEmpty, "The redaction is on the undo stack")
     }
 
+    /// A mouse-up can go missing, for example when macOS rejects a synthesized event. The
+    /// next mouse-down used to start over the live rectangle, so a finished solid redaction
+    /// vanished without a trace and uncovered what it hid.
+    func testMouseDownAfterALostMouseUpCommitsTheLiveRedaction() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .solid
+        view.pickerUserDefaultsOverride = defaults
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .redact
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+
+        // No mouse-up. The next drag starts on another spot.
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 200, y: 20))))
+
+        XCTAssertEqual(view.rectangles.count, 1, "The live redaction is committed, not dropped")
+        XCTAssertEqual(view.rectangles.first?.style, .solid)
+        XCTAssertEqual(view.rectangles.first?.bounds, NSRect(x: 20, y: 20, width: 100, height: 70))
+        XCTAssertEqual(view.currentRectangle?.startPoint, NSPoint(x: 200, y: 20), "The new drag begins")
+
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 300, y: 90))))
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 300, y: 90))))
+
+        XCTAssertNil(view.currentRectangle)
+        XCTAssertEqual(view.rectangles.map(\.bounds), [
+            NSRect(x: 20, y: 20, width: 100, height: 70),
+            NSRect(x: 200, y: 20, width: 100, height: 70),
+        ])
+
+        // Both are on the undo stack. The test runs in a single run loop turn, so the undo
+        // manager groups the two registrations into one step.
+        view.undo()
+        XCTAssertTrue(view.rectangles.isEmpty)
+    }
+
+    /// The lost mouse-up also left the live preview running, so the next pixelate or blur
+    /// drag skipped its fresh capture and reused the previous drag's picture.
+    func testMouseDownAfterALostMouseUpEndsTheRedactionDragBeforeStartingAnother() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .pixelate
+        view.pickerUserDefaultsOverride = defaults
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .redact
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        sampler.completeCaptures(with: try makeSnapshot(frame: window.frame))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+        XCTAssertEqual(sampler.captureCount, 1)
+
+        // No mouse-up. The next drag starts on another spot.
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 200, y: 20))))
+
+        XCTAssertEqual(view.rectangles.count, 1, "The live redaction is committed, not dropped")
+        XCTAssertEqual(view.rectangles.first?.style, .pixelate)
+        XCTAssertTrue(view.isRedactionDragActive, "The new drag has its own live preview")
+        XCTAssertEqual(sampler.captureCount, 2, "The new drag captures a fresh picture")
+
+        sampler.completeCaptures(with: try makeSnapshot(frame: window.frame))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 300, y: 90))))
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 300, y: 90))))
+        while sampler.hasPendingFilters {
+            sampler.completeNextFilter()
+        }
+
+        XCTAssertFalse(view.isRedactionDragActive)
+        XCTAssertEqual(view.rectangles.count, 2)
+        XCTAssertTrue(view.rectangles.allSatisfy { $0.sample != nil }, "Both settle with a sample")
+    }
+
     func testStaleResultsNeverLandOnTheWrongRectangle() throws {
         overlayView.rectangles = [makeRectangle(style: .pixelate)]
         _ = try renderedColor(at: .zero)
