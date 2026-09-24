@@ -177,6 +177,31 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(NSEvent.isMouseCoalescingEnabled)
     }
 
+    /// A lost mouse-up must not cost the stroke: the next mouse-down commits it first.
+    func testMouseDownAfterALostMouseUpCommitsTheLiveStroke() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 140, y: 130)
+        )!)
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 300, y: 300)
+        )!)
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertEqual(window.overlayView.paths.last?.points.map(\.point), [
+            NSPoint(x: 100, y: 100), NSPoint(x: 140, y: 130),
+        ])
+        XCTAssertEqual(window.overlayView.currentPath?.points.map(\.point), [NSPoint(x: 300, y: 300)])
+    }
+
     func testToolSwitchMidDragKeepsStrokeOnItsOriginalTool() {
         window.overlayView.currentTool = .pen
         window.mouseDown(with: TestEvents.createMouseEvent(
@@ -202,6 +227,35 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.paths.last?.points.count, 2)
         XCTAssertTrue(window.overlayView.highlightPaths.isEmpty)
         XCTAssertNil(window.overlayView.currentPath)
+    }
+
+    func testToolSwitchMidDragKeepsShapeOnItsOriginalTool() {
+        window.overlayView.currentTool = .arrow
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: 100, y: 100)
+        )!)
+
+        // A switch to Select must not turn the rest of the drag into a selection move.
+        window.overlayView.currentTool = .select
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: NSPoint(x: 180, y: 140)
+        )!)
+        XCTAssertEqual(window.overlayView.currentArrow?.endPoint, NSPoint(x: 180, y: 140))
+
+        window.mouseUp(with: TestEvents.createMouseEvent(
+            type: .leftMouseUp,
+            location: NSPoint(x: 180, y: 140)
+        )!)
+
+        XCTAssertNil(window.overlayView.currentArrow)
+        XCTAssertEqual(window.overlayView.arrows.count, 1)
+        XCTAssertEqual(window.overlayView.arrows.last?.endPoint, NSPoint(x: 180, y: 140))
+        XCTAssertTrue(window.undoManager?.canUndo ?? false)
+
+        window.overlayView.undo()
+        XCTAssertTrue(window.overlayView.arrows.isEmpty, "The arrow is on the undo stack")
     }
 
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {

@@ -431,11 +431,17 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
         let newState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertNotEqual(initialState, newState, "Board visibility should be toggled")
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.adaptColorsToBoardType, newState)
+        }
 
         appDelegate.toggleBoardVisibility(nil)
         let finalState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
         XCTAssertEqual(
             initialState, finalState, "Board visibility should be toggled back to original state")
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.adaptColorsToBoardType, finalState)
+        }
     }
 
     func testUpdateBoardMenuItems() {

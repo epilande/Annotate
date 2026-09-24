@@ -22,6 +22,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 🟨 **Highlighter** for emphasizing content.
   - 🔲 **Rectangle** shapes for boxing content.
   - ⭕ **Circle** shapes for highlighting areas.
+  - 🕶️ **Redact** rectangles that hide confidential content with a solid, pixelated, or blurred fill. Use Solid for passwords and other secrets.
   - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support, live resizing, and an optional background pill.
   - 👆 **Select** tool for moving and managing objects.
@@ -128,6 +129,7 @@ brew install --cask annotate
 | <kbd>H</kbd> | **Highlighter** | Highlight areas with semi-transparent brush                                |
 | <kbd>R</kbd> | **Rectangle**   | Draw rectangles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: square)      |
 | <kbd>O</kbd> | **Circle**      | Draw circles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: perfect circle) |
+| <kbd>X</kbd> | **Redact**      | Hide content behind a solid, pixelated, or blurred rectangle               |
 | <kbd>A</kbd> | **Arrow**       | Draw directional arrows                                                    |
 | <kbd>N</kbd> | **Counter**     | Add sequential numbered circles (1, 2, 3...)                               |
 | <kbd>T</kbd> | **Text**        | Add text annotations                                                       |
@@ -159,8 +161,8 @@ Fade mode, toolbar visibility, size stepping, and Clear All can be rebound in **
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
 | Mouse Forward Button                                  | **Redo**             | Redo the last undone action (mouse button 4)                               |
 | <kbd>Command</kbd> + <kbd>Scroll</kbd>                | **Adjust Width**     | Quickly change line width                                                  |
-| <kbd>[</kbd>                                         | **Decrease Size**    | Step stroke width, text size, or counter size down                          |
-| <kbd>]</kbd>                                         | **Increase Size**    | Step stroke width, text size, or counter size up                            |
+| <kbd>[</kbd>                                          | **Decrease Size**    | Step stroke width, text size, or counter size down                         |
+| <kbd>]</kbd>                                          | **Increase Size**    | Step stroke width, text size, or counter size up                           |
 | <kbd>Shift</kbd> (while drawing)                      | **Constrain**        | Lines/Arrows: 45° angles; Pen/Highlighter: straight; Shapes: square/circle |
 | <kbd>Command</kbd> + <kbd>R</kbd>                     | **Reset Counter**    | Reset counter number to 1 (Counter tool only)                              |
 
@@ -225,6 +227,23 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 - Hold <kbd>Shift</kbd> while drawing to constrain rectangles to squares and circles to perfect circles
 - Hold <kbd>Option</kbd> while drawing to expand from the center point
 - Combine <kbd>Shift</kbd> + <kbd>Option</kbd> for constrained shapes that expand from center
+
+#### Redact
+
+Hide confidential content before you take a screenshot or share your screen:
+
+- Press <kbd>X</kbd>, then click and drag a rectangle over the content you want to hide. <kbd>Shift</kbd> and <kbd>Option</kbd> work the same as for other shapes
+- Pick the fill in **Settings → Tools → Redact Tool**:
+  - **Solid** (default): an opaque block (black, or dark gray on the blackboard)
+  - **Pixelate**: a coarse mosaic of the pixels under the rectangle
+  - **Blur**: a heavy blur of the pixels under the rectangle
+- Use **Solid** for passwords and other secrets. Pixelate and Blur keep the rough shape of the content, which can sometimes be partly recovered
+- A redaction hides whatever was drawn before it; annotations you add afterwards draw on top of it
+- Redactions never fade, even in Fade Mode. Remove them with Delete, the Eraser, Clear All, or undo
+- Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
+
+> [!NOTE]
+> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles in Settings → Tools (never from the overlay, where the system dialog would be hidden), and uses a solid fill until it is granted (macOS may ask you to relaunch Annotate). With a whiteboard or blackboard showing, redactions always draw solid.
 
 #### Arrow & Line
 
@@ -298,7 +317,7 @@ The Eraser tool allows you to remove specific annotations by dragging over them:
 
 - **Activate Eraser**: Press <kbd>E</kbd> to enter eraser mode
 - **Erase Annotations**: Click and drag over any annotation to remove it
-  - Works with all annotation types (pen, arrows, lines, highlighters, shapes, text, counters)
+  - Works with all annotation types (pen, arrows, lines, highlighters, shapes, redactions, text, counters)
   - Annotations are removed instantly as you drag over them
   - Supports undo (<kbd>Command</kbd> + <kbd>Z</kbd>) to restore erased items
 
@@ -354,6 +373,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Default Text Size**: Adjust the default font size for text annotations.
 - **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
+- **Redact Tool**: Pick the **Style** (Solid, Pixelate, or Blur) for new redactions. Solid is the one to use for passwords and other secrets. Pixelate and Blur show the Screen Recording permission status with a shortcut to System Settings.
 
 ### Board
 

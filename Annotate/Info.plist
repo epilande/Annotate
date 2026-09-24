@@ -24,6 +24,8 @@
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Pixelate and Blur redactions read the pixels under the rectangle.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/epilande/Annotate/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
