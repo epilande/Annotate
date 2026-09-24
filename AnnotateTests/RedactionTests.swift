@@ -968,6 +968,66 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertTrue(view.rectangles.isEmpty, "The redaction is on the undo stack")
     }
 
+    /// Clear All mid-drag on an empty canvas left the live shape painted forever: nothing
+    /// was cleared, so the preview was never dropped, and mouse-up had no tool to commit it.
+    func testClearAllMidRedactionDragDropsTheLiveRedaction() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        let defaults = TestUserDefaults.create()
+        defaults.redactionStyle = .blur
+        view.pickerUserDefaultsOverride = defaults
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .redact
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        sampler.completeCaptures(with: try makeSnapshot(frame: window.frame))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+        XCTAssertTrue(view.isRedactionDragActive)
+        XCTAssertNotNil(view.redactionSnapshot)
+
+        window.performClearAll()
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 120, y: 90))))
+
+        XCTAssertNil(view.currentRectangle, "The live redaction is dropped")
+        XCTAssertTrue(view.rectangles.isEmpty)
+        XCTAssertFalse(view.isRedactionDragActive)
+        XCTAssertFalse(sampler.hasPendingFilters)
+        XCTAssertNil(view.redactionSnapshot, "The snapshot is released")
+        XCTAssertEqual(sampler.captureCount, 1, "Nothing is captured again")
+    }
+
+    func testClearAllMidRectangleDragDropsTheLiveRectangle() throws {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        view.pickerUserDefaultsOverride = TestUserDefaults.create()
+        view.redactionSampler = sampler
+        view.fadeMode = false
+        view.currentTool = .rectangle
+
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDown, location: NSPoint(x: 20, y: 20))))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 120, y: 90))))
+        XCTAssertNotNil(view.currentRectangle)
+
+        window.performClearAll()
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 120, y: 90))))
+
+        XCTAssertNil(view.currentRectangle, "The live rectangle is dropped")
+        XCTAssertTrue(view.rectangles.isEmpty)
+    }
+
     /// A mouse-up can go missing, for example when macOS rejects a synthesized event. The
     /// next mouse-down used to start over the live rectangle, so a finished solid redaction
     /// vanished without a trace and uncovered what it hid.

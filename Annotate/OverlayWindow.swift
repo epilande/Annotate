@@ -275,9 +275,11 @@ class OverlayWindow: NSPanel {
     }
 
     func performClearAll() {
-        cancelFreehandStroke()
-        activeShapeTool = nil
-        if overlayView.clearAll() {
+        // Clear first so ending a redaction drag finds nothing left to sample and lets
+        // the snapshot go. The live shape is dropped even on an empty canvas.
+        let cleared = overlayView.clearAll()
+        discardLiveDrawing()
+        if cleared {
             SoundPlayer.shared.playClearAll()
         }
     }
