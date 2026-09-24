@@ -874,9 +874,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let currentScreen = getCurrentScreen(),
             let overlayWindow = overlayWindows[currentScreen]
         else { return }
-        if overlayWindow.overlayView.clearAll() {
-            SoundPlayer.shared.playClearAll()
-        }
+        overlayWindow.performClearAll()
     }
 
     @objc func toggleFadeMode(_ sender: Any?) {
