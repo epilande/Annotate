@@ -1916,7 +1916,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
             case .rectangle(let index):
                 guard index < rectangles.count else { continue }
-                clipboard.append(.rectangle(rectangles[index]))
+                // A paste resamples where it lands, so the clipboard never holds a capture.
+                var rectangle = rectangles[index]
+                rectangle.sample = nil
+                clipboard.append(.rectangle(rectangle))
 
             case .circle(let index):
                 guard index < circles.count else { continue }

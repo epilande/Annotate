@@ -1028,6 +1028,22 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertTrue(view.rectangles.isEmpty)
     }
 
+    func testCopyLeavesTheRedactionSampleBehind() throws {
+        var redaction = makeRectangle(style: .pixelate, creationTime: 1)
+        redaction.sample = try makeSample(for: redaction)
+        overlayView.rectangles = [redaction]
+        overlayView.selectedObjects = [.rectangle(index: 0)]
+
+        overlayView.copySelectedObjects()
+
+        guard case .rectangle(let copied)? = overlayView.clipboard.first else {
+            return XCTFail("The redaction is on the clipboard")
+        }
+        XCTAssertNil(copied.sample, "The clipboard never holds a capture")
+        XCTAssertEqual(copied.style, .pixelate)
+        XCTAssertNotNil(overlayView.rectangles.first?.sample, "The original keeps its sample")
+    }
+
     /// A mouse-up can go missing, for example when macOS rejects a synthesized event. The
     /// next mouse-down used to start over the live rectangle, so a finished solid redaction
     /// vanished without a trace and uncovered what it hid.

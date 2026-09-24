@@ -234,7 +234,7 @@ Hide confidential content before you take a screenshot or share your screen:
 
 - Press <kbd>X</kbd>, then click and drag a rectangle over the content you want to hide. <kbd>Shift</kbd> and <kbd>Option</kbd> work the same as for other shapes
 - Pick the fill in **Settings → Tools → Redact Tool**:
-  - **Solid** (default): an opaque black block
+  - **Solid** (default): an opaque block (black, or dark gray on the blackboard)
   - **Pixelate**: a coarse mosaic of the pixels under the rectangle
   - **Blur**: a heavy blur of the pixels under the rectangle
 - Use **Solid** for passwords and other secrets. Pixelate and Blur keep the rough shape of the content, which can sometimes be partly recovered
@@ -243,7 +243,7 @@ Hide confidential content before you take a screenshot or share your screen:
 - Click anywhere inside a redaction with the Select tool to move it; it resamples at its new spot
 
 > [!NOTE]
-> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles in Settings → Tools (never from the overlay, where the system dialog would be hidden), and uses a solid black fill until it is granted (macOS may ask you to relaunch Annotate). With a whiteboard or blackboard showing, redactions always draw solid.
+> Pixelate and Blur read the screen under the rectangle, which macOS gates behind **Screen Recording** permission. Annotate asks for it when you pick one of those styles in Settings → Tools (never from the overlay, where the system dialog would be hidden), and uses a solid fill until it is granted (macOS may ask you to relaunch Annotate). With a whiteboard or blackboard showing, redactions always draw solid.
 
 #### Arrow & Line
 

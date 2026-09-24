@@ -101,7 +101,7 @@ struct ToolsSettingsView: View {
     }
 
     /// Pixelate and Blur read the screen under the rectangle, which macOS gates behind
-    /// Screen Recording. Until it is granted the tool falls back to a solid black fill.
+    /// Screen Recording. Until it is granted the tool falls back to a solid fill.
     private var screenRecordingRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -118,7 +118,7 @@ struct ToolsSettingsView: View {
                     }
                 }
             }
-            Text("Pixelate and Blur need Screen Recording access to read the pixels under the rectangle. Redactions use solid black until it is granted, and macOS may ask you to relaunch Annotate first.")
+            Text("Pixelate and Blur need Screen Recording access to read the pixels under the rectangle. Redactions use a solid fill until it is granted, and macOS may ask you to relaunch Annotate first.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
