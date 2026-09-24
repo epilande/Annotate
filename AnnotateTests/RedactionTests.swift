@@ -1180,6 +1180,112 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(view.editingTextAnnotationIndex, 0, "A label drawn over the redaction stays editable")
     }
 
+    /// An overlay window on the Text tool holding one label and one redaction.
+    private func makeTextToolWindow(label: TextAnnotation, redaction: Rectangle) -> OverlayWindow {
+        let window = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        let view: OverlayView = window.overlayView
+        view.pickerUserDefaultsOverride = TestUserDefaults.create()
+        view.redactionSampler = sampler
+        view.textAnnotations = [label]
+        view.rectangles = [redaction]
+        view.currentTool = .text
+        return window
+    }
+
+    /// Clicking the part of a label a redaction does not cover used to reach the whole
+    /// label, so a drag or an edit brought the hidden part out on top of the redaction.
+    func testTextToolNeverDragsOrEditsALabelPartlyUnderARedaction() throws {
+        var label = TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 130, y: 70))
+        label.creationTime = 1
+        let drawn = label.bounds(fallbackInsets: NSEdgeInsetsZero)
+        let redaction = makeRectangle(style: .solid, creationTime: 2)
+        let uncovered = NSPoint(x: drawn.maxX - 5, y: drawn.midY)
+        XCTAssertTrue(drawn.intersects(redaction.bounds), "The label straddles the redaction")
+        XCTAssertFalse(redaction.bounds.contains(uncovered), "The click lands on the visible half")
+        let window = makeTextToolWindow(label: label, redaction: redaction)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+
+        window.mouseDown(with: try makeDoubleClick(at: uncovered))
+
+        XCTAssertNil(view.editingTextAnnotationIndex, "The partly hidden label must not open for editing")
+        XCTAssertEqual(view.currentTextAnnotation?.text, "", "The click starts a new label instead")
+
+        // The next click commits the empty field, which leaves nothing behind.
+        window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(type: .leftMouseDown, location: uncovered)))
+        window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseDragged, location: NSPoint(x: 300, y: 250))))
+        window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
+            type: .leftMouseUp, location: NSPoint(x: 300, y: 250))))
+
+        XCTAssertNil(view.draggedTextAnnotationIndex)
+        XCTAssertEqual(view.currentTool, .text)
+        XCTAssertEqual(view.currentTextAnnotation?.position, uncovered, "The click starts a new label again")
+        XCTAssertEqual(view.textAnnotations.first?.position, label.position, "The label stays under the redaction")
+        XCTAssertEqual(view.textAnnotations.count, 1)
+        XCTAssertEqual(view.textAnnotations.first?.text, "Secret")
+        XCTAssertEqual(view.textAnnotations.first?.creationTime, 1, "It keeps painting below the redaction")
+    }
+
+    /// The click slop around a plain label reaches past its text, and past a redaction
+    /// that covers the text exactly.
+    func testTextToolDoubleClickInTheSlopOfACoveredLabelDoesNothing() throws {
+        var label = TestFactory.createTextAnnotation(text: "Secret", position: NSPoint(x: 70, y: 70))
+        label.creationTime = 1
+        let drawn = label.bounds(fallbackInsets: NSEdgeInsetsZero)
+        let redaction = Rectangle(
+            startPoint: NSPoint(x: drawn.minX - 2, y: drawn.minY - 2),
+            endPoint: NSPoint(x: drawn.maxX + 2, y: drawn.maxY + 2),
+            color: .systemRed, lineWidth: 3, creationTime: 2, style: .solid)
+        let slop = NSPoint(x: drawn.maxX + 12, y: drawn.midY)
+        XCTAssertFalse(redaction.bounds.contains(slop))
+        let window = makeTextToolWindow(label: label, redaction: redaction)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+
+        window.mouseDown(with: try makeDoubleClick(at: slop))
+
+        XCTAssertNil(view.editingTextAnnotationIndex, "The hidden label must not open for editing")
+        XCTAssertNil(view.draggedTextAnnotationIndex)
+        XCTAssertEqual(view.currentTextAnnotation?.text, "", "The click starts a new label instead")
+    }
+
+    func testTextToolDoubleClickEditsALabelWhenARedactionOnlyTouchesItsSlop() throws {
+        var label = TestFactory.createTextAnnotation(text: "Visible", position: NSPoint(x: 70, y: 70))
+        label.creationTime = 1
+        let drawn = label.bounds(fallbackInsets: NSEdgeInsetsZero)
+        // Inside the 20 pt right slop of a plain label, clear of the text itself.
+        let redaction = Rectangle(
+            startPoint: NSPoint(x: drawn.maxX + 5, y: drawn.minY),
+            endPoint: NSPoint(x: drawn.maxX + 60, y: drawn.maxY),
+            color: .systemRed, lineWidth: 3, creationTime: 2, style: .solid)
+        let window = makeTextToolWindow(label: label, redaction: redaction)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+
+        window.mouseDown(with: try makeDoubleClick(at: NSPoint(x: drawn.minX + 5, y: drawn.midY)))
+
+        XCTAssertEqual(view.editingTextAnnotationIndex, 0, "A redaction beside a label does not lock it")
+    }
+
+    func testTextToolDoubleClickEditsALabelDrawnOverPartOfARedaction() throws {
+        var label = TestFactory.createTextAnnotation(text: "Visible", position: NSPoint(x: 130, y: 70))
+        label.creationTime = 3
+        let drawn = label.bounds(fallbackInsets: NSEdgeInsetsZero)
+        let redaction = makeRectangle(style: .solid, creationTime: 2)
+        let covered = NSPoint(x: drawn.minX + 5, y: drawn.midY)
+        XCTAssertTrue(redaction.bounds.contains(covered))
+        let window = makeTextToolWindow(label: label, redaction: redaction)
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+
+        window.mouseDown(with: try makeDoubleClick(at: covered))
+
+        XCTAssertEqual(view.editingTextAnnotationIndex, 0, "A label drawn over the redaction stays editable")
+    }
+
     func testHitTestPicksTheNewerOfOverlappingRedactions() {
         overlayView.rectangles = [
             makeRectangle(style: .solid, creationTime: 2),

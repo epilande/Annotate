@@ -1053,6 +1053,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
+    /// Whether a newer redaction hides any part of a label as drawn. Dragging or editing
+    /// such a label would bring out what the redaction hides, so it stays out of reach.
+    /// A redaction that only touches the label's click slop does not count.
+    func isTextCoveredByRedaction(_ annotation: TextAnnotation) -> Bool {
+        let time = RedactionLayer.time(of: annotation.creationTime)
+        let drawnBounds = annotation.bounds(fallbackInsets: NSEdgeInsetsZero)
+        return rectangles.contains {
+            $0.isRedaction && RedactionLayer.time(of: $0.creationTime) > time && $0.bounds.intersects(drawnBounds)
+        }
+    }
+
     /// Redactions never fade: a hidden secret that reappears on its own defeats the point.
     /// They still go away with Clear All, delete, the eraser and undo like everything else.
     private func fadeAlphaIfVisible(for rectangle: Rectangle, now: CFTimeInterval) -> CGFloat? {
