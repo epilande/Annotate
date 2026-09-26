@@ -129,7 +129,7 @@ struct CursorSettingsView: View {
 
                     Toggle(isOn: $spotlightHideInVM) {
                         Text("Hide in Virtual Machines")
-                        Text("Automatically hide spotlight when focused on a virtual machine (such as UTM)")
+                        Text("Automatically hide spotlight and click effects when focused on a virtual machine (such as UTM)")
                     }
                     .onChange(of: spotlightHideInVM) { _, _ in
                         CursorHighlightManager.shared.spotlightHideInVM = spotlightHideInVM

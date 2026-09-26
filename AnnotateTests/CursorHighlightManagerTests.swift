@@ -628,6 +628,7 @@ final class CursorHighlightManagerTests: XCTestCase {
 
     func testSpotlightSuppressedWhenVMActiveAndOptionEnabled() {
         manager.cursorHighlightEnabled = true
+        manager.clickEffectsEnabled = true
         manager.spotlightHideInVM = true
         manager.isVirtualMachineActive = true
 
@@ -635,12 +636,15 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertFalse(manager.cursorHighlightAvailable)
         XCTAssertFalse(manager.shouldShowCursorHighlight)
         XCTAssertFalse(manager.shouldShowDimming)
+        XCTAssertFalse(manager.isActive)
+        XCTAssertFalse(manager.shouldShowRing)
 
-        // Switching out of VM restores spotlight
+        // Switching out of VM restores spotlight and click effects
         manager.isVirtualMachineActive = false
         XCTAssertFalse(manager.isSuppressedByVM)
         XCTAssertTrue(manager.cursorHighlightAvailable)
         XCTAssertTrue(manager.shouldShowCursorHighlight)
+        XCTAssertTrue(manager.isActive)
     }
 
     func testSpotlightNotSuppressedWhenOptionDisabled() {

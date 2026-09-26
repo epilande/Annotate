@@ -262,7 +262,7 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied }
+    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressedByVM }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
