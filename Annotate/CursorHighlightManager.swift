@@ -69,6 +69,9 @@ class CursorHighlightManager: @unchecked Sendable {
         annotationColorCG = color.cgColor
     }
 
+    /// Initializes the cursor highlight manager with the specified user defaults store.
+    ///
+    /// - Parameter userDefaults: The user defaults store to read and write preferences. Defaults to `.standard`.
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         // Initialize color caches from stored values
@@ -324,6 +327,7 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Virtual Machine Suppression
 
+    /// Whether a known virtual machine application currently has frontmost focus.
     var isVirtualMachineActive: Bool = false {
         didSet {
             if oldValue != isVirtualMachineActive {
@@ -332,15 +336,18 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
+    /// Indicates whether cursor effects should be suppressed because the user is currently inside a virtual machine.
     var isSuppressedByVM: Bool {
         spotlightHideInVM && isVirtualMachineActive
     }
 
+    /// Checks the current frontmost application and updates `isVirtualMachineActive` accordingly.
     func updateVirtualMachineState() {
         let frontApp = NSWorkspace.shared.frontmostApplication
         isVirtualMachineActive = Self.isVirtualMachineApplication(frontApp)
     }
 
+    /// Registers notification observers to track active application switches across the workspace.
     private func setupWorkspaceObservers() {
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -350,11 +357,21 @@ class CursorHighlightManager: @unchecked Sendable {
         )
     }
 
-    @objc private func workspaceDidActivateApplication() {
-        updateVirtualMachineState()
+    /// Handles application activation notifications to update virtual machine focus state.
+    ///
+    /// - Parameter notification: The workspace application activation notification.
+    @objc private func workspaceDidActivateApplication(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+            as? NSRunningApplication else {
+            return
+        }
+        isVirtualMachineActive = Self.isVirtualMachineApplication(app)
     }
 
-    /// Checks if a running application is a known virtual machine application.
+    /// Determines whether a given running application matches known virtual machine apps.
+    ///
+    /// - Parameter app: The running application to evaluate.
+    /// - Returns: `true` if the application matches known VM bundle identifiers or names; otherwise, `false`.
     static func isVirtualMachineApplication(_ app: NSRunningApplication?) -> Bool {
         guard let app = app else { return false }
         if let bundleID = app.bundleIdentifier?.lowercased() {
