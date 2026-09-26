@@ -390,6 +390,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Dimming Amount**: Adjust how dark the background gets (20-90%).
 - **Dim Automatically**: Turn on background dimming whenever the spotlight is enabled.
 - **Only Show While Annotating**: Show the spotlight only while the overlay is active.
+- **Hide in Virtual Machines**: Automatically hide the spotlight when focused on a virtual machine (such as UTM) so the spotlight doesn't center or get stuck while the cursor is locked.
 - **Enable Click Effect**: Show a ripple on click and a highlight while holding.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.

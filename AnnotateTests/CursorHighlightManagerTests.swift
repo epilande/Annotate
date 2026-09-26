@@ -609,4 +609,57 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(scale, 1.0, "systemCursorScale should be at least 1.0")
         XCTAssertLessThanOrEqual(scale, 4.0, "systemCursorScale should be at most 4.0")
     }
+
+    // MARK: - Virtual Machine Suppression Tests
+
+    func testSpotlightHideInVMDefaultsToFalse() {
+        XCTAssertFalse(manager.spotlightHideInVM, "spotlightHideInVM should default to false")
+    }
+
+    func testSpotlightHideInVMPersistsToUserDefaults() {
+        manager.spotlightHideInVM = true
+        XCTAssertTrue(manager.spotlightHideInVM)
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+
+        manager.spotlightHideInVM = false
+        XCTAssertFalse(manager.spotlightHideInVM)
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+    }
+
+    func testSpotlightSuppressedWhenVMActiveAndOptionEnabled() {
+        manager.cursorHighlightEnabled = true
+        manager.spotlightHideInVM = true
+        manager.isVirtualMachineActive = true
+
+        XCTAssertTrue(manager.isSuppressedByVM)
+        XCTAssertFalse(manager.cursorHighlightAvailable)
+        XCTAssertFalse(manager.shouldShowCursorHighlight)
+        XCTAssertFalse(manager.shouldShowDimming)
+
+        // Switching out of VM restores spotlight
+        manager.isVirtualMachineActive = false
+        XCTAssertFalse(manager.isSuppressedByVM)
+        XCTAssertTrue(manager.cursorHighlightAvailable)
+        XCTAssertTrue(manager.shouldShowCursorHighlight)
+    }
+
+    func testSpotlightNotSuppressedWhenOptionDisabled() {
+        manager.cursorHighlightEnabled = true
+        manager.spotlightHideInVM = false
+        manager.isVirtualMachineActive = true
+
+        XCTAssertFalse(manager.isSuppressedByVM)
+        XCTAssertTrue(manager.cursorHighlightAvailable)
+        XCTAssertTrue(manager.shouldShowCursorHighlight)
+    }
+
+    func testIsVirtualMachineApplicationDetection() {
+        // Known running VM application on system (e.g. UTM if running)
+        if let utmApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.utmapp.UTM").first {
+            XCTAssertTrue(CursorHighlightManager.isVirtualMachineApplication(utmApp))
+        }
+
+        // Test nil application returns false
+        XCTAssertFalse(CursorHighlightManager.isVirtualMachineApplication(nil))
+    }
 }

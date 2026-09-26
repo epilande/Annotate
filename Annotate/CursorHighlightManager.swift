@@ -74,6 +74,12 @@ class CursorHighlightManager: @unchecked Sendable {
         // Initialize color caches from stored values
         updateEffectColorCache(effectColor)
         updateAnnotationColorCache(annotationColor)
+        updateVirtualMachineState()
+        setupWorkspaceObservers()
+    }
+
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     // MARK: - Click Effects Settings
@@ -135,6 +141,15 @@ class CursorHighlightManager: @unchecked Sendable {
         get { userDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey) }
         set {
             userDefaults.set(newValue, forKey: UserDefaults.spotlightRequiresOverlayKey)
+            notifyStateChanged()
+        }
+    }
+
+    /// When on, the cursor spotlight is automatically hidden while focused on a virtual machine (such as UTM).
+    var spotlightHideInVM: Bool {
+        get { userDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey) }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.spotlightHideInVMKey)
             notifyStateChanged()
         }
     }
@@ -254,7 +269,7 @@ class CursorHighlightManager: @unchecked Sendable {
     /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
     /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
     var cursorHighlightAvailable: Bool {
-        cursorHighlightEnabled && overlayGateSatisfied
+        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressedByVM
     }
 
     var shouldShowCursorHighlight: Bool {
@@ -305,6 +320,63 @@ class CursorHighlightManager: @unchecked Sendable {
     /// Used to keep cursor highlight windows active when any overlay is visible
     func shouldShowActiveCursorOnAnyScreen() -> Bool {
         hasAnyActiveOverlay() && activeCursorStyle != .none
+    }
+
+    // MARK: - Virtual Machine Suppression
+
+    var isVirtualMachineActive: Bool = false {
+        didSet {
+            if oldValue != isVirtualMachineActive {
+                notifyStateChanged()
+            }
+        }
+    }
+
+    var isSuppressedByVM: Bool {
+        spotlightHideInVM && isVirtualMachineActive
+    }
+
+    func updateVirtualMachineState() {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        isVirtualMachineActive = Self.isVirtualMachineApplication(frontApp)
+    }
+
+    private func setupWorkspaceObservers() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidActivateApplication),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+    }
+
+    @objc private func workspaceDidActivateApplication() {
+        updateVirtualMachineState()
+    }
+
+    /// Checks if a running application is a known virtual machine application.
+    static func isVirtualMachineApplication(_ app: NSRunningApplication?) -> Bool {
+        guard let app = app else { return false }
+        if let bundleID = app.bundleIdentifier?.lowercased() {
+            let vmBundlePrefixes = [
+                "com.utmapp.utm",
+                "com.parallels.desktop",
+                "com.vmware.fusion",
+                "org.virtualbox.app.virtualbox",
+                "codes.ramona.virtualbuddy",
+                "org.qemu"
+            ]
+            if vmBundlePrefixes.contains(where: { bundleID.hasPrefix($0) || bundleID == $0 }) {
+                return true
+            }
+        }
+        if let name = app.localizedName?.lowercased() {
+            let vmNames = ["utm", "virtualbox", "virtualbuddy"]
+            if vmNames.contains(name) || name.hasPrefix("parallels desktop") || name.hasPrefix("vmware fusion") {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Release Animation
