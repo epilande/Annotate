@@ -609,4 +609,66 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(scale, 1.0, "systemCursorScale should be at least 1.0")
         XCTAssertLessThanOrEqual(scale, 4.0, "systemCursorScale should be at most 4.0")
     }
+
+    // MARK: - Virtual Machine Suppression Tests
+
+    /// Verifies that the virtual machine suppression preference is disabled by default.
+    func testSpotlightHideInVMDefaultsToFalse() {
+        XCTAssertFalse(manager.spotlightHideInVM, "spotlightHideInVM should default to false")
+    }
+
+    /// Verifies that changes to `spotlightHideInVM` persist correctly to `UserDefaults`.
+    func testSpotlightHideInVMPersistsToUserDefaults() {
+        manager.spotlightHideInVM = true
+        XCTAssertTrue(manager.spotlightHideInVM)
+        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+
+        manager.spotlightHideInVM = false
+        XCTAssertFalse(manager.spotlightHideInVM)
+        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+    }
+
+    /// Verifies that spotlight and click effects are suppressed when focused in a VM and restored upon exit.
+    func testSpotlightSuppressedWhenVMActiveAndOptionEnabled() {
+        manager.cursorHighlightEnabled = true
+        manager.clickEffectsEnabled = true
+        manager.spotlightHideInVM = true
+        manager.isVirtualMachineActive = true
+
+        XCTAssertTrue(manager.isSuppressedByVM)
+        XCTAssertFalse(manager.cursorHighlightAvailable)
+        XCTAssertFalse(manager.shouldShowCursorHighlight)
+        XCTAssertFalse(manager.shouldShowDimming)
+        XCTAssertFalse(manager.isActive)
+        XCTAssertFalse(manager.shouldShowRing)
+
+        // Switching out of VM restores spotlight and click effects
+        manager.isVirtualMachineActive = false
+        XCTAssertFalse(manager.isSuppressedByVM)
+        XCTAssertTrue(manager.cursorHighlightAvailable)
+        XCTAssertTrue(manager.shouldShowCursorHighlight)
+        XCTAssertTrue(manager.isActive)
+    }
+
+    /// Verifies that spotlight and click effects remain active when the VM suppression option is disabled.
+    func testSpotlightNotSuppressedWhenOptionDisabled() {
+        manager.cursorHighlightEnabled = true
+        manager.spotlightHideInVM = false
+        manager.isVirtualMachineActive = true
+
+        XCTAssertFalse(manager.isSuppressedByVM)
+        XCTAssertTrue(manager.cursorHighlightAvailable)
+        XCTAssertTrue(manager.shouldShowCursorHighlight)
+    }
+
+    /// Verifies that known virtual machine applications are correctly detected by bundle identifier.
+    func testIsVirtualMachineApplicationDetection() {
+        // Known running VM application on system (e.g. UTM if running)
+        if let utmApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.utmapp.UTM").first {
+            XCTAssertTrue(CursorHighlightManager.isVirtualMachineApplication(utmApp))
+        }
+
+        // Test nil application returns false
+        XCTAssertFalse(CursorHighlightManager.isVirtualMachineApplication(nil))
+    }
 }

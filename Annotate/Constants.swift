@@ -33,6 +33,7 @@ extension UserDefaults {
     static let spotlightDimmingEnabledKey = "SpotlightDimmingEnabled"
     static let spotlightDimmingOpacityKey = "SpotlightDimmingOpacity"
     static let spotlightAutoDimKey = "SpotlightAutoDim"
+    static let spotlightHideInVMKey = "SpotlightHideInVM"
     static let activeCursorStyleKey = "ActiveCursorStyle"
     static let activeCursorSizeKey = "ActiveCursorSize"
     static let selectAfterPlacingTextKey = "SelectAfterPlacingText"
