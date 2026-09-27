@@ -610,65 +610,114 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertLessThanOrEqual(scale, 4.0, "systemCursorScale should be at most 4.0")
     }
 
-    // MARK: - Virtual Machine Suppression Tests
+    // MARK: - Excluded Application Suppression Tests
 
-    /// Verifies that the virtual machine suppression preference is disabled by default.
-    func testSpotlightHideInVMDefaultsToFalse() {
-        XCTAssertFalse(manager.spotlightHideInVM, "spotlightHideInVM should default to false")
+    /// Verifies that the excluded applications list defaults to empty.
+    func testExcludedAppBundleIDsDefaultsToEmpty() {
+        XCTAssertTrue(
+            manager.excludedAppBundleIDs.isEmpty,
+            "excludedAppBundleIDs should default to an empty array"
+        )
     }
 
-    /// Verifies that changes to `spotlightHideInVM` persist correctly to `UserDefaults`.
-    func testSpotlightHideInVMPersistsToUserDefaults() {
-        manager.spotlightHideInVM = true
-        XCTAssertTrue(manager.spotlightHideInVM)
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+    /// Verifies that changes to `excludedAppBundleIDs` persist correctly to `UserDefaults`.
+    func testExcludedAppBundleIDsPersistsToUserDefaults() {
+        let testList = ["com.utmapp.UTM", "org.blender.blender"]
+        manager.excludedAppBundleIDs = testList
 
-        manager.spotlightHideInVM = false
-        XCTAssertFalse(manager.spotlightHideInVM)
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey))
+        XCTAssertEqual(manager.excludedAppBundleIDs, testList)
+        XCTAssertEqual(
+            testDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey),
+            testList
+        )
+
+        manager.excludedAppBundleIDs = []
+        XCTAssertTrue(manager.excludedAppBundleIDs.isEmpty)
+        XCTAssertEqual(
+            testDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey),
+            []
+        )
     }
 
-    /// Verifies that spotlight and click effects are suppressed when focused in a VM and restored upon exit.
-    func testSpotlightSuppressedWhenVMActiveAndOptionEnabled() {
+    /// Verifies that `isExcluded(bundleID:in:)` performs case-insensitive matching and handles edge cases.
+    func testIsExcludedMatching() {
+        let exclusionList = ["com.utmapp.UTM", "org.blender.blender"]
+
+        // Exact match
+        XCTAssertTrue(CursorHighlightManager.isExcluded(bundleID: "com.utmapp.UTM", in: exclusionList))
+
+        // Case-insensitive matches
+        XCTAssertTrue(CursorHighlightManager.isExcluded(bundleID: "COM.UTMAPP.UTM", in: exclusionList))
+        XCTAssertTrue(CursorHighlightManager.isExcluded(bundleID: "com.utmapp.utm", in: exclusionList))
+        XCTAssertTrue(CursorHighlightManager.isExcluded(bundleID: "ORG.BLENDER.BLENDER", in: exclusionList))
+
+        // Whitespace tolerance
+        XCTAssertTrue(CursorHighlightManager.isExcluded(bundleID: "  com.utmapp.utm  ", in: exclusionList))
+
+        // Non-matches
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: "com.apple.Safari", in: exclusionList))
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: "com.utmapp", in: exclusionList))
+
+        // Empty list and nil/empty inputs
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: "com.utmapp.UTM", in: []))
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: nil, in: exclusionList))
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: "", in: exclusionList))
+        XCTAssertFalse(CursorHighlightManager.isExcluded(bundleID: "   ", in: exclusionList))
+    }
+
+    /// Verifies that cursor effects are suppressed when an excluded application is active and no overlay is visible.
+    func testSuppressionWhenExcludedAppActiveWithoutOverlay() {
         manager.cursorHighlightEnabled = true
         manager.clickEffectsEnabled = true
-        manager.spotlightHideInVM = true
-        manager.isVirtualMachineActive = true
+        manager.isExcludedAppActive = true
 
-        XCTAssertTrue(manager.isSuppressedByVM)
+        XCTAssertTrue(
+            manager.isSuppressedByExcludedApp,
+            "Effects should be suppressed when an excluded app is active and no overlay is visible"
+        )
         XCTAssertFalse(manager.cursorHighlightAvailable)
         XCTAssertFalse(manager.shouldShowCursorHighlight)
         XCTAssertFalse(manager.shouldShowDimming)
         XCTAssertFalse(manager.isActive)
         XCTAssertFalse(manager.shouldShowRing)
 
-        // Switching out of VM restores spotlight and click effects
-        manager.isVirtualMachineActive = false
-        XCTAssertFalse(manager.isSuppressedByVM)
+        // Switching out of excluded app restores spotlight and click effects
+        manager.isExcludedAppActive = false
+        XCTAssertFalse(manager.isSuppressedByExcludedApp)
         XCTAssertTrue(manager.cursorHighlightAvailable)
         XCTAssertTrue(manager.shouldShowCursorHighlight)
         XCTAssertTrue(manager.isActive)
     }
 
-    /// Verifies that spotlight and click effects remain active when the VM suppression option is disabled.
-    func testSpotlightNotSuppressedWhenOptionDisabled() {
-        manager.cursorHighlightEnabled = true
-        manager.spotlightHideInVM = false
-        manager.isVirtualMachineActive = true
+    /// Verifies that suppression does NOT apply when an overlay is visible, allowing annotation over excluded apps.
+    func testSuppressionBypassedWhenOverlayIsActive() throws {
+        let appDelegate = MockAppDelegate()
+        let screen = try XCTUnwrap(NSScreen.main)
+        let overlayWindow = OverlayWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        appDelegate.overlayWindows[screen] = overlayWindow
+        AppDelegate.shared = appDelegate
+        defer { overlayWindow.orderOut(nil) }
 
-        XCTAssertFalse(manager.isSuppressedByVM)
-        XCTAssertTrue(manager.cursorHighlightAvailable)
-        XCTAssertTrue(manager.shouldShowCursorHighlight)
-    }
+        overlayWindow.orderFront(nil)
+        try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
 
-    /// Verifies that known virtual machine applications are correctly detected by bundle identifier.
-    func testIsVirtualMachineApplicationDetection() {
-        // Known running VM application on system (e.g. UTM if running)
-        if let utmApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.utmapp.UTM").first {
-            XCTAssertTrue(CursorHighlightManager.isVirtualMachineApplication(utmApp))
+        withExtendedLifetime(appDelegate) {
+            manager.cursorHighlightEnabled = true
+            manager.clickEffectsEnabled = true
+            manager.isExcludedAppActive = true
+
+            // When an overlay is visible, isSuppressedByExcludedApp must be false
+            XCTAssertFalse(
+                manager.isSuppressedByExcludedApp,
+                "Suppression must not apply while an overlay is active, even if the excluded app is focused"
+            )
+            XCTAssertTrue(manager.cursorHighlightAvailable)
+            XCTAssertTrue(manager.isActive)
         }
-
-        // Test nil application returns false
-        XCTAssertFalse(CursorHighlightManager.isVirtualMachineApplication(nil))
     }
 }

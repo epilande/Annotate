@@ -91,7 +91,6 @@ struct AboutView: View {
     }
 }
 
-#if canImport(PreviewsMacros)
 #Preview {
     AboutView(updaterController: SPUStandardUpdaterController(
         startingUpdater: false,
@@ -99,4 +98,3 @@ struct AboutView: View {
         userDriverDelegate: nil
     ))
 }
-#endif

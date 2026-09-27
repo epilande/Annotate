@@ -74,10 +74,12 @@ class CursorHighlightManager: @unchecked Sendable {
     /// - Parameter userDefaults: The user defaults store to read and write preferences. Defaults to `.standard`.
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let excluded = userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? []
+        self.isExcludedAppActive = Self.isExcluded(bundleID: frontmost, in: excluded)
         // Initialize color caches from stored values
         updateEffectColorCache(effectColor)
         updateAnnotationColorCache(annotationColor)
-        updateVirtualMachineState()
         setupWorkspaceObservers()
     }
 
@@ -148,11 +150,12 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
-    /// When on, the cursor spotlight is automatically hidden while focused on a virtual machine (such as UTM).
-    var spotlightHideInVM: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.spotlightHideInVMKey) }
+    /// List of application bundle identifiers where cursor effects should be suppressed.
+    var excludedAppBundleIDs: [String] {
+        get { userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? [] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.spotlightHideInVMKey)
+            userDefaults.set(newValue, forKey: UserDefaults.hideCursorEffectsInAppsKey)
+            updateExcludedAppState()
             notifyStateChanged()
         }
     }
@@ -265,14 +268,14 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressedByVM }
+    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
     /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
     /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
     var cursorHighlightAvailable: Bool {
-        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressedByVM
+        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp
     }
 
     var shouldShowCursorHighlight: Bool {
@@ -325,26 +328,26 @@ class CursorHighlightManager: @unchecked Sendable {
         hasAnyActiveOverlay() && activeCursorStyle != .none
     }
 
-    // MARK: - Virtual Machine Suppression
+    // MARK: - Excluded Applications Suppression
 
-    /// Whether a known virtual machine application currently has frontmost focus.
-    var isVirtualMachineActive: Bool = false {
+    /// Whether an excluded application currently has frontmost focus.
+    var isExcludedAppActive: Bool = false {
         didSet {
-            if oldValue != isVirtualMachineActive {
+            if oldValue != isExcludedAppActive {
                 notifyStateChanged()
             }
         }
     }
 
-    /// Indicates whether cursor effects should be suppressed because the user is currently inside a virtual machine.
-    var isSuppressedByVM: Bool {
-        spotlightHideInVM && isVirtualMachineActive
+    /// Indicates whether cursor effects should be suppressed because an excluded application is active and no overlay is visible.
+    var isSuppressedByExcludedApp: Bool {
+        isExcludedAppActive && !hasAnyActiveOverlay()
     }
 
-    /// Checks the current frontmost application and updates `isVirtualMachineActive` accordingly.
-    func updateVirtualMachineState() {
+    /// Checks the current frontmost application and updates `isExcludedAppActive` accordingly.
+    func updateExcludedAppState() {
         let frontApp = NSWorkspace.shared.frontmostApplication
-        isVirtualMachineActive = Self.isVirtualMachineApplication(frontApp)
+        isExcludedAppActive = Self.isExcluded(bundleID: frontApp?.bundleIdentifier, in: excludedAppBundleIDs)
     }
 
     /// Registers notification observers to track active application switches across the workspace.
@@ -357,7 +360,7 @@ class CursorHighlightManager: @unchecked Sendable {
         )
     }
 
-    /// Handles application activation notifications to update virtual machine focus state.
+    /// Handles application activation notifications to update excluded application focus state.
     ///
     /// - Parameter notification: The workspace application activation notification.
     @objc private func workspaceDidActivateApplication(_ notification: Notification) {
@@ -365,35 +368,21 @@ class CursorHighlightManager: @unchecked Sendable {
             as? NSRunningApplication else {
             return
         }
-        isVirtualMachineActive = Self.isVirtualMachineApplication(app)
+        isExcludedAppActive = Self.isExcluded(bundleID: app.bundleIdentifier, in: excludedAppBundleIDs)
     }
 
-    /// Determines whether a given running application matches known virtual machine apps.
+    /// Determines whether a bundle identifier matches any identifier in an exclusion list.
+    /// Matching is case-insensitive.
     ///
-    /// - Parameter app: The running application to evaluate.
-    /// - Returns: `true` if the application matches known VM bundle identifiers or names; otherwise, `false`.
-    static func isVirtualMachineApplication(_ app: NSRunningApplication?) -> Bool {
-        guard let app = app else { return false }
-        if let bundleID = app.bundleIdentifier?.lowercased() {
-            let vmBundlePrefixes = [
-                "com.utmapp.utm",
-                "com.parallels.desktop",
-                "com.vmware.fusion",
-                "org.virtualbox.app.virtualbox",
-                "codes.ramona.virtualbuddy",
-                "org.qemu"
-            ]
-            if vmBundlePrefixes.contains(where: { bundleID.hasPrefix($0) || bundleID == $0 }) {
-                return true
-            }
+    /// - Parameters:
+    ///   - bundleID: The bundle identifier to check.
+    ///   - list: The list of excluded bundle identifiers.
+    /// - Returns: `true` if the bundle identifier is found in the exclusion list; otherwise, `false`.
+    static func isExcluded(bundleID: String?, in list: [String]) -> Bool {
+        guard let bundleID = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty else {
+            return false
         }
-        if let name = app.localizedName?.lowercased() {
-            let vmNames = ["utm", "virtualbox", "virtualbuddy"]
-            if vmNames.contains(name) || name.hasPrefix("parallels desktop") || name.hasPrefix("vmware fusion") {
-                return true
-            }
-        }
-        return false
+        return list.contains { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
     }
 
     // MARK: - Release Animation
