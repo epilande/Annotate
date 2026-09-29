@@ -7,7 +7,6 @@ struct CursorSettingsView: View {
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
     @State private var spotlightRequiresOverlay: Bool = CursorHighlightManager.shared.spotlightRequiresOverlay
     @State private var excludedAppBundleIDs: [String] = CursorHighlightManager.shared.excludedAppBundleIDs
-    @State private var selectedBundleID: String?
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
@@ -189,10 +188,6 @@ struct CursorSettingsView: View {
                         ForEach(excludedAppBundleIDs, id: \.self) { bundleID in
                             ExcludedAppRow(
                                 bundleID: bundleID,
-                                isSelected: selectedBundleID == bundleID,
-                                onSelect: {
-                                    selectedBundleID = (selectedBundleID == bundleID ? nil : bundleID)
-                                },
                                 onRemove: {
                                     removeExcludedApp(bundleID)
                                 }
@@ -206,26 +201,20 @@ struct CursorSettingsView: View {
                                 .frame(width: 14, height: 14)
                         }
                         .help("Add application to exclusion list")
-
-                        Button(action: removeSelectedApplication) {
-                            Image(systemName: "minus")
-                                .frame(width: 14, height: 14)
-                        }
-                        .disabled(selectedBundleID == nil)
-                        .help("Remove selected application")
+                        .accessibilityLabel("Add application to exclusion list")
 
                         Spacer()
                     }
                     .padding(.top, 2)
                 } header: {
                     SettingsHeader(
-                        icon: "eye.slash",
+                        icon: "cursorarrow.slash",
                         color: .blue,
                         title: "Hide Cursor Effects In",
                         subtitle: "Suppress effects while one of these apps is focused"
                     )
                 } footer: {
-                    Text("Suppresses spotlight and click effects while one of these apps is focused. Useful for virtual machines (such as UTM), games, and remote desktop clients that capture or lock the cursor.")
+                    Text("Useful for virtual machines (such as UTM), games, and remote desktop clients that capture or lock the cursor.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -272,19 +261,13 @@ struct CursorSettingsView: View {
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
 
         let handleURLs: ([URL]) -> Void = { urls in
-            var updated = CursorHighlightManager.shared.excludedAppBundleIDs
-            for url in urls {
+            let bundleIDs = urls.compactMap { url -> String? in
                 let resolvedURL = url.resolvingSymlinksInPath()
-                let bundleID = Bundle(url: resolvedURL)?.bundleIdentifier
+                return Bundle(url: resolvedURL)?.bundleIdentifier
                     ?? (NSDictionary(contentsOf: resolvedURL.appendingPathComponent("Contents/Info.plist"))?["CFBundleIdentifier"] as? String)
-                if let bundleID = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty {
-                    if !updated.contains(where: { $0.caseInsensitiveCompare(bundleID) == .orderedSame }) {
-                        updated.append(bundleID)
-                    }
-                }
             }
-            excludedAppBundleIDs = updated
-            CursorHighlightManager.shared.excludedAppBundleIDs = updated
+            CursorHighlightManager.shared.addExcludedApps(bundleIDs: bundleIDs)
+            excludedAppBundleIDs = CursorHighlightManager.shared.excludedAppBundleIDs
         }
 
         if let window = SettingsWindowManager.shared.settingsWindow ?? NSApp.keyWindow {
@@ -300,31 +283,15 @@ struct CursorSettingsView: View {
         }
     }
 
-    /// Removes the specified bundle identifier from the exclusion list.
-    ///
-    /// - Parameter bundleID: The bundle identifier of the application to remove.
     private func removeExcludedApp(_ bundleID: String) {
-        var updated = excludedAppBundleIDs
-        updated.removeAll { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
-        excludedAppBundleIDs = updated
-        CursorHighlightManager.shared.excludedAppBundleIDs = updated
-        if selectedBundleID?.caseInsensitiveCompare(bundleID) == .orderedSame {
-            selectedBundleID = nil
-        }
-    }
-
-    /// Removes the currently selected application from the exclusion list.
-    private func removeSelectedApplication() {
-        guard let selected = selectedBundleID else { return }
-        removeExcludedApp(selected)
+        CursorHighlightManager.shared.removeExcludedApp(bundleID: bundleID)
+        excludedAppBundleIDs = CursorHighlightManager.shared.excludedAppBundleIDs
     }
 }
 
 /// Row representing an excluded application in cursor settings, showing its icon, name, and bundle ID.
 private struct ExcludedAppRow: View {
     let bundleID: String
-    let isSelected: Bool
-    let onSelect: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -351,17 +318,10 @@ private struct ExcludedAppRow: View {
             }
             .buttonStyle(.plain)
             .help("Remove \(appName)")
+            .accessibilityLabel("Remove \(appName)")
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        )
-        .contentShape(SwiftUI.Rectangle())
-        .onTapGesture {
-            onSelect()
-        }
     }
 
     /// Resolves the application icon, or returns a generic system placeholder icon if not installed.

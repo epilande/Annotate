@@ -69,9 +69,6 @@ class CursorHighlightManager: @unchecked Sendable {
         annotationColorCG = color.cgColor
     }
 
-    /// Initializes the cursor highlight manager with the specified user defaults store.
-    ///
-    /// - Parameter userDefaults: The user defaults store to read and write preferences. Defaults to `.standard`.
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -158,6 +155,22 @@ class CursorHighlightManager: @unchecked Sendable {
             updateExcludedAppState()
             notifyStateChanged()
         }
+    }
+
+    func addExcludedApps(bundleIDs: [String]) {
+        var list = excludedAppBundleIDs
+        for raw in bundleIDs {
+            let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty,
+                  id.caseInsensitiveCompare(Bundle.main.bundleIdentifier ?? "") != .orderedSame,
+                  !Self.isExcluded(bundleID: id, in: list) else { continue }
+            list.append(id)
+        }
+        excludedAppBundleIDs = list
+    }
+
+    func removeExcludedApp(bundleID: String) {
+        excludedAppBundleIDs.removeAll { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
     }
 
     var spotlightSize: CGFloat {
@@ -311,7 +324,11 @@ class CursorHighlightManager: @unchecked Sendable {
     }
 
     func shouldShowActiveCursorOnScreen(_ screen: NSScreen) -> Bool {
-        isOverlayActiveOnScreen(screen) && activeCursorStyle != .none
+        guard activeCursorStyle != .none,
+              let overlay = AppDelegate.shared?.overlayWindows[screen],
+              overlay.isVisible else { return false }
+        // The always-on overlay is click-through, so an excluded app underneath can capture and pin the cursor.
+        return !(isExcludedAppActive && overlay.ignoresMouseEvents)
     }
 
     func hasAnyActiveOverlay() -> Bool {
@@ -323,9 +340,8 @@ class CursorHighlightManager: @unchecked Sendable {
         !spotlightRequiresOverlay || hasAnyActiveOverlay()
     }
 
-    /// Used to keep cursor highlight windows active when any overlay is visible
     func shouldShowActiveCursorOnAnyScreen() -> Bool {
-        hasAnyActiveOverlay() && activeCursorStyle != .none
+        AppDelegate.shared?.overlayWindows.keys.contains { shouldShowActiveCursorOnScreen($0) } ?? false
     }
 
     // MARK: - Excluded Applications Suppression
@@ -339,9 +355,8 @@ class CursorHighlightManager: @unchecked Sendable {
         }
     }
 
-    /// Indicates whether cursor effects should be suppressed because an excluded application is active and no overlay is visible.
     var isSuppressedByExcludedApp: Bool {
-        isExcludedAppActive && !hasAnyActiveOverlay()
+        isExcludedAppActive
     }
 
     /// Checks the current frontmost application and updates `isExcludedAppActive` accordingly.
@@ -360,9 +375,6 @@ class CursorHighlightManager: @unchecked Sendable {
         )
     }
 
-    /// Handles application activation notifications to update excluded application focus state.
-    ///
-    /// - Parameter notification: The workspace application activation notification.
     @objc private func workspaceDidActivateApplication(_ notification: Notification) {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
             as? NSRunningApplication else {
@@ -373,11 +385,6 @@ class CursorHighlightManager: @unchecked Sendable {
 
     /// Determines whether a bundle identifier matches any identifier in an exclusion list.
     /// Matching is case-insensitive.
-    ///
-    /// - Parameters:
-    ///   - bundleID: The bundle identifier to check.
-    ///   - list: The list of excluded bundle identifiers.
-    /// - Returns: `true` if the bundle identifier is found in the exclusion list; otherwise, `false`.
     static func isExcluded(bundleID: String?, in list: [String]) -> Bool {
         guard let bundleID = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty else {
             return false

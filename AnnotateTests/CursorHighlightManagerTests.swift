@@ -689,7 +689,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertTrue(manager.isActive)
     }
 
-    /// Verifies that suppression does NOT apply when an overlay is visible, allowing annotation over excluded apps.
+    /// Verifies that suppression still applies even when an overlay is active.
     func testSuppressionBypassedWhenOverlayIsActive() throws {
         let appDelegate = MockAppDelegate()
         let screen = try XCTUnwrap(NSScreen.main)
@@ -711,13 +711,85 @@ final class CursorHighlightManagerTests: XCTestCase {
             manager.clickEffectsEnabled = true
             manager.isExcludedAppActive = true
 
-            // When an overlay is visible, isSuppressedByExcludedApp must be false
-            XCTAssertFalse(
+            XCTAssertTrue(
                 manager.isSuppressedByExcludedApp,
-                "Suppression must not apply while an overlay is active, even if the excluded app is focused"
+                "Suppression should still apply while an overlay is active when an excluded app is focused"
             )
-            XCTAssertTrue(manager.cursorHighlightAvailable)
-            XCTAssertTrue(manager.isActive)
+            XCTAssertFalse(manager.cursorHighlightAvailable)
+            XCTAssertFalse(manager.isActive)
         }
+    }
+
+    /// Verifies that active cursor is hidden in always-on mode over an excluded app (click-through overlay),
+    /// but remains visible during interactive drawing (overlay captures mouse) or over non-excluded apps.
+    func testActiveCursorGatedOnClickThroughOverlayWhenExcludedAppActive() throws {
+        let appDelegate = MockAppDelegate()
+        let screen = try XCTUnwrap(NSScreen.main)
+        let overlayWindow = OverlayWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        appDelegate.overlayWindows[screen] = overlayWindow
+        AppDelegate.shared = appDelegate
+        defer { overlayWindow.orderOut(nil) }
+
+        overlayWindow.orderFront(nil)
+        try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
+
+        withExtendedLifetime(appDelegate) {
+            manager.activeCursorStyle = .circle
+            manager.isExcludedAppActive = true
+
+            // Click-through overlay (always-on mode): excluded app underneath can capture and pin cursor -> hide active cursor
+            overlayWindow.ignoresMouseEvents = true
+            XCTAssertFalse(
+                manager.shouldShowActiveCursorOnScreen(screen),
+                "Active cursor should be hidden when excluded app is active and overlay is click-through"
+            )
+            XCTAssertFalse(manager.shouldShowActiveCursorOnAnyScreen())
+
+            // Non-click-through overlay (drawing mode): overlay owns mouse -> active cursor stays
+            overlayWindow.ignoresMouseEvents = false
+            XCTAssertTrue(
+                manager.shouldShowActiveCursorOnScreen(screen),
+                "Active cursor should be visible when overlay captures mouse events even if excluded app is active"
+            )
+            XCTAssertTrue(manager.shouldShowActiveCursorOnAnyScreen())
+
+            // When excluded app is NOT active, active cursor shows in both modes
+            manager.isExcludedAppActive = false
+            overlayWindow.ignoresMouseEvents = true
+            XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+            overlayWindow.ignoresMouseEvents = false
+            XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        }
+    }
+
+    /// Verifies trimming, deduplication, and self-bundle exclusion in addExcludedApps and removeExcludedApp.
+    func testAddExcludedAppsTrimmingDedupeAndSelfExclusion() {
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+
+        manager.addExcludedApps(bundleIDs: [
+            "  com.utmapp.UTM  ",
+            "com.utmapp.utm",
+            "",
+            "   ",
+            bundleID
+        ])
+
+        XCTAssertEqual(manager.excludedAppBundleIDs, ["com.utmapp.UTM"])
+
+        // Adding more apps with deduplication
+        manager.addExcludedApps(bundleIDs: ["org.blender.blender", "COM.UTMAPP.UTM"])
+        XCTAssertEqual(manager.excludedAppBundleIDs, ["com.utmapp.UTM", "org.blender.blender"])
+
+        // Removing case-insensitively
+        manager.removeExcludedApp(bundleID: "com.utmapp.utm")
+        XCTAssertEqual(manager.excludedAppBundleIDs, ["org.blender.blender"])
+
+        manager.removeExcludedApp(bundleID: "ORG.BLENDER.BLENDER")
+        XCTAssertTrue(manager.excludedAppBundleIDs.isEmpty)
     }
 }

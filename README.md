@@ -390,10 +390,10 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Dimming Amount**: Adjust how dark the background gets (20-90%).
 - **Dim Automatically**: Turn on background dimming whenever the spotlight is enabled.
 - **Only Show While Annotating**: Show the spotlight only while the overlay is active.
-- **Hide Cursor Effects In**: Suppress spotlight and click effects while cursor is focused other applications like VMs, Games, Remote Desktop Clients and any other application you wanna hide cursor effects in.
 - **Enable Click Effect**: Show a ripple on click and a highlight while holding.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.
+- **Hide Cursor Effects In**: Hide or suppress spotlight and click effects in apps which grab cursor or if you just dont want cursor effects to show in any given app.(e.g. VMs (UTM or Parallel Desktop), games, blender, remote desktop clients and etc).
 
 ### Shortcuts
 
