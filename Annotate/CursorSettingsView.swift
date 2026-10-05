@@ -336,7 +336,9 @@ private struct ExcludedAppRow: View {
     /// Resolves the localized display name for the application, falling back to the bundle identifier if not installed.
     private var appName: String {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            return FileManager.default.displayName(atPath: url.path)
+            // displayName keeps the ".app" extension when Finder is set to show all extensions.
+            let name = FileManager.default.displayName(atPath: url.path)
+            return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
         }
         return bundleID
     }
