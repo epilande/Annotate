@@ -1,10 +1,12 @@
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct CursorSettingsView: View {
     @State private var clickEffectsEnabled: Bool = CursorHighlightManager.shared.clickEffectsEnabled
     @State private var cursorHighlightEnabled: Bool = CursorHighlightManager.shared.cursorHighlightEnabled
     @State private var spotlightRequiresOverlay: Bool = CursorHighlightManager.shared.spotlightRequiresOverlay
+    @State private var excludedAppBundleIDs: [String] = CursorHighlightManager.shared.excludedAppBundleIDs
     @State private var effectColor: Color = Color(CursorHighlightManager.shared.effectColor)
     @State private var effectSize: Double = Double(CursorHighlightManager.shared.effectSize)
     @State private var spotlightSize: Double = Double(CursorHighlightManager.shared.spotlightSize)
@@ -174,6 +176,49 @@ struct CursorSettingsView: View {
                     subtitle: "Spotlight and click effects for presentations"
                 )
             }
+
+            if clickEffectsEnabled || cursorHighlightEnabled || activeCursorStyle != .none {
+                Section {
+                    if excludedAppBundleIDs.isEmpty {
+                        Text("No excluded applications")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(excludedAppBundleIDs, id: \.self) { bundleID in
+                            ExcludedAppRow(
+                                bundleID: bundleID,
+                                onRemove: {
+                                    removeExcludedApp(bundleID)
+                                }
+                            )
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Button(action: addApplication) {
+                            Image(systemName: "plus")
+                                .frame(width: 14, height: 14)
+                        }
+                        .help("Add application to exclusion list")
+                        .accessibilityLabel("Add application to exclusion list")
+
+                        Spacer()
+                    }
+                    .padding(.top, 2)
+                } header: {
+                    SettingsHeader(
+                        icon: "cursorarrow.slash",
+                        color: .blue,
+                        title: "Hide Cursor Effects In",
+                        subtitle: "Suppress effects while one of these apps is focused"
+                    )
+                } footer: {
+                    Text("Useful for virtual machines (such as UTM), games, and remote desktop clients that capture or lock the cursor.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .toggleStyle(.switch)
@@ -192,6 +237,7 @@ struct CursorSettingsView: View {
         clickEffectsEnabled = CursorHighlightManager.shared.clickEffectsEnabled
         cursorHighlightEnabled = CursorHighlightManager.shared.cursorHighlightEnabled
         spotlightRequiresOverlay = CursorHighlightManager.shared.spotlightRequiresOverlay
+        excludedAppBundleIDs = CursorHighlightManager.shared.excludedAppBundleIDs
         effectColor = Color(CursorHighlightManager.shared.effectColor)
         effectSize = Double(CursorHighlightManager.shared.effectSize)
         spotlightSize = Double(CursorHighlightManager.shared.spotlightSize)
@@ -200,6 +246,101 @@ struct CursorSettingsView: View {
         spotlightDimmingOpacity = Double(CursorHighlightManager.shared.spotlightDimmingOpacity) * 100
         activeCursorStyle = CursorHighlightManager.shared.activeCursorStyle
         activeCursorSize = Double(CursorHighlightManager.shared.activeCursorSize)
+    }
+
+    /// Opens an `NSOpenPanel` restricted to application bundles (`.app`) so the user can select applications to exclude.
+    private func addApplication() {
+        let panel = NSOpenPanel()
+        panel.title = "Exclude Application"
+        panel.prompt = "Exclude"
+        panel.message = "Choose an application to suppress cursor spotlight and click effects in."
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+
+        let handleURLs: ([URL]) -> Void = { urls in
+            let bundleIDs = urls.compactMap { url -> String? in
+                let resolvedURL = url.resolvingSymlinksInPath()
+                return Bundle(url: resolvedURL)?.bundleIdentifier
+                    ?? (NSDictionary(contentsOf: resolvedURL.appendingPathComponent("Contents/Info.plist"))?["CFBundleIdentifier"] as? String)
+            }
+            CursorHighlightManager.shared.addExcludedApps(bundleIDs: bundleIDs)
+            excludedAppBundleIDs = CursorHighlightManager.shared.excludedAppBundleIDs
+        }
+
+        if let window = SettingsWindowManager.shared.settingsWindow ?? NSApp.keyWindow {
+            panel.beginSheetModal(for: window) { response in
+                if response == .OK {
+                    handleURLs(panel.urls)
+                }
+            }
+        } else {
+            if panel.runModal() == .OK {
+                handleURLs(panel.urls)
+            }
+        }
+    }
+
+    private func removeExcludedApp(_ bundleID: String) {
+        CursorHighlightManager.shared.removeExcludedApp(bundleID: bundleID)
+        excludedAppBundleIDs = CursorHighlightManager.shared.excludedAppBundleIDs
+    }
+}
+
+/// Row representing an excluded application in cursor settings, showing its icon, name, and bundle ID.
+private struct ExcludedAppRow: View {
+    let bundleID: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: appIcon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(appName)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                Text(bundleID)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(appName)")
+            .accessibilityLabel("Remove \(appName)")
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+    }
+
+    /// Resolves the application icon, or returns a generic system placeholder icon if not installed.
+    private var appIcon: NSImage {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return NSImage(systemSymbolName: "app.dashed", accessibilityDescription: bundleID)
+            ?? NSWorkspace.shared.icon(for: .application)
+    }
+
+    /// Resolves the localized display name for the application, falling back to the bundle identifier if not installed.
+    private var appName: String {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            // displayName keeps the ".app" extension when Finder is set to show all extensions.
+            let name = FileManager.default.displayName(atPath: url.path)
+            return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+        }
+        return bundleID
     }
 }
 

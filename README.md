@@ -393,6 +393,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Enable Click Effect**: Show a ripple on click and a highlight while holding.
 - **Click Effect Size**: Adjust the size of the click ripple and hold highlight (30-100).
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.
+- **Hide Cursor Effects In**: Suppress spotlight and click effects while one of these apps is focused (e.g. UTM, games, or remote desktop clients).
 
 ### Shortcuts
 

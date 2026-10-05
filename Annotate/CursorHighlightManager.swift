@@ -71,9 +71,17 @@ class CursorHighlightManager: @unchecked Sendable {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let excluded = userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? []
+        self.isExcludedAppActive = Self.isExcluded(bundleID: frontmost, in: excluded)
         // Initialize color caches from stored values
         updateEffectColorCache(effectColor)
         updateAnnotationColorCache(annotationColor)
+        setupWorkspaceObservers()
+    }
+
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     // MARK: - Click Effects Settings
@@ -137,6 +145,32 @@ class CursorHighlightManager: @unchecked Sendable {
             userDefaults.set(newValue, forKey: UserDefaults.spotlightRequiresOverlayKey)
             notifyStateChanged()
         }
+    }
+
+    /// List of application bundle identifiers where cursor effects should be suppressed.
+    var excludedAppBundleIDs: [String] {
+        get { userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? [] }
+        set {
+            userDefaults.set(newValue, forKey: UserDefaults.hideCursorEffectsInAppsKey)
+            updateExcludedAppState()
+            notifyStateChanged()
+        }
+    }
+
+    func addExcludedApps(bundleIDs: [String]) {
+        var list = excludedAppBundleIDs
+        for raw in bundleIDs {
+            let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty,
+                  id.caseInsensitiveCompare(Bundle.main.bundleIdentifier ?? "") != .orderedSame,
+                  !Self.isExcluded(bundleID: id, in: list) else { continue }
+            list.append(id)
+        }
+        excludedAppBundleIDs = list
+    }
+
+    func removeExcludedApp(bundleID: String) {
+        excludedAppBundleIDs.removeAll { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
     }
 
     var spotlightSize: CGFloat {
@@ -247,14 +281,14 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied }
+    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
     /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
     /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
     var cursorHighlightAvailable: Bool {
-        cursorHighlightEnabled && overlayGateSatisfied
+        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp
     }
 
     var shouldShowCursorHighlight: Bool {
@@ -290,7 +324,11 @@ class CursorHighlightManager: @unchecked Sendable {
     }
 
     func shouldShowActiveCursorOnScreen(_ screen: NSScreen) -> Bool {
-        isOverlayActiveOnScreen(screen) && activeCursorStyle != .none
+        guard activeCursorStyle != .none,
+              let overlay = AppDelegate.shared?.overlayWindows[screen],
+              overlay.isVisible else { return false }
+        // The always-on overlay is click-through, so an excluded app underneath can capture and pin the cursor.
+        return !(isExcludedAppActive && overlay.ignoresMouseEvents)
     }
 
     func hasAnyActiveOverlay() -> Bool {
@@ -302,9 +340,56 @@ class CursorHighlightManager: @unchecked Sendable {
         !spotlightRequiresOverlay || hasAnyActiveOverlay()
     }
 
-    /// Used to keep cursor highlight windows active when any overlay is visible
     func shouldShowActiveCursorOnAnyScreen() -> Bool {
-        hasAnyActiveOverlay() && activeCursorStyle != .none
+        AppDelegate.shared?.overlayWindows.keys.contains { shouldShowActiveCursorOnScreen($0) } ?? false
+    }
+
+    // MARK: - Excluded Applications Suppression
+
+    /// Whether an excluded application currently has frontmost focus.
+    var isExcludedAppActive: Bool = false {
+        didSet {
+            if oldValue != isExcludedAppActive {
+                notifyStateChanged()
+            }
+        }
+    }
+
+    var isSuppressedByExcludedApp: Bool {
+        isExcludedAppActive
+    }
+
+    /// Checks the current frontmost application and updates `isExcludedAppActive` accordingly.
+    func updateExcludedAppState() {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        isExcludedAppActive = Self.isExcluded(bundleID: frontApp?.bundleIdentifier, in: excludedAppBundleIDs)
+    }
+
+    /// Registers notification observers to track active application switches across the workspace.
+    private func setupWorkspaceObservers() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidActivateApplication),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+    }
+
+    @objc private func workspaceDidActivateApplication(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+            as? NSRunningApplication else {
+            return
+        }
+        isExcludedAppActive = Self.isExcluded(bundleID: app.bundleIdentifier, in: excludedAppBundleIDs)
+    }
+
+    /// Determines whether a bundle identifier matches any identifier in an exclusion list.
+    /// Matching is case-insensitive.
+    static func isExcluded(bundleID: String?, in list: [String]) -> Bool {
+        guard let bundleID = bundleID?.trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty else {
+            return false
+        }
+        return list.contains { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
     }
 
     // MARK: - Release Animation
