@@ -177,7 +177,7 @@ struct CursorSettingsView: View {
                 )
             }
 
-            if clickEffectsEnabled || cursorHighlightEnabled {
+            if clickEffectsEnabled || cursorHighlightEnabled || activeCursorStyle != .none {
                 Section {
                     if excludedAppBundleIDs.isEmpty {
                         Text("No excluded applications")
