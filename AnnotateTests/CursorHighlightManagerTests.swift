@@ -690,7 +690,7 @@ final class CursorHighlightManagerTests: XCTestCase {
     }
 
     /// Verifies that suppression still applies even when an overlay is active.
-    func testSuppressionBypassedWhenOverlayIsActive() throws {
+    func testSuppressionAppliesWhileOverlayIsActive() throws {
         let appDelegate = MockAppDelegate()
         let screen = try XCTUnwrap(NSScreen.main)
         let overlayWindow = OverlayWindow(
