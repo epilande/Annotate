@@ -395,6 +395,8 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Effect Color**: Choose the color used for the spotlight and click effects from the color palette.
 - **Hide Cursor Effects In**: Suppress spotlight and click effects while one of these apps is focused (e.g. UTM, games, or remote desktop clients).
 
+Cursor effects hide while the macOS screenshot selection (<kbd>Shift</kbd> + <kbd>Command</kbd> + <kbd>4</kbd> or <kbd>5</kbd>) is on screen, so they stay out of the capture. They still show in screen recordings.
+
 ### Shortcuts
 
 Customize keys and modifier combinations for tools and utilities, organized into categories, with a **Reset All to Default** action:
