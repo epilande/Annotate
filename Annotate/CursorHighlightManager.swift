@@ -42,13 +42,6 @@ class CursorHighlightManager: @unchecked Sendable {
     private let userDefaults: UserDefaults
 
     var cursorPosition: NSPoint = .zero
-
-    /// Re-reads the cursor location from the system. Mouse monitors stop receiving moves while
-    /// another process owns input (e.g. the Cmd+Shift+4 selection), so the animation loop polls this.
-    func refreshCursorPosition() {
-        cursorPosition = NSEvent.mouseLocation
-    }
-
     var isMouseDown: Bool = false
     var mouseDownTime: CFTimeInterval = 0
     var releaseAnimation: ReleaseAnimation?
@@ -288,15 +281,17 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - Computed State
 
-    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp }
+    var isActive: Bool { clickEffectsEnabled && overlayGateSatisfied && !isSuppressed }
 
     var shouldShowRing: Bool { isActive && isMouseDown }
 
     /// Spotlight preference is on and its overlay gate is satisfied; ignores transient mouse-down suppression.
     /// The gate is deliberately global: any visible overlay keeps the spotlight following the cursor on every screen.
     var cursorHighlightAvailable: Bool {
-        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressedByExcludedApp
+        cursorHighlightEnabled && overlayGateSatisfied && !isSuppressed
     }
+
+    private var isSuppressed: Bool { isSuppressedByExcludedApp || isScreenshotSelectionActive }
 
     var shouldShowCursorHighlight: Bool {
         cursorHighlightAvailable && !isMouseDown
@@ -332,6 +327,7 @@ class CursorHighlightManager: @unchecked Sendable {
 
     func shouldShowActiveCursorOnScreen(_ screen: NSScreen) -> Bool {
         guard activeCursorStyle != .none,
+              !isScreenshotSelectionActive,
               let overlay = AppDelegate.shared?.overlayWindows[screen],
               overlay.isVisible else { return false }
         // The always-on overlay is click-through, so an excluded app underneath can capture and pin the cursor.
@@ -397,6 +393,55 @@ class CursorHighlightManager: @unchecked Sendable {
             return false
         }
         return list.contains { $0.caseInsensitiveCompare(bundleID) == .orderedSame }
+    }
+
+    // MARK: - Screenshot Selection Suppression
+
+    /// Whether the macOS screenshot selection owns the mouse. Every effect hides meanwhile so it
+    /// stays out of the capture, the way the system cursor does.
+    private(set) var isScreenshotSelectionActive = false {
+        didSet {
+            if oldValue != isScreenshotSelectionActive {
+                notifyStateChanged()
+            }
+        }
+    }
+
+    /// Looks for the selection's window. Tests replace it to avoid reading the real window list.
+    var screenshotSelectionDetector: @MainActor () -> Bool = ScreenshotSelection.isVisible
+
+    /// How long the cursor must move without a mouse event before the window list is checked.
+    /// A Cmd+Shift+5 recording keeps the selection window up but still delivers mouse events.
+    static let mouseEventGapForSelectionCheck: CFTimeInterval = 0.1
+    /// Minimum time between window list checks, which cost about 1.5 ms each.
+    static let screenshotSelectionCheckInterval: CFTimeInterval = 0.25
+
+    private var lastMouseEventTime: CFTimeInterval = 0
+    private var lastScreenshotSelectionCheckTime: CFTimeInterval = -.infinity
+
+    /// Records a mouse event from the monitors. The selection withholds mouse events, so the
+    /// first one afterwards means it is over.
+    func mouseEventReceived(at time: CFTimeInterval = CACurrentMediaTime()) {
+        lastMouseEventTime = time
+        isScreenshotSelectionActive = false
+    }
+
+    /// Re-reads the cursor location each animation frame, since no mouse events arrive while
+    /// another process owns input. When the cursor moves without events, checks whether that
+    /// owner is the screenshot selection.
+    func refreshCursorPosition(
+        at time: CFTimeInterval = CACurrentMediaTime(),
+        location: NSPoint = NSEvent.mouseLocation
+    ) {
+        let moved = location != cursorPosition
+        cursorPosition = location
+
+        guard moved, !isScreenshotSelectionActive,
+              time - lastMouseEventTime >= Self.mouseEventGapForSelectionCheck,
+              time - lastScreenshotSelectionCheckTime >= Self.screenshotSelectionCheckInterval
+        else { return }
+        lastScreenshotSelectionCheckTime = time
+        isScreenshotSelectionActive = screenshotSelectionDetector()
     }
 
     // MARK: - Release Animation
