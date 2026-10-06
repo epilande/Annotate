@@ -6,17 +6,16 @@ import Cocoa
 @MainActor
 enum ScreenshotSelection {
     static let screenshotUIBundleIdentifier = "com.apple.screencaptureui"
-    /// `screencapture -i` draws its own selection instead of going through screencaptureui.
-    static let commandLineOwnerName = "screencapture"
 
     static func isVisible() -> Bool {
         let ownerPIDs = Set(
             NSRunningApplication.runningApplications(withBundleIdentifier: screenshotUIBundleIdentifier)
                 .map(\.processIdentifier)
         )
-        guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]] else { return false }
+        guard !ownerPIDs.isEmpty,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return false }
         return containsSelectionWindow(
             windows,
             ownerPIDs: ownerPIDs,
@@ -32,9 +31,8 @@ enum ScreenshotSelection {
         screenSizes: [CGSize]
     ) -> Bool {
         windows.contains { window in
-            let ownerPID = window[kCGWindowOwnerPID as String] as? pid_t
-            let ownerName = window[kCGWindowOwnerName as String] as? String
-            guard ownerPID.map(ownerPIDs.contains) == true || ownerName == commandLineOwnerName,
+            guard let ownerPID = window[kCGWindowOwnerPID as String] as? pid_t,
+                  ownerPIDs.contains(ownerPID),
                   let boundsDictionary = window[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDictionary)
             else { return false }

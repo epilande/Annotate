@@ -41,12 +41,4 @@ final class ScreenshotSelectionTests: XCTestCase {
             screenSizes: screenSizes
         ))
     }
-
-    func testCommandLineSelectionIsMatchedByOwnerName() {
-        XCTAssertTrue(ScreenshotSelection.containsSelectionWindow(
-            [window(pid: 77, owner: ScreenshotSelection.commandLineOwnerName, width: 1440, height: 2560)],
-            ownerPIDs: [],
-            screenSizes: screenSizes
-        ))
-    }
 }
