@@ -42,6 +42,13 @@ class CursorHighlightManager: @unchecked Sendable {
     private let userDefaults: UserDefaults
 
     var cursorPosition: NSPoint = .zero
+
+    /// Re-reads the cursor location from the system. Mouse monitors stop receiving moves while
+    /// another process owns input (e.g. the Cmd+Shift+4 selection), so the animation loop polls this.
+    func refreshCursorPosition() {
+        cursorPosition = NSEvent.mouseLocation
+    }
+
     var isMouseDown: Bool = false
     var mouseDownTime: CFTimeInterval = 0
     var releaseAnimation: ReleaseAnimation?

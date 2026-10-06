@@ -559,6 +559,18 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertEqual(manager.releaseAnimation?.center, NSPoint(x: 100, y: 200), "Animation center should match cursor position")
     }
 
+    func testRefreshCursorPositionReadsSystemMouseLocation() {
+        manager.cursorPosition = NSPoint(x: -99_999, y: -99_999)
+
+        manager.refreshCursorPosition()
+
+        XCTAssertEqual(
+            manager.cursorPosition,
+            NSEvent.mouseLocation,
+            "The animation loop relies on this to track the cursor when no mouse events arrive"
+        )
+    }
+
     // MARK: - Active Cursor Style Tests
 
     func testActiveCursorStyleDefaultsToNone() {
