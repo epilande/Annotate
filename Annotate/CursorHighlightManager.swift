@@ -410,7 +410,7 @@ class CursorHighlightManager: @unchecked Sendable {
     /// Looks for the selection's window. Tests replace it to avoid reading the real window list.
     var screenshotSelectionDetector: @MainActor () -> Bool = ScreenshotSelection.isVisible
 
-    /// How long the cursor must move without a mouse event before the window list is checked.
+    /// How long to wait after the last mouse event before checking unmonitored cursor movement.
     /// A Cmd+Shift+5 recording keeps the selection window up but still delivers mouse events.
     static let mouseEventGapForSelectionCheck: CFTimeInterval = 0.1
     /// Minimum time between window list checks, which cost about 1.5 ms each.
@@ -418,29 +418,34 @@ class CursorHighlightManager: @unchecked Sendable {
 
     private var lastMouseEventTime: CFTimeInterval = 0
     private var lastScreenshotSelectionCheckTime: CFTimeInterval = -.infinity
+    private var screenshotSelectionCheckPending = false
 
     /// Records a mouse event from the monitors. The selection withholds mouse events, so the
     /// first one afterwards means it is over.
     func mouseEventReceived(at time: CFTimeInterval = CACurrentMediaTime()) {
         lastMouseEventTime = time
+        screenshotSelectionCheckPending = false
         isScreenshotSelectionActive = false
     }
 
     /// Re-reads the cursor location each animation frame, since no mouse events arrive while
     /// another process owns input. When the cursor moves without events, checks whether that
-    /// owner is the screenshot selection.
+    /// owner is the screenshot selection. Movement stays pending across the timing gates even
+    /// if the cursor stops before the check can run.
     func refreshCursorPosition(
         at time: CFTimeInterval = CACurrentMediaTime(),
         location: NSPoint = NSEvent.mouseLocation
     ) {
         let moved = location != cursorPosition
         cursorPosition = location
+        screenshotSelectionCheckPending = screenshotSelectionCheckPending || moved
 
-        guard moved, !isScreenshotSelectionActive,
+        guard screenshotSelectionCheckPending, !isScreenshotSelectionActive,
               time - lastMouseEventTime >= Self.mouseEventGapForSelectionCheck,
               time - lastScreenshotSelectionCheckTime >= Self.screenshotSelectionCheckInterval
         else { return }
         lastScreenshotSelectionCheckTime = time
+        screenshotSelectionCheckPending = false
         isScreenshotSelectionActive = screenshotSelectionDetector()
     }
 

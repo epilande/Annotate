@@ -637,6 +637,85 @@ final class CursorHighlightManagerTests: XCTestCase {
         XCTAssertEqual(checks, 2)
     }
 
+    func testScreenshotSelectionCheckWaitsForMouseEventGapAfterCursorStops() {
+        manager.cursorHighlightEnabled = true
+        manager.spotlightDimmingEnabled = true
+        manager.clickEffectsEnabled = true
+        var checks = 0
+        manager.screenshotSelectionDetector = {
+            checks += 1
+            return true
+        }
+        manager.mouseEventReceived(at: 10)
+        let location = NSPoint(x: 300, y: 200)
+
+        manager.refreshCursorPosition(at: 10.05, location: location)
+        XCTAssertEqual(checks, 0)
+        XCTAssertFalse(manager.isScreenshotSelectionActive)
+
+        manager.refreshCursorPosition(at: 10.15, location: location)
+
+        XCTAssertEqual(checks, 1)
+        XCTAssertTrue(manager.isScreenshotSelectionActive)
+        XCTAssertFalse(manager.shouldShowCursorHighlight)
+        XCTAssertFalse(manager.shouldShowDimming)
+        XCTAssertFalse(manager.isActive)
+    }
+
+    func testScreenshotSelectionCheckWaitsForThrottleAfterCursorStops() {
+        var checks = 0
+        manager.screenshotSelectionDetector = {
+            checks += 1
+            return checks > 1
+        }
+        manager.mouseEventReceived(at: 10)
+        manager.refreshCursorPosition(at: 10.5, location: NSPoint(x: 300, y: 200))
+        XCTAssertEqual(checks, 1)
+        XCTAssertFalse(manager.isScreenshotSelectionActive)
+        let location = NSPoint(x: 310, y: 200)
+
+        manager.refreshCursorPosition(at: 10.6, location: location)
+        XCTAssertEqual(checks, 1)
+
+        manager.refreshCursorPosition(at: 10.8, location: location)
+
+        XCTAssertEqual(checks, 2)
+        XCTAssertTrue(manager.isScreenshotSelectionActive)
+    }
+
+    func testMouseEventCancelsPendingScreenshotSelectionCheck() {
+        var checks = 0
+        manager.screenshotSelectionDetector = {
+            checks += 1
+            return true
+        }
+        manager.mouseEventReceived(at: 10)
+        let location = NSPoint(x: 300, y: 200)
+        manager.refreshCursorPosition(at: 10.05, location: location)
+
+        manager.mouseEventReceived(at: 10.06)
+        manager.refreshCursorPosition(at: 10.2, location: location)
+
+        XCTAssertEqual(checks, 0)
+        XCTAssertFalse(manager.isScreenshotSelectionActive)
+    }
+
+    func testScreenshotSelectionCheckDoesNotRepeatWithoutNewMovement() {
+        var checks = 0
+        manager.screenshotSelectionDetector = {
+            checks += 1
+            return false
+        }
+        manager.mouseEventReceived(at: 10)
+        let location = NSPoint(x: 300, y: 200)
+        manager.refreshCursorPosition(at: 10.5, location: location)
+
+        manager.refreshCursorPosition(at: 11, location: location)
+
+        XCTAssertEqual(checks, 1)
+        XCTAssertFalse(manager.isScreenshotSelectionActive)
+    }
+
     func testMouseEventEndsScreenshotSelectionSuppression() {
         manager.cursorHighlightEnabled = true
         manager.screenshotSelectionDetector = { true }
