@@ -80,10 +80,11 @@ class CursorHighlightWindow: NSPanel {
         animationDisplayLink = nil
     }
 
-    /// Per-frame update: refreshes each effect that is visible, plus one extra
-    /// frame after it turns off so its layer opacity can be zeroed.
+    /// Per-frame update: samples the cursor location, then refreshes each effect that is
+    /// visible, plus one extra frame after it turns off so its layer opacity can be zeroed.
     @objc private func updateAnimation(_: CADisplayLink) {
         let manager = CursorHighlightManager.shared
+        manager.refreshCursorPosition()
 
         // Only call update functions for active features (or when transitioning to inactive to hide)
         let showingSpotlight = manager.shouldShowCursorHighlight

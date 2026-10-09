@@ -1136,6 +1136,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     func handleGlobalMouseMove(_ event: NSEvent) {
         let manager = CursorHighlightManager.shared
+        manager.mouseEventReceived()
         manager.cursorPosition = NSEvent.mouseLocation
         manager.updateCursorVisibility()
 
@@ -1158,6 +1159,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     func handleGlobalMouseDown(_ event: NSEvent) {
         let manager = CursorHighlightManager.shared
+        manager.mouseEventReceived()
         guard manager.isActive else { return }
 
         manager.isMouseDown = true
@@ -1174,6 +1176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     func handleGlobalMouseUp(_ event: NSEvent) {
         let manager = CursorHighlightManager.shared
+        manager.mouseEventReceived()
 
         guard manager.isActive else {
             manager.isMouseDown = false
