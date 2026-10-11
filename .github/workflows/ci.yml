@@ -58,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Annotate-debug-app
-          path: build/derivedData/Build/Products/Debug/Annotate.app
+          path: build/derivedData/Build/Products/Debug/
           if-no-files-found: error
           retention-days: 14
 
