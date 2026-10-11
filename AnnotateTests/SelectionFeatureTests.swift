@@ -1042,8 +1042,10 @@ final class SelectionFeatureTests: XCTestCase {
     func testAnchorsHitTestByPositionAndOnlyForOneSelectedLabel() {
         let box = selectSingleLabel()
 
+        // The view is not flipped: y grows upward, so maxY is the north edge.
         XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.minX, y: box.minY)), .sw)
-        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.maxY)), .se)
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.minY)), .se)
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.maxY)), .ne)
         XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.midX, y: box.maxY)), .n)
         XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.midY)), .e)
         XCTAssertNil(overlayView.textResizeHandle(at: NSPoint(x: box.midX, y: box.midY)))
@@ -1065,18 +1067,19 @@ final class SelectionFeatureTests: XCTestCase {
         let box = selectSingleLabel(fontSize: 24)
 
         overlayView.beginTextResize(.se)
+        // The south-east anchor is dragged outward; north and west stay put.
         overlayView.updateTextResize(
-            to: NSPoint(x: box.minX + box.width * 2, y: box.minY + box.height * 2))
+            to: NSPoint(x: box.minX + box.width * 2, y: box.maxY - box.height * 2))
 
         XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 48, accuracy: 0.001)
         let grown = overlayView.calculateSelectionBoundingBox()
         XCTAssertEqual(grown.minX, box.minX, accuracy: 0.001)
-        XCTAssertEqual(grown.minY, box.minY, accuracy: 0.001)
+        XCTAssertEqual(grown.maxY, box.maxY, accuracy: 0.001)
         XCTAssertGreaterThan(grown.width, box.width)
         XCTAssertGreaterThan(grown.height, box.height)
 
         // Dragging back to where it started returns the label to its original size.
-        overlayView.updateTextResize(to: NSPoint(x: box.maxX, y: box.maxY))
+        overlayView.updateTextResize(to: NSPoint(x: box.maxX, y: box.minY))
         XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 24, accuracy: 0.001)
 
         overlayView.endTextResize()
@@ -1087,11 +1090,13 @@ final class SelectionFeatureTests: XCTestCase {
     func testFontSizeStopsAtTheConfiguredBounds() {
         let box = selectSingleLabel(fontSize: 24)
 
-        overlayView.beginTextResize(.se)
+        overlayView.beginTextResize(.ne)
         overlayView.updateTextResize(to: NSPoint(x: box.maxX + 10_000, y: box.maxY + 10_000))
         XCTAssertEqual(overlayView.textAnnotations[0].fontSize, textAnnotationFontSizeRange.upperBound)
 
-        overlayView.updateTextResize(to: NSPoint(x: box.minX - 10_000, y: box.minY - 10_000))
+        // Every event measures from where the gesture began, so the same drag collapses
+        // straight to the lower bound instead of stepping down from the clamped value.
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + 1, y: box.minY + 1))
         XCTAssertEqual(overlayView.textAnnotations[0].fontSize, textAnnotationFontSizeRange.lowerBound)
     }
 
