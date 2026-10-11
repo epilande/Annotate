@@ -1823,7 +1823,7 @@ class OverlayWindow: NSPanel {
         // The default alone is not enough to decide: a live field or a selected label can
         // sit at a different size than the stored default and still need the new one.
         let hasLiveTarget = runtimeOverlayWindows.contains { window in
-            let view = window.overlayView
+            guard let view = window.overlayView else { return false }
             if view.activeTextField != nil {
                 return view.currentTextAnnotation?.fontSize != size
             }
@@ -1834,7 +1834,7 @@ class OverlayWindow: NSPanel {
         pickerUserDefaults.textToolFontSize = size
 
         runtimeOverlayWindows.forEach { window in
-            let view = window.overlayView
+            guard let view = window.overlayView else { return }
             if let textField = view.activeTextField {
                 textField.font = NSFont.systemFont(ofSize: size)
                 view.currentTextAnnotation?.fontSize = size
