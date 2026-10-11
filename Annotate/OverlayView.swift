@@ -1119,26 +1119,25 @@ class OverlayView: NSView, NSTextFieldDelegate {
             start.original.hasBackground ? TextAnnotation.pillInsets : Self.plainLabelSlop
         var annotation = start.original
 
-        // A side handle is a pure width change: the font stays where it is and AppKit
-        // rewraps the text, which is how a label becomes a fixed-width box.
-        let horizontalOnly =
-            (handle.movesWest || handle.movesEast) && !(handle.movesNorth || handle.movesSouth)
+        let hasHorizontal = handle.movesWest || handle.movesEast
+        let hasVertical = handle.movesNorth || handle.movesSouth
 
-        if horizontalOnly {
+        // Any anchor that moves sideways fixes a width: the font stays where it is across
+        // that axis and AppKit rewraps the text, so the box changes shape instead of only
+        // getting bigger. A top or bottom anchor has no sideways component and so only
+        // scales the point size.
+        if hasHorizontal {
             let padding = Self.selectionPadding * 2 + insets.left + insets.right
             annotation.wrapWidth =
                 max(TextAnnotation.minimumWrapWidth, (maxX - minX) - padding)
-        } else {
+        }
+        if hasVertical {
             // A corner scales on the tighter axis so the label never overshoots the box the
             // user dragged out; a top or bottom handle only moves along its own axis.
-            let ratio = (handle.movesWest || handle.movesEast) ? min(ratioW, ratioH) : ratioH
+            let ratio = hasHorizontal ? min(ratioW, ratioH) : ratioH
             guard ratio > 0 else { return }
             annotation.fontSize =
                 (start.original.fontSize * ratio).clamped(to: textAnnotationFontSizeRange)
-            // An already-wrapped box keeps tracking a corner on both axes.
-            if (handle.movesWest || handle.movesEast), let wrapWidth = start.original.wrapWidth {
-                annotation.wrapWidth = max(TextAnnotation.minimumWrapWidth, wrapWidth * ratio)
-            }
         }
 
         // Measure at the new size, then pad back out so the fixed edges line up with the
@@ -1147,10 +1146,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
             .insetBy(dx: -Self.selectionPadding, dy: -Self.selectionPadding)
         var originX = old.minX
         if handle.movesWest { originX = maxX - measured.width }
-        // A width change hangs from the top so the first line stays put while later lines
-        // wrap downward; a font change keeps the opposite edge it grew from.
+        // A width-only drag hangs from the top so the first line stays put while later lines
+        // wrap downward; a vertical drag keeps the opposite edge it grew from.
         var originY = old.minY
-        if horizontalOnly || handle.movesSouth { originY = maxY - measured.height }
+        if !hasVertical || handle.movesSouth { originY = maxY - measured.height }
         annotation.position = NSPoint(
             x: originX + Self.selectionPadding + insets.left,
             y: originY + Self.selectionPadding + insets.bottom)

@@ -1163,4 +1163,23 @@ final class SelectionFeatureTests: XCTestCase {
 
         overlayView.endTextResize()
     }
+
+    func testCornerDragFixesTheWidthAsWellAsScalingTheFont() {
+        _ = selectSingleLabel(fontSize: 24)
+        overlayView.textAnnotations[0].text =
+            "Wrapping needs several words before a line ever breaks"
+        overlayView.selectedObjects = [.text(index: 0)]
+        let box = overlayView.calculateSelectionBoundingBox()
+
+        overlayView.beginTextResize(.se)
+        overlayView.updateTextResize(
+            to: NSPoint(x: box.minX + box.width * 0.3, y: box.maxY - box.height * 2))
+
+        let label = overlayView.textAnnotations[0]
+        XCTAssertNotNil(
+            label.wrapWidth,
+            "a corner must also give the box a width, not only scale the font")
+        XCTAssertLessThan(label.fontSize, 24)
+        overlayView.endTextResize()
+    }
 }
