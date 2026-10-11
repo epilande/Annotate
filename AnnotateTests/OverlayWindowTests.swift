@@ -1769,6 +1769,23 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         textField.stringValue = text
         return textField
     }
+
+    func testApplyingFontSizeAlsoResizesAPlacedSelectedLabel() {
+        UserDefaults.standard.textToolFontSize = 18
+        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+
+        window.overlayView.currentTool = .select
+        window.overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Placed", position: NSPoint(x: 50, y: 50), color: .red, fontSize: 18)
+        ]
+        window.overlayView.selectedObjects = [.text(index: 0)]
+
+        window.applyTextFontSize(44, showsFeedback: false)
+
+        XCTAssertEqual(window.overlayView.textAnnotations[0].fontSize, 44)
+        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+    }
 }
 
 @MainActor

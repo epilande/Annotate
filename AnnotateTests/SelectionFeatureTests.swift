@@ -1024,4 +1024,88 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertTrue(copied.hasBackground)
         XCTAssertEqual(copied.creationTime, 1.5)
     }
+
+    // MARK: - Text Resize Anchors
+
+    /// Places one label, selects it, and returns the box its anchors are drawn on.
+    @discardableResult
+    private func selectSingleLabel(fontSize: CGFloat = 24) -> NSRect {
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Label", position: NSPoint(x: 100, y: 100), color: .red, fontSize: fontSize)
+        ]
+        overlayView.selectedObjects = [.text(index: 0)]
+        return overlayView.calculateSelectionBoundingBox()
+    }
+
+    func testAnchorsHitTestByPositionAndOnlyForOneSelectedLabel() {
+        let box = selectSingleLabel()
+
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.minX, y: box.minY)), .sw)
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.maxY)), .se)
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.midX, y: box.maxY)), .n)
+        XCTAssertEqual(overlayView.textResizeHandle(at: NSPoint(x: box.maxX, y: box.midY)), .e)
+        XCTAssertNil(overlayView.textResizeHandle(at: NSPoint(x: box.midX, y: box.midY)))
+
+        // Nothing selected: no box to transform.
+        overlayView.selectedObjects = []
+        XCTAssertNil(overlayView.textResizeHandle(at: NSPoint(x: box.minX, y: box.minY)))
+
+        // Two labels: a multi-selection has no single box either.
+        _ = selectSingleLabel()
+        overlayView.textAnnotations.append(
+            TextAnnotation(
+                text: "Other", position: NSPoint(x: 400, y: 400), color: .red, fontSize: 24))
+        overlayView.selectedObjects = [.text(index: 0), .text(index: 1)]
+        XCTAssertNil(overlayView.textResizeHandle(at: NSPoint(x: box.minX, y: box.minY)))
+    }
+
+    func testDraggingCornerScalesFontAndLeavesTheOppositeCornerInPlace() {
+        let box = selectSingleLabel(fontSize: 24)
+
+        overlayView.beginTextResize(.se)
+        overlayView.updateTextResize(
+            to: NSPoint(x: box.minX + box.width * 2, y: box.minY + box.height * 2))
+
+        XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 48, accuracy: 0.001)
+        let grown = overlayView.calculateSelectionBoundingBox()
+        XCTAssertEqual(grown.minX, box.minX, accuracy: 0.001)
+        XCTAssertEqual(grown.minY, box.minY, accuracy: 0.001)
+        XCTAssertGreaterThan(grown.width, box.width)
+        XCTAssertGreaterThan(grown.height, box.height)
+
+        // Dragging back to where it started returns the label to its original size.
+        overlayView.updateTextResize(to: NSPoint(x: box.maxX, y: box.maxY))
+        XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 24, accuracy: 0.001)
+
+        overlayView.endTextResize()
+        XCTAssertNil(overlayView.resizeHandle)
+        XCTAssertNil(overlayView.resizeStart)
+    }
+
+    func testFontSizeStopsAtTheConfiguredBounds() {
+        let box = selectSingleLabel(fontSize: 24)
+
+        overlayView.beginTextResize(.se)
+        overlayView.updateTextResize(to: NSPoint(x: box.maxX + 10_000, y: box.maxY + 10_000))
+        XCTAssertEqual(overlayView.textAnnotations[0].fontSize, textAnnotationFontSizeRange.upperBound)
+
+        overlayView.updateTextResize(to: NSPoint(x: box.minX - 10_000, y: box.minY - 10_000))
+        XCTAssertEqual(overlayView.textAnnotations[0].fontSize, textAnnotationFontSizeRange.lowerBound)
+    }
+
+    func testSetSelectedTextFontSizeChangesOnlyTheSelectedLabel() {
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(text: "One", position: NSPoint(x: 100, y: 100), color: .red, fontSize: 18),
+            TextAnnotation(text: "Two", position: NSPoint(x: 300, y: 300), color: .red, fontSize: 18),
+        ]
+        overlayView.selectedObjects = [.text(index: 1)]
+
+        overlayView.setSelectedTextFontSize(44)
+
+        XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 18)
+        XCTAssertEqual(overlayView.textAnnotations[1].fontSize, 44)
+    }
 }

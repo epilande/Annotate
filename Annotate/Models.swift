@@ -131,6 +131,21 @@ enum SelectedObject: Equatable, Hashable {
     }
 }
 
+/// The eight anchor squares drawn on a single selected text annotation's box. Which
+/// sides a handle leaves alone decides which edge stays put while you drag it.
+enum ResizeHandle: CaseIterable, Hashable {
+    case nw, n, ne, e, se, s, sw, w
+
+    /// The handle sits on the box's left edge, so dragging it changes `minX`.
+    var movesWest: Bool { self == .nw || self == .w || self == .sw }
+    /// The handle sits on the box's right edge.
+    var movesEast: Bool { self == .ne || self == .e || self == .se }
+    /// The handle sits on the box's top edge.
+    var movesNorth: Bool { self == .nw || self == .n || self == .ne }
+    /// The handle sits on the box's bottom edge.
+    var movesSouth: Bool { self == .sw || self == .s || self == .se }
+}
+
 /// Represents a timed point for pen/highlighter so we can do trailing fade-out
 struct TimedPoint {
     var point: NSPoint
@@ -351,6 +366,7 @@ enum DrawingAction {
     case addText(TextAnnotation)
     case removeText(TextAnnotation)
     case moveText(Int, NSPoint, NSPoint)
+    case resizeText(Int, TextAnnotation, TextAnnotation)  // index, from, to
     case moveArrow(Int, NSPoint, NSPoint, NSPoint, NSPoint)  // index, fromStart, fromEnd, toStart, toEnd
     case moveLine(Int, NSPoint, NSPoint, NSPoint, NSPoint)
     case moveRectangle(Int, NSPoint, NSPoint, NSPoint, NSPoint)

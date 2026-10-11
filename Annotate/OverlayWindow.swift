@@ -502,7 +502,7 @@ class OverlayWindow: NSPanel {
             within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
-            currentFontSize: defaults.textToolFontSize,
+            currentFontSize: overlayView.selectedTextFontSize() ?? defaults.textToolFontSize,
             currentCounterSize: defaults.counterToolFontSize,
             previewTool: overlayView.currentTool)
 
@@ -604,13 +604,21 @@ class OverlayWindow: NSPanel {
 
     private func contextualPickerMode(for requestedMode: QuickPickerView.Mode) -> QuickPickerView.Mode {
         guard requestedMode == .width else { return requestedMode }
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             return .fontSize
         }
         if overlayView.currentTool == .counter {
             return .counterSize
         }
         return .width
+    }
+
+    /// A size change should land on a label while the text tool is live, a field is being
+    /// edited, or exactly one label is selected — that last case is how a label that is
+    /// already placed gets resized after the fact.
+    private var isTextSizingContext: Bool {
+        overlayView.currentTool == .text || overlayView.activeTextField != nil
+            || overlayView.selectedTextIndex() != nil
     }
 
     private func shortcut(for mode: QuickPickerView.Mode) -> String {
@@ -856,6 +864,13 @@ class OverlayWindow: NSPanel {
         
         // Handle selection mode
         if overlayView.currentTool == .select {
+            // Anchors sit inside the bounding box, so they get first refusal on the click:
+            // grabbing one scales the label instead of dragging the whole selection.
+            if !shiftPressed, let handle = overlayView.textResizeHandle(at: startPoint) {
+                overlayView.beginTextResize(handle)
+                return
+            }
+
             // First check if we clicked inside the bounding box of already selected objects
             if !overlayView.selectedObjects.isEmpty && overlayView.isPointInSelectionBoundingBox(startPoint) {
                 // Clicked inside the selection bounding box
@@ -1105,6 +1120,12 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // Anchor drag: the label rescales in place, it does not move with the cursor.
+        if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
+            overlayView.updateTextResize(to: currentPoint)
+            return
+        }
+
         // Handle selection dragging
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Get or set drag start point
@@ -1483,6 +1504,14 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // End an anchor drag before the move branch below, which would otherwise register
+        // a move undo for a selection that never moved.
+        if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
+            overlayView.endTextResize()
+            overlayView.needsDisplay = true
+            return
+        }
+
         // Handle selection drag end
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Register undo for all moved objects
@@ -1722,7 +1751,7 @@ class OverlayWindow: NSPanel {
         let cmdPressed = event.modifierFlags.contains(.command)
         
         if cmdPressed {
-            if overlayView.currentTool == .text {
+            if isTextSizingContext {
                 scrollWheelForFontSize(with: event)
             } else if overlayView.currentTool == .counter {
                 scrollWheelForCounterSize(with: event)
@@ -1782,30 +1811,41 @@ class OverlayWindow: NSPanel {
         guard scrollDelta != 0 else { return }
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
-        let size =
-            (pickerUserDefaults.textToolFontSize + increment)
-            .clamped(to: textAnnotationFontSizeRange)
+        // Step from the selected label's own size, so the first notch after placing it
+        // moves that label rather than jumping to the stored default.
+        let base = overlayView.selectedTextFontSize() ?? pickerUserDefaults.textToolFontSize
+        let size = (base + increment).clamped(to: textAnnotationFontSizeRange)
         applyTextFontSize(size)
     }
 
     func applyTextFontSize(_ requestedSize: CGFloat, showsFeedback: Bool = true) {
         let size = requestedSize.clamped(to: textAnnotationFontSizeRange)
-        guard size != pickerUserDefaults.textToolFontSize
-            || runtimeOverlayWindows.contains(where: {
-                $0.overlayView.activeTextField != nil
-                    && $0.overlayView.currentTextAnnotation?.fontSize != size
-            })
-        else { return }
+        // The default alone is not enough to decide: a live field or a selected label can
+        // sit at a different size than the stored default and still need the new one.
+        let hasLiveTarget = runtimeOverlayWindows.contains { window in
+            let view = window.overlayView
+            if view.activeTextField != nil {
+                return view.currentTextAnnotation?.fontSize != size
+            }
+            guard let index = view.selectedTextIndex() else { return false }
+            return view.textAnnotations[index].fontSize != size
+        }
+        guard size != pickerUserDefaults.textToolFontSize || hasLiveTarget else { return }
         pickerUserDefaults.textToolFontSize = size
 
         runtimeOverlayWindows.forEach { window in
-            if let textField = window.overlayView.activeTextField {
+            let view = window.overlayView
+            if let textField = view.activeTextField {
                 textField.font = NSFont.systemFont(ofSize: size)
-                window.overlayView.currentTextAnnotation?.fontSize = size
-                window.overlayView.resizeActiveTextField(textField)
+                view.currentTextAnnotation?.fontSize = size
+                view.resizeActiveTextField(textField)
                 textField.needsDisplay = true
+            } else {
+                // A placed label resizes from the same entry points as a field being typed
+                // in: ladder, picker, and Cmd+scroll.
+                view.setSelectedTextFontSize(size)
             }
-            window.overlayView.needsDisplay = true
+            view.needsDisplay = true
         }
 
         if showsFeedback {
@@ -1815,7 +1855,9 @@ class OverlayWindow: NSPanel {
 
     func stepTextFontSize(_ direction: Int) {
         let currentSize =
-            overlayView.currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+            overlayView.currentTextAnnotation?.fontSize
+            ?? overlayView.selectedTextFontSize()
+            ?? pickerUserDefaults.textToolFontSize
         applyTextFontSize(
             QuickPickerView.steppedValue(
                 in: QuickPickerView.fontSizeOptions,
@@ -1865,7 +1907,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func stepActiveLadder(_ direction: Int) {
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             stepTextFontSize(direction)
             return
         }
