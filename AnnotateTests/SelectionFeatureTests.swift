@@ -1113,4 +1113,54 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(overlayView.textAnnotations[0].fontSize, 18)
         XCTAssertEqual(overlayView.textAnnotations[1].fontSize, 44)
     }
+
+    // MARK: - Wrapped Text Boxes
+
+    func testWrappingMakesTheBoxTallerInsteadOfWider() {
+        let text = "Wrapping needs several words before a line ever breaks"
+        let single = TextAnnotation(
+            text: text, position: .zero, color: .red, fontSize: 24)
+        let wrapped = TextAnnotation(
+            text: text, position: .zero, color: .red, fontSize: 24, wrapWidth: 80)
+
+        let singleBounds = single.bounds(fallbackInsets: OverlayView.plainLabelSlop)
+        let wrappedBounds = wrapped.bounds(fallbackInsets: OverlayView.plainLabelSlop)
+
+        // The wrapped box keeps the fixed width plus insets, and is taller because AppKit
+        // has broken the same text into several lines.
+        XCTAssertEqual(
+            wrappedBounds.width,
+            wrapped.textSize().width + OverlayView.plainLabelSlop.left
+                + OverlayView.plainLabelSlop.right,
+            accuracy: 0.001)
+        XCTAssertLessThan(wrappedBounds.width, singleBounds.width)
+        XCTAssertGreaterThan(wrappedBounds.height, singleBounds.height)
+        XCTAssertEqual(wrapped.textSize().width, 80, accuracy: 0.001)
+    }
+
+    func testSideHandleFixesTheWidthAndLeavesTheFontSizeAlone() {
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Wrapping needs several words before a line ever breaks",
+                position: NSPoint(x: 100, y: 100), color: .red, fontSize: 24)
+        ]
+        overlayView.selectedObjects = [.text(index: 0)]
+        let box = overlayView.calculateSelectionBoundingBox()
+
+        overlayView.beginTextResize(.e)
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + 70, y: box.midY))
+
+        let label = overlayView.textAnnotations[0]
+        XCTAssertEqual(label.fontSize, 24, accuracy: 0.001)
+        guard let wrapWidth = label.wrapWidth else {
+            return XCTFail("dragging a side anchor must give the label a fixed width")
+        }
+        XCTAssertGreaterThan(wrapWidth, TextAnnotation.minimumWrapWidth)
+        XCTAssertGreaterThan(
+            overlayView.calculateSelectionBoundingBox().height, box.height,
+            "a narrower box must wrap to more lines")
+
+        overlayView.endTextResize()
+    }
 }

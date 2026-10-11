@@ -6,6 +6,7 @@ enum ToolbarAction {
     case tool(ToolType)
     case colorPicker
     case widthPicker
+    case fontSizePicker
     case toggleFade
     case deleteLast
     case clearAll
@@ -17,6 +18,11 @@ final class ToolbarModel: ObservableObject {
     @Published var activeTool: ToolType = .pen
     @Published var currentColor: NSColor = .systemRed
     @Published var currentWidth: CGFloat = 3
+    /// Point size shown by the text-size chip, and whether the chip is on the bar at all:
+    /// it only makes sense while a label can be sized (text tool, live field, or a
+    /// single selected label).
+    @Published var currentFontSize: CGFloat = 14
+    @Published var showsTextSize = false
     @Published var fadeMode = true
     /// Snapshot of the user's tool shortcuts, refreshed by the window on `.shortcutsDidChange`.
     @Published var shortcuts: [ShortcutKey: String] = [:]
@@ -122,6 +128,24 @@ struct ToolbarView: View {
                     keycap(shortcut(for: .lineWidthPicker), lit: true)
                 }
                 .chipPadding()
+            }
+
+            // Sits with the other value chips and opens the same size ladder the W key
+            // does, so a placed label can be sized without reaching for the keyboard.
+            if model.showsTextSize {
+                toolbarButton(identifier: "toolbar.textSize", action: { perform(.fontSizePicker) }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "textformat.size")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("\(Int(model.currentFontSize.rounded()))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .monospacedDigit()
+                            .fixedSize()
+                        keycap(shortcut(for: .lineWidthPicker), lit: true)
+                    }
+                    .foregroundStyle(Color.primary.opacity(0.76))
+                    .chipPadding()
+                }
             }
 
             toolbarButton(identifier: "toolbar.fade", action: { perform(.toggleFade) }) {
