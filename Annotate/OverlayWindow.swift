@@ -377,28 +377,28 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        switch event.type {
-        case .keyDown:
+        switch (event.type, KeyChord(event: event)) {
+        case (.keyDown, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyDown(event)
+                _ = handleQuickPickerKeyDown(chord)
                 return
             }
-            if handleOverlayShortcut(event) {
+            if handleOverlayShortcut(chord) {
                 return
             }
-            if isEditingAnnotationText, deliverKeyToAnnotationField(event) {
+            if isEditingAnnotationText, deliverKeyToAnnotationField(chord) {
                 return
             }
-        case .keyUp:
+        case (.keyUp, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyUp(event)
+                _ = handleQuickPickerKeyUp(chord)
                 return
             }
             if isEditingAnnotationText {
                 super.sendEvent(event)
                 return
             }
-            if handleQuickPickerKeyUp(event) {
+            if handleQuickPickerKeyUp(chord) {
                 return
             }
         default:
@@ -584,7 +584,7 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyUp(with event: NSEvent) {
-        if handleQuickPickerKeyUp(event) {
+        if let chord = KeyChord(event: event), handleQuickPickerKeyUp(chord) {
             return
         }
         super.keyUp(with: event)
@@ -665,17 +665,13 @@ class OverlayWindow: NSPanel {
     /// stolen. Other keys, including Shift+Return, Cmd shortcuts, and Delete, take
     /// the normal sendEvent path and are never appended via stringValue.
     @discardableResult
-    private func deliverKeyToAnnotationField(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-        else { return false }
-        let chars = event.characters ?? ""
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        guard key == "c" || key == "[" || key == "]" else { return false }
-        guard !chars.isEmpty else { return false }
+    private func deliverKeyToAnnotationField(_ chord: KeyChord) -> Bool {
+        guard ["c", "[", "]"].contains(where: { ShortcutBinding($0).matches(chord) }) else { return false }
+        guard !chord.characters.isEmpty else { return false }
         guard let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
         else { return false }
 
-        editor.insertText(chars)
+        editor.insertText(chord.characters)
         if let field = overlayView.activeTextField {
             overlayView.controlTextDidChange(
                 Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -683,27 +679,25 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-
+    private func handleQuickPickerKeyDown(_ chord: KeyChord) -> Bool {
         if let picker = quickPicker {
             if pickerCommitInFlight {
                 return true
             }
-            if event.isARepeat {
+            if chord.isRepeat {
                 return true
             }
-            if event.keyCode == 53 {
+            if chord.keyCode == 53 {
                 cancelQuickPicker()
                 return true
             }
-            if let digit = Int(key), (1...picker.optionCount).contains(digit) {
+            if let digit = Int(chord.key), (1...picker.optionCount).contains(digit) {
                 picker.select(index: digit - 1)
                 commitQuickPicker()
                 return true
             }
             let action: ShortcutKey = picker.mode == .color ? .colorPicker : .lineWidthPicker
-            if ShortcutManager.shared.matches(event, tool: action) {
+            if ShortcutManager.shared.matches(chord, tool: action) {
                 cancelQuickPicker()
             }
             return true
@@ -714,9 +708,9 @@ class OverlayWindow: NSPanel {
 
     /// All editable overlay actions share exact key/modifier matching and the same focus guards.
     @discardableResult
-    private func handleOverlayShortcut(_ event: NSEvent) -> Bool {
+    private func handleOverlayShortcut(_ chord: KeyChord) -> Bool {
         guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
-            let action = ShortcutManager.shared.action(for: event)
+            let action = ShortcutManager.shared.action(for: chord)
         else { return false }
 
         switch action {
@@ -732,17 +726,17 @@ class OverlayWindow: NSPanel {
         case .select: AppDelegate.shared?.enableSelectMode(NSMenuItem())
         case .eraser: AppDelegate.shared?.enableEraserMode(NSMenuItem())
         case .colorPicker, .lineWidthPicker:
-            if !event.isARepeat {
+            if !chord.isRepeat {
                 beginQuickPicker(action == .colorPicker ? .color : .width,
                     activationKey: ShortcutManager.shared.getShortcut(for: action),
-                    activationKeyCode: event.keyCode)
+                    activationKeyCode: chord.keyCode)
             }
         case .toggleBoard: AppDelegate.shared?.toggleBoardVisibility(nil)
         case .toggleClickEffects: AppDelegate.shared?.toggleClickEffects(nil)
-        case .toggleBackgroundDimming: toggleBackgroundDimming(with: event)
+        case .toggleBackgroundDimming: toggleBackgroundDimming(with: chord)
         case .toggleFade: AppDelegate.shared?.toggleFadeMode(nil)
         case .toggleToolbar:
-            if !event.isARepeat { AppDelegate.shared?.toggleToolbar() }
+            if !chord.isRepeat { AppDelegate.shared?.toggleToolbar() }
         case .decreaseSize: stepActiveLadder(-1)
         case .increaseSize: stepActiveLadder(1)
         case .clearAll: performClearAll()
@@ -750,12 +744,11 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyUp(_ event: NSEvent) -> Bool {
+    private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {
         guard quickPicker != nil, let interaction = quickPickerInteraction,
             case .waitingForRelease(let key, let openedAt, let moved, let holdActive) =
                 interaction,
-            quickPickerActivationKeyCode.map({ event.keyCode == $0 })
-                ?? (event.charactersIgnoringModifiers?.lowercased() == key)
+            quickPickerActivationKeyCode.map({ chord.keyCode == $0 }) ?? (chord.key == key)
         else { return false }
 
         quickPickerHoldTask?.cancel()
@@ -1528,48 +1521,48 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
-        if handleQuickPickerKeyDown(event) {
+        guard let chord = KeyChord(event: event) else {
+            super.keyDown(with: event)
+            return
+        }
+        if handleQuickPickerKeyDown(chord) {
             return
         }
 
-        if handleOverlayShortcut(event) { return }
+        if handleOverlayShortcut(chord) { return }
         // The field editor already handles typing before it reaches the window.
         // Do not let an unhandled editing key reach another window's shortcuts.
         guard !isEditingAnnotationText else { return }
-        let cmdPressed = event.modifierFlags.contains(.command)
-        let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
             cancelFreehandStroke()
         }
 
-        // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
-        // Match on `characters` only. With Command held, `characters` carries the layout's
-        // Command layer (QWERTY letters on Dvorak - QWERTY ⌘, Latin letters on Russian, Greek
-        // and Hebrew) and falls back to the base letter on layouts with no Command layer, so it
-        // is correct everywhere. `charactersIgnoringModifiers` reports the base layer instead:
-        // it misses those layouts and aliases unrelated chords, for example on Dvorak - QWERTY ⌘
-        // the base letter behind Cmd+, is "w", so Cmd+, would close the overlay.
-        if cmdPressed {
-            if key == "w" {
-                AppDelegate.shared?.closeOverlay()
-                return
-            }
-            if key == "z" {
-                if event.modifierFlags.contains(.shift) {
-                    overlayView.redo()
-                } else {
-                    overlayView.undo()
-                }
-                return
-            }
-            if key == "r", !event.modifierFlags.contains(.shift),
-                !event.modifierFlags.contains(.option), overlayView.currentTool == .counter
-            {
-                overlayView.resetCounter()
-                showToggleFeedback("Counter Reset", icon: "🔄")
-                return
-            }
+        // These follow the layout's Command layer, not QWERTY key positions (see `KeyChord`).
+        if ShortcutBinding("w", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.shift, .option, .control])
+        {
+            AppDelegate.shared?.closeOverlay()
+            return
+        }
+        if ShortcutBinding("z", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.undo()
+            return
+        }
+        if ShortcutBinding("z", modifiers: [.command, .shift])
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.redo()
+            return
+        }
+        if ShortcutBinding("r", modifiers: .command).matches(chord, on: .command, ignoring: .control),
+            overlayView.currentTool == .counter
+        {
+            overlayView.resetCounter()
+            showToggleFeedback("Counter Reset", icon: "🔄")
+            return
         }
 
         switch event.keyCode {
@@ -1886,8 +1879,8 @@ class OverlayWindow: NSPanel {
                 direction: direction))
     }
     
-    private func toggleBackgroundDimming(with event: NSEvent) {
-        guard !event.isARepeat else { return }
+    private func toggleBackgroundDimming(with chord: KeyChord) {
+        guard !chord.isRepeat else { return }
         let manager = CursorHighlightManager.shared
         manager.toggleSpotlightDimming()
         showToggleFeedback(
@@ -2171,13 +2164,18 @@ class OverlayWindow: NSPanel {
     // MARK: - Keyboard Commands for Copy/Paste/Cut/Duplicate
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if handleQuickPickerKeyDown(event) || handleOverlayShortcut(event) { return true }
-        // Check for Command key combinations
-        guard event.modifierFlags.contains(.command) else {
+        guard let chord = KeyChord(event: event) else {
             return super.performKeyEquivalent(with: event)
         }
+        if handleQuickPickerKeyDown(chord) || handleOverlayShortcut(chord) { return true }
 
-        switch event.charactersIgnoringModifiers?.lowercased() {
+        // Selection commands accept any extra modifiers. Command-B accepts only Shift.
+        let selectionCommand = ["a", "c", "x", "v", "d"].first {
+            ShortcutBinding($0, modifiers: .command).matches(chord, ignoring: [.shift, .option, .control])
+        }
+        let isTextBackgroundCommand = ShortcutBinding("b", modifiers: .command).matches(chord, ignoring: .shift)
+
+        switch selectionCommand ?? (isTextBackgroundCommand ? "b" : nil) {
         case "a":
             // Defer to text field when editing text
             if overlayView.activeTextField != nil {
@@ -2230,10 +2228,7 @@ class OverlayWindow: NSPanel {
             // Command-B toggles the label background whenever the text tool is in play,
             // with or without an active field. Bare "b" stays Toggle Board; that path runs
             // in keyDown and only fires when no modifier is held.
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard modifiers.isDisjoint(with: [.option, .control]),
-                overlayView.currentTool == .text || overlayView.activeTextField != nil
-            else {
+            guard overlayView.currentTool == .text || overlayView.activeTextField != nil else {
                 return super.performKeyEquivalent(with: event)
             }
             toggleTextBackground()
