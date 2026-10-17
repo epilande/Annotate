@@ -57,6 +57,13 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         return window
     }
 
+    /// Runs the display pass AppKit would run before the next event. Setting `needsDisplay`
+    /// to false does not clear a dirty region the window already holds; displaying does.
+    private func displayPendingChanges(of view: OverlayView, file: StaticString = #filePath, line: UInt = #line) {
+        view.display()
+        XCTAssertFalse(view.needsDisplay, "Nothing is left to display", file: file, line: line)
+    }
+
     private func mouse(_ type: NSEvent.EventType, at point: NSPoint) throws -> NSEvent {
         try XCTUnwrap(TestEvents.createMouseEvent(type: type, location: point))
     }
@@ -210,7 +217,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         window.mouseDown(with: try mouse(.leftMouseDown, at: NSPoint(x: 100, y: 100)))
         window.mouseDragged(with: try mouse(.leftMouseDragged, at: NSPoint(x: 130, y: 100)))
         XCTAssertEqual(view.rectangles[0].bounds.origin, NSPoint(x: 80, y: 50))
-        view.needsDisplay = false
+        displayPendingChanges(of: view)
 
         window.mouseUp(with: try mouse(.leftMouseUp, at: NSPoint(x: 130, y: 100)))
         XCTAssertTrue(view.needsDisplay, "Settling the move redraws")
@@ -238,7 +245,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
 
         window.mouseDown(with: try mouse(.leftMouseDown, at: NSPoint(x: 100, y: 100)))
         window.mouseDragged(with: try mouse(.leftMouseDragged, at: NSPoint(x: 120, y: 100)))
-        view.needsDisplay = false
+        displayPendingChanges(of: view)
 
         window.mouseUp(with: try mouse(.leftMouseUp, at: NSPoint(x: 120, y: 100)))
         XCTAssertTrue(view.needsDisplay)
@@ -270,7 +277,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
             ("label being edited", { $0.editingTextAnnotationIndex = 0 }),
         ]
         for (name, change) in changes {
-            view.needsDisplay = false
+            displayPendingChanges(of: view)
             change(view)
             XCTAssertTrue(view.needsDisplay, "Changing \(name) redraws")
         }
@@ -281,7 +288,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         view.currentTool = .counter
-        view.needsDisplay = false
+        displayPendingChanges(of: view)
 
         window.mouseDown(with: try mouse(.leftMouseDown, at: NSPoint(x: 100, y: 100)))
 

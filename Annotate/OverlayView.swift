@@ -386,7 +386,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if !target.paths.isEmpty {
                         target.paths.removeLast()
-                        target.registerUndo(action: .removePath(path))                    }
+                        target.registerUndo(action: .removePath(path))
+                    }
                 }
             }
         case .addArrow(let arrow):
@@ -394,7 +395,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if !target.arrows.isEmpty {
                         target.arrows.removeLast()
-                        target.registerUndo(action: .removeArrow(arrow))                    }
+                        target.registerUndo(action: .removeArrow(arrow))
+                    }
                 }
             }
         case .addLine(let line):
@@ -402,7 +404,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if !target.lines.isEmpty {
                         target.lines.removeLast()
-                        target.registerUndo(action: .removeLine(line))                    }
+                        target.registerUndo(action: .removeLine(line))
+                    }
                 }
             }
         case .addHighlight(let highlight):
@@ -410,32 +413,37 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if !target.highlightPaths.isEmpty {
                         target.highlightPaths.removeLast()
-                        target.registerUndo(action: .removeHighlight(highlight))                    }
+                        target.registerUndo(action: .removeHighlight(highlight))
+                    }
                 }
             }
         case .removePath(let path):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.paths.append(path)
-                    target.registerUndo(action: .addPath(path))                }
+                    target.registerUndo(action: .addPath(path))
+                }
             }
         case .removeArrow(let arrow):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.arrows.append(arrow)
-                    target.registerUndo(action: .addArrow(arrow))                }
+                    target.registerUndo(action: .addArrow(arrow))
+                }
             }
         case .removeLine(let line):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.lines.append(line)
-                    target.registerUndo(action: .addLine(line))                }
+                    target.registerUndo(action: .addLine(line))
+                }
             }
         case .removeHighlight(let highlight):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.highlightPaths.append(highlight)
-                    target.registerUndo(action: .addHighlight(highlight))                }
+                    target.registerUndo(action: .addHighlight(highlight))
+                }
             }
         case .addRectangle(let rectangle):
             manager?.registerUndo(withTarget: self) { target in
@@ -445,49 +453,56 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     // uncover what it hides.
                     if let index = target.rectangles.lastIndex(of: rectangle) {
                         target.rectangles.remove(at: index)
-                        target.registerUndo(action: .removeRectangle(rectangle))                    }
+                        target.registerUndo(action: .removeRectangle(rectangle))
+                    }
                 }
             }
         case .removeRectangle(let rectangle):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.rectangles.append(rectangle)
-                    target.registerUndo(action: .addRectangle(rectangle))                }
+                    target.registerUndo(action: .addRectangle(rectangle))
+                }
             }
         case .addCircle(let circle):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     if !target.circles.isEmpty {
                         target.circles.removeLast()
-                        target.registerUndo(action: .removeCircle(circle))                    }
+                        target.registerUndo(action: .removeCircle(circle))
+                    }
                 }
             }
         case .removeCircle(let circle):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.circles.append(circle)
-                    target.registerUndo(action: .addCircle(circle))                }
+                    target.registerUndo(action: .addCircle(circle))
+                }
             }
         case .addText(let annotation):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     if !target.textAnnotations.isEmpty {
                         target.textAnnotations.removeLast()
-                        target.registerUndo(action: .removeText(annotation))                    }
+                        target.registerUndo(action: .removeText(annotation))
+                    }
                 }
             }
         case .removeText(let annotation):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     target.textAnnotations.append(annotation)
-                    target.registerUndo(action: .addText(annotation))                }
+                    target.registerUndo(action: .addText(annotation))
+                }
             }
         case .moveText(let index, let oldPosition, let newPosition):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
                     if index < target.textAnnotations.count {
                         target.textAnnotations[index].position = oldPosition
-                        target.registerUndo(action: .moveText(index, newPosition, oldPosition))                    }
+                        target.registerUndo(action: .moveText(index, newPosition, oldPosition))
+                    }
                 }
             }
         case .moveArrow(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -496,7 +511,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.arrows.count {
                         target.arrows[index].startPoint = fromStart
                         target.arrows[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveArrow(index, toStart, toEnd, fromStart, fromEnd))                    }
+                        target.registerUndo(action: .moveArrow(index, toStart, toEnd, fromStart, fromEnd))
+                    }
                 }
             }
         case .moveLine(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -505,7 +521,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.lines.count {
                         target.lines[index].startPoint = fromStart
                         target.lines[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveLine(index, toStart, toEnd, fromStart, fromEnd))                    }
+                        target.registerUndo(action: .moveLine(index, toStart, toEnd, fromStart, fromEnd))
+                    }
                 }
             }
         case .moveRectangle(let storedIndex, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -520,7 +537,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.rectangles[index].startPoint = fromStart
                         target.rectangles[index].endPoint = fromEnd
                         target.rectangles[index].sample = nil
-                        target.registerUndo(action: .moveRectangle(index, toStart, toEnd, fromStart, fromEnd))                    }
+                        target.registerUndo(action: .moveRectangle(index, toStart, toEnd, fromStart, fromEnd))
+                    }
                 }
             }
         case .moveCircle(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -529,7 +547,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.circles.count {
                         target.circles[index].startPoint = fromStart
                         target.circles[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveCircle(index, toStart, toEnd, fromStart, fromEnd))                    }
+                        target.registerUndo(action: .moveCircle(index, toStart, toEnd, fromStart, fromEnd))
+                    }
                 }
             }
         case .movePath(let index, let delta):
@@ -537,12 +556,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if index < target.paths.count {
                         // Undo: move back by negative delta
-                        for i in 0..<target.paths[index].points.count {
-                            target.paths[index].points[i].point.x -= delta.x
-                            target.paths[index].points[i].point.y -= delta.y
-                        }
+                        Self.translate(&target.paths[index], by: NSPoint(x: -delta.x, y: -delta.y))
                         target.rebuildPathGeometry(&target.paths[index])
-                        target.registerUndo(action: .movePath(index, NSPoint(x: -delta.x, y: -delta.y)))                    }
+                        target.registerUndo(action: .movePath(index, NSPoint(x: -delta.x, y: -delta.y)))
+                    }
                 }
             }
         case .moveHighlight(let index, let delta):
@@ -550,12 +567,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if index < target.highlightPaths.count {
                         // Undo: move back by negative delta
-                        for i in 0..<target.highlightPaths[index].points.count {
-                            target.highlightPaths[index].points[i].point.x -= delta.x
-                            target.highlightPaths[index].points[i].point.y -= delta.y
-                        }
+                        Self.translate(&target.highlightPaths[index], by: NSPoint(x: -delta.x, y: -delta.y))
                         target.rebuildPathGeometry(&target.highlightPaths[index])
-                        target.registerUndo(action: .moveHighlight(index, NSPoint(x: -delta.x, y: -delta.y)))                    }
+                        target.registerUndo(action: .moveHighlight(index, NSPoint(x: -delta.x, y: -delta.y)))
+                    }
                 }
             }
         case .moveCounter(let index, let from, let to):
@@ -563,7 +578,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if index < target.counterAnnotations.count {
                         target.counterAnnotations[index].position = from
-                        target.registerUndo(action: .moveCounter(index, to, from))                    }
+                        target.registerUndo(action: .moveCounter(index, to, from))
+                    }
                 }
             }
         case .addCounter(let counter):
@@ -572,7 +588,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.counterAnnotations.isEmpty {
                         target.counterAnnotations.removeLast()
                         target.nextCounterNumber = max(1, target.nextCounterNumber - 1)
-                        target.registerUndo(action: .removeCounter(counter))                    }
+                        target.registerUndo(action: .removeCounter(counter))
+                    }
                 }
             }
         case .removeCounter(let counter):
@@ -580,7 +597,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.counterAnnotations.append(counter)
                     target.nextCounterNumber = max(target.nextCounterNumber, counter.number + 1)
-                    target.registerUndo(action: .addCounter(counter))                }
+                    target.registerUndo(action: .addCounter(counter))
+                }
             }
         case .clearAll(
             let paths, let arrows, let lines, let highlights, let rectangles, let circles,
@@ -598,7 +616,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.counterAnnotations = counterAnnotations
                     target.nextCounterNumber =
                         counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
-                    target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))                }
+                    target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))
+                }
             }
         case .pasteObjects(_):
             // Paste undo is handled by individual add actions for each pasted object
@@ -624,7 +643,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
                     target.registerUndo(action: .restoreAnnotations(
                         paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
-                    ))                }
+                    ))
+                }
             }
         case .restoreAnnotations(
             let paths, let arrows, let lines, let highlights, let rectangles, let circles,
@@ -643,7 +663,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
                     target.registerUndo(action: .eraseAnnotations(
                         paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
-                    ))                }
+                    ))
+                }
             }
         }
     }
@@ -735,6 +756,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case let (old?, new?): setNeedsDisplay(old.union(new))
         case let (rect?, nil), let (nil, rect?): setNeedsDisplay(rect)
         case (nil, nil): break
+        }
+    }
+
+    /// Moves every point in one write, so a long stroke redraws once rather than per point.
+    private static func translate(_ path: inout DrawingPath, by delta: NSPoint) {
+        for i in path.points.indices {
+            path.points[i].point.x += delta.x
+            path.points[i].point.y += delta.y
         }
     }
 
@@ -3266,18 +3295,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .path(let index):
             guard index < paths.count else { return }
-            for i in 0..<paths[index].points.count {
-                paths[index].points[i].point.x += delta.x
-                paths[index].points[i].point.y += delta.y
-            }
+            Self.translate(&paths[index], by: delta)
             rebuildPathGeometry(&paths[index])
             
         case .highlight(let index):
             guard index < highlightPaths.count else { return }
-            for i in 0..<highlightPaths[index].points.count {
-                highlightPaths[index].points[i].point.x += delta.x
-                highlightPaths[index].points[i].point.y += delta.y
-            }
+            Self.translate(&highlightPaths[index], by: delta)
             rebuildPathGeometry(&highlightPaths[index])
             
         case .text(let index):
