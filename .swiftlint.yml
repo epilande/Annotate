@@ -138,10 +138,13 @@ custom_rules:
     message: "Consider using @Observable for new Swift 6.0 code"
     severity: warning
 
+  # Triggers: `sublayers?.first`, `sublayers!.first?.opacity`, `subviews[0]`.
+  # Does not trigger: `sublayers?.first(where:)`, `sublayers?.first { $0.name == ... }`.
+  # Fixture + check: scripts/ci/check_swiftlint_custom_rules.sh
   positional_layer_lookup:
     name: "Positional layer/view lookup in tests"
     included: 'AnnotateTests/.*\.swift'
-    regex: '\.sublayers[?!]?\.first\b|\.subviews\['
+    regex: '\.sublayers[?!]?\.first\b(?!\s*[({])|\.subviews\['
     excluded_match_kinds:
       - comment
       - doccomment
@@ -149,6 +152,7 @@ custom_rules:
     message: 'Look the layer/view up by name (e.g. `sublayers.first { $0.name == "spotlight" }`), not by position; a positional lookup can grab the wrong layer and pass for the wrong reason (#92)'
     severity: error
 
+  # Triggers: `try controller.startUpdater()`. Fixture: same script as above.
   real_updater_in_tests:
     name: "Real Sparkle updater started in tests"
     included: 'AnnotateTests/.*\.swift'

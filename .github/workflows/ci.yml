@@ -30,6 +30,9 @@ jobs:
         run: |
           swift package plugin --allow-writing-to-package-directory swiftlint
 
+      - name: Check SwiftLint custom rules
+        run: ./scripts/ci/check_swiftlint_custom_rules.sh
+
       - name: Install dependencies
         run: brew install xcodegen
 
