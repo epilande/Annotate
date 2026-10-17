@@ -587,7 +587,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindows.values.forEach { window in
             if window.overlayView.currentTool == .select && tool != .select {
                 window.overlayView.selectedObjects.removeAll()
-                window.overlayView.needsDisplay = true
             }
             window.overlayView.currentTool = tool
             window.showToolFeedback(tool)
