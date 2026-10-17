@@ -95,9 +95,8 @@ extension SettingKey<CGFloat> {
         SettingKey(
             name: "mouseDriverCursorSize", defaultValue: 1,
             decode: { defaults, name in
-                guard defaults.object(forKey: name) != nil else { return nil }
-                let scale = defaults.float(forKey: name)
-                return scale > 0 ? CGFloat(scale) : nil
+                guard let scale = defaults.storedDouble(forKey: name) else { return nil }
+                return scale > 0 ? CGFloat(Float(scale)) : nil
             },
             encode: { Float($0) })
     }
@@ -181,13 +180,44 @@ extension SettingKey<ShortcutBinding> {
 
 // MARK: - Encodings
 
+/// Typed reads that return nil when the stored value has the wrong type, so it falls back to
+/// the key's default. `bool(forKey:)` and `double(forKey:)` would read it as false or 0.
+private extension UserDefaults {
+    /// Accepts a number, or a string `bool(forKey:)` understands ("YES", "true", "1"), so a
+    /// value set with `defaults write` but without `-bool` still reads.
+    func storedBool(forKey name: String) -> Bool? {
+        switch object(forKey: name) {
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            switch string.lowercased() {
+            case "yes", "true": return true
+            case "no", "false": return false
+            default: return Int(string).map { $0 != 0 }
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// Accepts a number, or a string that parses as one.
+    func storedDouble(forKey name: String) -> Double? {
+        switch object(forKey: name) {
+        case let number as NSNumber:
+            return number.doubleValue
+        case let string as String:
+            return Double(string)
+        default:
+            return nil
+        }
+    }
+}
+
 private extension SettingKey where Value == Bool {
     static func bool(_ name: String, default defaultValue: Bool = false) -> Self {
         SettingKey(
             name: name, defaultValue: defaultValue,
-            decode: { defaults, name in
-                defaults.object(forKey: name) == nil ? nil : defaults.bool(forKey: name)
-            },
+            decode: { defaults, name in defaults.storedBool(forKey: name) },
             encode: { $0 })
     }
 }
@@ -198,10 +228,7 @@ private extension SettingKey where Value == Double {
     ) -> Self {
         SettingKey(
             name: name, defaultValue: defaultValue,
-            decode: { defaults, name in
-                guard defaults.object(forKey: name) != nil else { return nil }
-                return normalize(defaults.double(forKey: name))
-            },
+            decode: { defaults, name in defaults.storedDouble(forKey: name).flatMap(normalize) },
             encode: { $0 })
     }
 }
@@ -212,8 +239,7 @@ private extension SettingKey where Value == CGFloat {
         SettingKey(
             name: name, defaultValue: defaultValue,
             decode: { defaults, name in
-                guard defaults.object(forKey: name) != nil else { return nil }
-                let stored = defaults.double(forKey: name)
+                guard let stored = defaults.storedDouble(forKey: name) else { return nil }
                 return !positive || stored > 0 ? CGFloat(stored) : nil
             },
             encode: { Double($0) })

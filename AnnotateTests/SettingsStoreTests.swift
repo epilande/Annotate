@@ -132,6 +132,40 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.spotlightDimmingOpacity], 0.5)
     }
 
+    func testWrongTypeReadsTheDefault() {
+        defaults.set(Data([0x01]), forKey: "FadeMode")
+        defaults.set(["on"], forKey: "ToolbarVisible")
+        defaults.set("thick", forKey: "LineWidth")
+        defaults.set("maybe", forKey: "SoundsEnabled")
+        defaults.set(Data([0x01]), forKey: "BoardOpacity")
+        defaults.set(["big"], forKey: "TextFontSize")
+        defaults.set("large", forKey: "mouseDriverCursorSize")
+
+        XCTAssertTrue(settings[.fadeMode])
+        XCTAssertTrue(settings[.toolbarVisible])
+        XCTAssertEqual(settings[.lineWidth], 3)
+        XCTAssertFalse(settings[.soundsEnabled])
+        XCTAssertEqual(settings[.boardOpacity], 0.9)
+        XCTAssertEqual(settings[.textFontSize], defaultTextAnnotationFontSize)
+        XCTAssertEqual(settings[.systemCursorScale], 1)
+    }
+
+    /// `defaults write` without a type flag stores a string, which `bool(forKey:)` and
+    /// `double(forKey:)` coerce, so those keep reading.
+    func testNumericAndBooleanStringsStillRead() {
+        defaults.set("NO", forKey: "FadeMode")
+        defaults.set("1", forKey: "HideDockIcon")
+        defaults.set("true", forKey: "EnableBoard")
+        defaults.set("5.5", forKey: "LineWidth")
+        defaults.set(2, forKey: "SpotlightSize")
+
+        XCTAssertFalse(settings[.fadeMode])
+        XCTAssertTrue(settings[.hideDockIcon])
+        XCTAssertTrue(settings[.enableBoard])
+        XCTAssertEqual(settings[.lineWidth], 5.5)
+        XCTAssertEqual(settings[.spotlightSize], 2)
+    }
+
     func testLineWidthKeepsAStoredZero() {
         defaults.set(0.0, forKey: "LineWidth")
         XCTAssertEqual(settings[.lineWidth], 0)
