@@ -26,6 +26,10 @@ jobs:
       - name: Verify Xcode version
         run: xcodebuild -version
 
+      - name: Run SwiftLint
+        run: |
+          swift package plugin --allow-writing-to-package-directory swiftlint
+
       - name: Install dependencies
         run: brew install xcodegen
 

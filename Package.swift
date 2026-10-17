@@ -11,6 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.2.4"),
+        .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.0")
     ],
     targets: [
