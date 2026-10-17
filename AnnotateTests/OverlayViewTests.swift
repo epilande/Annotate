@@ -1177,21 +1177,20 @@ final class OverlayViewTests: XCTestCase, Sendable {
         _ enabled: Bool?,
         body: () throws -> Void
     ) rethrows {
-        let defaults = overlayView.pickerUserDefaults
-        let key = UserDefaults.selectAfterPlacingTextKey
-        let saved = defaults.object(forKey: key)
+        let settings = overlayView.pickerSettings
+        let saved = settings.hasValue(for: .selectAfterPlacingText) ? settings[.selectAfterPlacingText] : nil
         defer {
             if let saved {
-                defaults.set(saved, forKey: key)
+                settings[.selectAfterPlacingText] = saved
             } else {
-                defaults.removeObject(forKey: key)
+                settings.removeValue(for: .selectAfterPlacingText)
             }
         }
 
         if let enabled {
-            defaults.selectAfterPlacingText = enabled
+            settings[.selectAfterPlacingText] = enabled
         } else {
-            defaults.removeObject(forKey: key)
+            settings.removeValue(for: .selectAfterPlacingText)
         }
 
         try body()

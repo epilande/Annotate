@@ -359,20 +359,20 @@ final class ToolbarPanel: NSPanel {
 
     /// Stores the bar's offset from the overlay origin, keyed by display. Absolute screen
     /// coordinates would not survive a resolution change or a display being unplugged, and
-    /// `setFrameAutosaveName` would both store them and write to `UserDefaults.standard`
+    /// `setFrameAutosaveName` would both store them and write to the standard suite
     /// instead of the suite the app was given.
     private func savePosition() {
-        guard let defaults = Self.defaults,
+        guard let settings = Self.settings,
             let overlay, let key = Self.displayKey(for: overlay)
         else { return }
         let offset = [
             Double(frame.minX - overlay.frame.minX),
             Double(frame.minY - overlay.frame.minY),
         ]
-        var stored = defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey) ?? [:]
-        guard stored[key] as? [Double] != offset else { return }
+        var stored = settings[.toolbarPositions]
+        guard stored[key] != offset else { return }
         stored[key] = offset
-        defaults.set(stored, forKey: UserDefaults.toolbarPositionsKey)
+        settings[.toolbarPositions] = stored
     }
 
     /// The suite the app was given, and nothing when there is no app behind the bar. A bar
@@ -381,15 +381,14 @@ final class ToolbarPanel: NSPanel {
     /// falling back to it would let a real toolbar position leak into a test and would let a
     /// test write one back out. Same reasoning as `OverlayView.commitTextField`, which only
     /// broadcasts when the view belongs to a live overlay set.
-    private static var defaults: UserDefaults? {
-        AppDelegate.shared?.userDefaults
+    private static var settings: SettingsStore? {
+        AppDelegate.shared?.settings
     }
 
     private static func savedOffset(for overlay: OverlayWindow) -> NSPoint? {
-        guard let defaults,
+        guard let settings,
             let key = displayKey(for: overlay),
-            let stored = defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key]
-                as? [Double],
+            let stored = settings[.toolbarPositions][key],
             stored.count == 2,
             stored.allSatisfy({ $0.isFinite })
         else { return nil }

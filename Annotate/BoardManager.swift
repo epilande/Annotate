@@ -4,10 +4,10 @@ import Cocoa
 class BoardManager: @unchecked Sendable {
     static var shared = BoardManager()
 
-    private let userDefaults: UserDefaults
+    private let settings: SettingsStore
 
-    init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+    init(userDefaults: UserDefaults = SettingsStore.standard.defaults) {
+        self.settings = SettingsStore(defaults: userDefaults)
 
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -18,9 +18,9 @@ class BoardManager: @unchecked Sendable {
     }
 
     var isEnabled: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.enableBoardKey) }
+        get { settings[.enableBoard] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.enableBoardKey)
+            settings[.enableBoard] = newValue
             notifyBoardStateChanged()
         }
     }
@@ -35,13 +35,9 @@ class BoardManager: @unchecked Sendable {
     }
 
     var opacity: Double {
-        get {
-            let storedValue = userDefaults.double(forKey: UserDefaults.boardOpacityKey)
-            return storedValue == 0 ? 0.9 : storedValue.clamped(to: 0.1...1.0)
-        }
+        get { settings[.boardOpacity] }
         set {
-            userDefaults.set(
-                newValue.clamped(to: 0.1...1.0), forKey: UserDefaults.boardOpacityKey)
+            settings[.boardOpacity] = newValue.clamped(to: 0.1...1.0)
             NotificationCenter.default.post(name: .boardAppearanceChanged, object: nil)
         }
     }

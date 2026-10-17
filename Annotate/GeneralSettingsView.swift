@@ -2,22 +2,22 @@ import KeyboardShortcuts
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @AppStorage(UserDefaults.clearDrawingsOnStartKey)
-    private var clearDrawingsOnStart = false
-    @AppStorage(UserDefaults.hideDockIconKey)
-    private var hideDockIcon = false
-    @AppStorage(UserDefaults.hideToolFeedbackKey)
-    private var hideToolFeedback = false
-    @AppStorage(UserDefaults.toolbarVisibleKey)
-    private var toolbarVisible = UserDefaults.toolbarVisibleDefault
-    @AppStorage(UserDefaults.soundsEnabledKey)
-    private var soundsEnabled = UserDefaults.soundsEnabledDefault
-    @AppStorage(UserDefaults.soundThemeKey)
-    private var soundTheme: SoundTheme = UserDefaults.soundThemeDefault
-    @AppStorage(UserDefaults.selectAfterPlacingTextKey)
-    private var selectAfterPlacingText = false
-    @AppStorage(UserDefaults.defaultToolKey)
-    private var defaultToolOption: DefaultToolOption = .lastUsed
+    @AppStorage(.clearDrawingsOnStart)
+    private var clearDrawingsOnStart: Bool
+    @AppStorage(.hideDockIcon)
+    private var hideDockIcon: Bool
+    @AppStorage(.hideToolFeedback)
+    private var hideToolFeedback: Bool
+    @AppStorage(.toolbarVisible)
+    private var toolbarVisible: Bool
+    @AppStorage(.soundsEnabled)
+    private var soundsEnabled: Bool
+    @AppStorage(.soundTheme)
+    private var soundTheme: SoundTheme
+    @AppStorage(.selectAfterPlacingText)
+    private var selectAfterPlacingText: Bool
+    @AppStorage(.defaultTool)
+    private var defaultToolOption: DefaultToolOption
 
     /// Tools offered in the Default Tool picker, excluding Select and Eraser since neither
     /// is a sensible tool to land on when the overlay opens.

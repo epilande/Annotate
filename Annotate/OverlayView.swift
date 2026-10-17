@@ -186,10 +186,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
 
-    /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
+    /// Mirrors `OverlayWindow.pickerSettings` so the view and the window resolve tool
     /// defaults through the same store.
-    var pickerUserDefaults: UserDefaults {
-        pickerUserDefaultsOverride ?? AppDelegate.shared?.userDefaults ?? .standard
+    var pickerSettings: SettingsStore {
+        pickerUserDefaultsOverride.map(SettingsStore.init(defaults:)) ?? AppDelegate.shared?.settings ?? .standard
     }
     var isReadOnlyMode: Bool = false
 
@@ -2215,7 +2215,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Offset to align text cursor with click point:
         // X: -8 for left padding
         // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
-        let fontSize = currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+        let fontSize = currentTextAnnotation?.fontSize ?? pickerSettings[.textFontSize]
         let font = NSFont.systemFont(ofSize: fontSize)
         // Size the empty new field to one line of the current font so large text and the cursor
         // aren't clipped top/bottom. "Ay" is a full ascender+descender sample; reusing the same
@@ -2318,7 +2318,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     @objc func commitTextField(_ textField: NSTextField) {
         finalizeTextAnnotation(textField)
 
-        guard pickerUserDefaults.selectAfterPlacingText,
+        guard pickerSettings[.selectAfterPlacingText],
               let committedIndex = lastCommittedTextIndex else { return }
 
         // Only broadcast to the live overlay set when this view is one of those
@@ -2444,8 +2444,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             text: "",
             position: point,
             color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: pickerUserDefaults.textToolFontSize,
-            hasBackground: pickerUserDefaults.textBackgroundEnabled
+            fontSize: pickerSettings[.textFontSize],
+            hasBackground: pickerSettings[.textBackground]
         )
         createTextField(at: point)
     }
@@ -2475,7 +2475,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
-        let font = textField.font ?? NSFont.systemFont(ofSize: pickerUserDefaults.textToolFontSize)
+        let font = textField.font ?? NSFont.systemFont(ofSize: pickerSettings[.textFontSize])
         let box = textFieldBoxSize(forText: textField.stringValue, font: font)
 
         let margin: CGFloat = 20

@@ -23,6 +23,7 @@ final class QuickPickerView: NSView {
     static let cellSize: CGFloat = 50
     static let padding: CGFloat = 12
     static let commitAnimationDuration: TimeInterval = 0.16
+    private static let commitAnimationKey = "quick-picker-commit"
     static let digitFontSize: CGFloat = 10
     static let digitFontWeight: NSFont.Weight = .medium
     static let colorSwatchDiameter: CGFloat = 27
@@ -296,7 +297,7 @@ final class QuickPickerView: NSView {
             CAMediaTimingFunction(name: .easeOut),
             CAMediaTimingFunction(name: .easeIn),
         ]
-        layer.add(animation, forKey: "quick-picker-commit")
+        layer.add(animation, forKey: Self.commitAnimationKey)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.commitAnimationDuration) {
             completion()
         }

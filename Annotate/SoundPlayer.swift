@@ -71,17 +71,17 @@ final class SoundPlayer {
         }
     }
 
-    private let userDefaults: UserDefaults
+    private let settings: SettingsStore
     private let players: [SoundTheme: [Sound: SoundPlaying]]
 
     private convenience init() {
-        self.init(userDefaults: .standard) { theme, sound in
+        self.init(userDefaults: SettingsStore.standard.defaults) { theme, sound in
             Self.makePlayer(for: sound, theme: theme)
         }
     }
 
     init(userDefaults: UserDefaults, makePlayer: (SoundTheme, Sound) -> SoundPlaying?) {
-        self.userDefaults = userDefaults
+        self.settings = SettingsStore(defaults: userDefaults)
 
         var loadedPlayers: [SoundTheme: [Sound: SoundPlaying]] = [:]
         loadedPlayers.reserveCapacity(SoundTheme.allCases.count)
@@ -164,8 +164,8 @@ final class SoundPlayer {
 
     /// Reads the theme at call time so a Settings change takes effect without a reload.
     private func play(_ sound: Sound) {
-        guard userDefaults.soundsEnabled,
-            let player = players[userDefaults.soundTheme]?[sound]
+        guard settings[.soundsEnabled],
+            let player = players[settings[.soundTheme]]?[sound]
         else {
             return
         }

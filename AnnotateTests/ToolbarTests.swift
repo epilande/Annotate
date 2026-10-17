@@ -40,7 +40,7 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testToolbarUsesRequiredPersistenceKeyAndIsVisibleByDefault() {
-        XCTAssertEqual(UserDefaults.toolbarVisibleKey, "ToolbarVisible")
+        XCTAssertEqual(SettingKey.toolbarVisible.name, "ToolbarVisible")
         XCTAssertTrue(appDelegate.toolbarVisible)
         XCTAssertTrue(window.toolbarPanel?.isAttached ?? false)
         XCTAssertFalse(window.toolbarFrame.isEmpty)
@@ -48,8 +48,8 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(
             window.toolbarFrame.midX, window.frame.width / 2, accuracy: 0.5,
             "With nothing stored the bar keeps its historic bottom-center resting place")
-        XCTAssertNil(
-            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+        XCTAssertFalse(
+            defaults.settings.hasValue(for: .toolbarPositions),
             "Placing the bar at its default must not be recorded as the user parking it there")
     }
 
@@ -92,7 +92,7 @@ final class ToolbarTests: XCTestCase {
         NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
 
         let stored = try XCTUnwrap(
-            defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            defaults.settings[.toolbarPositions][key],
             "The bar's offset must be stored under this display's number")
         XCTAssertEqual(
             stored, [140, 500],
@@ -116,8 +116,8 @@ final class ToolbarTests: XCTestCase {
         panel.setFrameOrigin(NSPoint(x: window.frame.minX + 200, y: window.frame.minY + 350))
         NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
 
-        XCTAssertNil(
-            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+        XCTAssertFalse(
+            defaults.settings.hasValue(for: .toolbarPositions),
             "A drag reports a move per frame; none of them is worth a write of its own")
 
         panel.sendEvent(
@@ -126,7 +126,7 @@ final class ToolbarTests: XCTestCase {
                     type: .leftMouseUp, location: miss, windowNumber: panel.windowNumber)))
 
         let stored = try XCTUnwrap(
-            defaults.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            defaults.settings[.toolbarPositions][key],
             "Letting go of the bar is what records where the user parked it")
         XCTAssertEqual(stored, [200, 350])
     }
@@ -220,7 +220,7 @@ final class ToolbarTests: XCTestCase {
 
     func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        defaults.set([key: [140.0, 500.0]], forKey: UserDefaults.toolbarPositionsKey)
+        defaults.settings[.toolbarPositions] = [key: [140.0, 500.0]]
 
         let reopened = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
@@ -237,8 +237,8 @@ final class ToolbarTests: XCTestCase {
     func testMovingTheOverlayDoesNotPersistAPositionTheUserNeverChose() throws {
         window.setFrame(NSRect(x: 0, y: 0, width: 1_000, height: 700), display: false)
 
-        XCTAssertNil(
-            defaults.object(forKey: UserDefaults.toolbarPositionsKey),
+        XCTAssertFalse(
+            defaults.settings.hasValue(for: .toolbarPositions),
             "Resizing the overlay carries the bar along with it; that is not the user parking it")
         XCTAssertEqual(window.toolbarFrame.minY, 20, accuracy: 0.5)
         XCTAssertGreaterThanOrEqual(window.toolbarFrame.minX, 0)
@@ -260,7 +260,7 @@ final class ToolbarTests: XCTestCase {
 
     func testASavedPositionOutsideTheOverlayIsClampedBackIn() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        defaults.set([key: [10_000.0, 10_000.0]], forKey: UserDefaults.toolbarPositionsKey)
+        defaults.settings[.toolbarPositions] = [key: [10_000.0, 10_000.0]]
 
         let reopened = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
@@ -278,7 +278,7 @@ final class ToolbarTests: XCTestCase {
         let screen = try XCTUnwrap(NSScreen.main)
         appDelegate.overlayWindows[screen] = window
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        defaults.set([key: [20.0, 300.0]], forKey: UserDefaults.toolbarPositionsKey)
+        defaults.settings[.toolbarPositions] = [key: [20.0, 300.0]]
 
         appDelegate.setToolbarVisible(false)
         window.setFrame(NSRect(x: 0, y: 0, width: 1_000, height: 700), display: false)
@@ -293,7 +293,7 @@ final class ToolbarTests: XCTestCase {
 
     func testAnUnreadableSavedPositionFallsBackToTheDefaultPlacement() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        defaults.set([key: ["nonsense"]], forKey: UserDefaults.toolbarPositionsKey)
+        defaults.setRawValue([key: ["nonsense"]], for: .toolbarPositions)
 
         let reopened = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
@@ -309,19 +309,19 @@ final class ToolbarTests: XCTestCase {
 
     func testABarWithNoAppBehindItNeitherReadsNorWritesTheStandardSuite() throws {
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        let standard = UserDefaults.standard
-        let saved = standard.object(forKey: UserDefaults.toolbarPositionsKey)
+        let standard = SettingsStore.standard
+        let saved = standard.hasValue(for: .toolbarPositions) ? standard[.toolbarPositions] : nil
         defer {
             if let saved {
-                standard.set(saved, forKey: UserDefaults.toolbarPositionsKey)
+                standard[.toolbarPositions] = saved
             } else {
-                standard.removeObject(forKey: UserDefaults.toolbarPositionsKey)
+                standard.removeValue(for: .toolbarPositions)
             }
             AppDelegate.shared = appDelegate
         }
 
         let planted = [key: [140.0, 500.0]]
-        standard.set(planted, forKey: UserDefaults.toolbarPositionsKey)
+        standard[.toolbarPositions] = planted
         AppDelegate.shared = nil
 
         let detachedFromAnyApp = OverlayWindow(
@@ -346,7 +346,7 @@ final class ToolbarTests: XCTestCase {
         NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
 
         XCTAssertEqual(
-            standard.dictionary(forKey: UserDefaults.toolbarPositionsKey)?[key] as? [Double],
+            standard[.toolbarPositions][key],
             [140, 500],
             "A bar with no user behind it must not rewrite the developer's own suite")
     }
@@ -357,7 +357,7 @@ final class ToolbarTests: XCTestCase {
 
         appDelegate.setToolbarVisible(false)
 
-        XCTAssertEqual(defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool, false)
+        XCTAssertEqual(defaults.settings[.toolbarVisible], false)
         XCTAssertFalse(
             window.toolbarPanel?.isAttached ?? true,
             "A hidden bar leaves the overlay's window group; a hidden view would still be clickable")
@@ -518,7 +518,7 @@ final class ToolbarTests: XCTestCase {
         window.sendEvent(try XCTUnwrap(toolbarToggleEvent(isARepeat: true)))
 
         XCTAssertEqual(
-            defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool, false,
+            defaults.settings[.toolbarVisible], false,
             "An auto-repeat of the held chord must not toggle the toolbar back on")
         XCTAssertFalse(appDelegate.toolbarVisible)
     }
@@ -780,7 +780,7 @@ final class ToolbarTests: XCTestCase {
     }
 
     func testAToolbarActionNeverSwitchesToSelectAfterCommittingText() throws {
-        defaults.selectAfterPlacingText = true
+        defaults.settings[.selectAfterPlacingText] = true
         let field = try XCTUnwrap(startEditingAnnotationText())
         field.stringValue = "Keep me"
         field.currentEditor()?.string = "Keep me"
@@ -849,13 +849,13 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(window.overlayView.currentLineWidth, 5)
 
         window.overlayView.currentTool = .text
-        defaults.textToolFontSize = QuickPickerView.fontSizeOptions[1]
+        defaults.settings[.textFontSize] = QuickPickerView.fontSizeOptions[1]
         window.sendEvent(try shortcutEvent("j", keyCode: 38))
-        XCTAssertEqual(defaults.textToolFontSize, QuickPickerView.fontSizeOptions[0])
+        XCTAssertEqual(defaults.settings[.textFontSize], QuickPickerView.fontSizeOptions[0])
         window.overlayView.currentTool = .counter
-        defaults.counterToolFontSize = QuickPickerView.counterSizeOptions[1]
+        defaults.settings[.counterFontSize] = QuickPickerView.counterSizeOptions[1]
         window.sendEvent(try shortcutEvent("u", keyCode: 32, modifiers: .option))
-        XCTAssertEqual(defaults.counterToolFontSize, QuickPickerView.counterSizeOptions[2])
+        XCTAssertEqual(defaults.settings[.counterFontSize], QuickPickerView.counterSizeOptions[2])
     }
 
     func testRemappedActionsYieldToPickerAndTextEditing() throws {
