@@ -1822,11 +1822,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// which for a label with a background is exactly the pill.
     private func drawText(_ annotation: TextAnnotation, alpha: CGFloat, bounds: NSRect) {
         let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: annotation.fontSize),
-        ]
-        let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
 
         if annotation.hasBackground {
             let pill = NSBezierPath(
@@ -1840,14 +1835,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             pill.fill()
         }
 
-        // Laid out with the same width and options `textSize()` measured with, so wrapped
-        // lines break where the box expects them.
-        let layoutRect = NSRect(
-            x: annotation.position.x, y: annotation.position.y,
-            width: annotation.layoutWidth, height: annotation.textSize().height)
-        attributedString.draw(
-            with: layoutRect,
-            options: TextAnnotation.layoutOptions, context: nil)
+        // The same layout `textSize()` measures, so wrapped lines break where the box
+        // expects them and where the editor showed them.
+        let layout = annotation.textLayout(color: adaptedColor.withAlphaComponent(alpha))
+        layout.draw(
+            topLeft: NSPoint(x: annotation.position.x, y: annotation.position.y + layout.size.height))
     }
 
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
@@ -2706,10 +2698,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// will wrap at.
     private func textFieldTextSize(forText text: String, font: NSFont) -> NSSize {
         let layoutWidth = currentTextAnnotation?.layoutWidth ?? .greatestFiniteMagnitude
-        let measured = (text as NSString).boundingRect(
-            with: NSSize(width: layoutWidth, height: .greatestFiniteMagnitude),
-            options: TextAnnotation.layoutOptions, attributes: [.font: font])
-        return NSSize(width: measured.width, height: ceil(measured.height))
+        return TextLayout(text: text, attributes: [.font: font], width: layoutWidth).size
     }
 
     /// The unclamped box size needed to fit `text` at `font`, including the field's

@@ -250,6 +250,55 @@ struct Circle {
 }
 
 /// Represents a text annotation.
+/// Text laid out by TextKit, the line breaker the text field's editor uses. A label is
+/// measured and drawn through this, and the editor is measured through it too, so a
+/// committed label keeps exactly the lines the editor showed while typing.
+///
+/// `NSAttributedString.draw(with:options:context:)` can't stand in for it: it sometimes
+/// breaks a line a word earlier than the editor and `boundingRect` do (seen where the
+/// last line would hold a single word).
+struct TextLayout {
+    private let storage: NSTextStorage
+    private let layoutManager = NSLayoutManager()
+    private let container: NSTextContainer
+    private let font: NSFont
+
+    /// Lays out `text` with lines breaking at `width`, which is the text's own width. The
+    /// editor's line fragment padding is part of the field's chrome instead.
+    init(text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat) {
+        storage = NSTextStorage(string: text, attributes: attributes)
+        font = attributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layoutManager.addTextContainer(container)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: container)
+    }
+
+    /// Size the lines occupy. The height is rounded up so the last line's descenders are
+    /// never clipped, and empty text still takes up one line.
+    var size: NSSize {
+        let used = layoutManager.usedRect(for: container)
+        let height = storage.length == 0 ? layoutManager.defaultLineHeight(for: font) : used.height
+        return NSSize(width: used.width, height: ceil(height))
+    }
+
+    /// Draws the text hanging down from `topLeft` in the current unflipped context.
+    func draw(topLeft: NSPoint) {
+        guard let context = NSGraphicsContext.current else { return }
+        NSGraphicsContext.saveGraphicsState()
+        // TextKit lays lines out top down, so draw in a flipped context whose origin is the
+        // text's top-left corner.
+        let flip = NSAffineTransform()
+        flip.translateX(by: topLeft.x, yBy: topLeft.y)
+        flip.scaleX(by: 1, yBy: -1)
+        flip.concat()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context.cgContext, flipped: true)
+        layoutManager.drawGlyphs(forGlyphRange: layoutManager.glyphRange(for: container), at: .zero)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
 struct TextAnnotation {
     var text: String
     var position: NSPoint
@@ -304,23 +353,23 @@ struct TextAnnotation {
         bounds(textSize: textSize(), fallbackInsets: fallbackInsets)
     }
 
-    /// Layout options shared by measuring and drawing, so both break lines identically.
-    static let layoutOptions: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-
     /// Width lines break at. Drawing lays the text out at this same width rather than the
     /// measured one, so a line that exactly fills the measured width never rewraps.
     var layoutWidth: CGFloat { wrapWidth ?? maxWidth ?? .greatestFiniteMagnitude }
 
+    /// The text laid out at this annotation's font and `layoutWidth`, in `color`.
+    func textLayout(color: NSColor? = nil) -> TextLayout {
+        var attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize)]
+        attributes[.foregroundColor] = color
+        return TextLayout(text: text, attributes: attributes, width: layoutWidth)
+    }
+
     /// Measured text size at this annotation's font. Lines break at `wrapWidth` or
-    /// `maxWidth` and at every line break in the text. AppKit does the line breaking, so
+    /// `maxWidth` and at every line break in the text. Drawing uses the same layout, so
     /// the size is exactly what the drawn text occupies.
     func textSize() -> NSSize {
-        let measured = (text as NSString).boundingRect(
-            with: NSSize(width: layoutWidth, height: .greatestFiniteMagnitude),
-            options: Self.layoutOptions,
-            attributes: [.font: NSFont.systemFont(ofSize: fontSize)])
-        // Ceil so the last line's descenders are never clipped by the box.
-        return NSSize(width: wrapWidth ?? measured.width, height: ceil(measured.height))
+        let measured = textLayout().size
+        return NSSize(width: wrapWidth ?? measured.width, height: measured.height)
     }
 
     /// Top edge of the text. `position` is the text's bottom-left, so this is what has to

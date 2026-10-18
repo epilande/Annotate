@@ -716,6 +716,132 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertGreaterThan(edited.textSize().height, label.textSize().height)
     }
 
+    /// Lines the field editor shows for `textField`, each with the height it occupies, and
+    /// the width the editor breaks them at.
+    private func fieldEditorLines(
+        of textField: NSTextField, in window: NSWindow
+    ) throws -> (lines: [(text: String, height: CGFloat)], wrapWidth: CGFloat) {
+        let editor: NSTextView
+        if let current = textField.currentEditor() as? NSTextView {
+            editor = current
+        } else {
+            // Headless runs cannot make the field first responder, so attach the field
+            // editor the way AppKit does when editing starts.
+            editor = try XCTUnwrap(window.fieldEditor(true, for: textField) as? NSTextView)
+            textField.cell?.select(
+                withFrame: textField.bounds, in: textField, editor: editor,
+                delegate: textField, start: 0, length: 0)
+        }
+        let container = try XCTUnwrap(editor.textContainer)
+        let wrapWidth = container.size.width - 2 * container.lineFragmentPadding
+        var lines: [(text: String, height: CGFloat)] = []
+        if let textLayoutManager = editor.textLayoutManager {
+            textLayoutManager.enumerateTextLayoutFragments(
+                from: textLayoutManager.documentRange.location, options: [.ensuresLayout]
+            ) { fragment in
+                for line in fragment.textLineFragments {
+                    let text = line.attributedString.attributedSubstring(from: line.characterRange)
+                    lines.append((text.string, line.typographicBounds.height))
+                }
+                return true
+            }
+        } else {
+            let layoutManager = try XCTUnwrap(editor.layoutManager)
+            let glyphs = layoutManager.glyphRange(for: container)
+            layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, range, _ in
+                let characters = layoutManager.characterRange(
+                    forGlyphRange: range, actualGlyphRange: nil)
+                lines.append(((editor.string as NSString).substring(with: characters), rect.height))
+            }
+        }
+        textField.abortEditing()
+        return (lines, wrapWidth)
+    }
+
+    /// Right edge of the ink drawn in each of `lines`, stacked down from `top`, in view
+    /// coordinates. A line with no ink reports `-1`.
+    private func drawnLineRightEdges(
+        in view: NSView, top: CGFloat, lines: [(text: String, height: CGFloat)]
+    ) throws -> [CGFloat] {
+        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+        var edges: [CGFloat] = []
+        var lineTop = top
+        for line in lines {
+            // The view is not flipped, but bitmap rows count down from the top.
+            let firstRow = Int(((view.bounds.height - lineTop) * scale).rounded())
+            let lastRow = Int(((view.bounds.height - lineTop + line.height) * scale).rounded())
+            var rightmost = -1
+            for row in max(firstRow, 0)..<min(lastRow, rep.pixelsHigh) {
+                for column in stride(from: rep.pixelsWide - 1, to: rightmost, by: -1)
+                where (rep.colorAt(x: column, y: row)?.alphaComponent ?? 0) > 0.5 {
+                    rightmost = column
+                    break
+                }
+            }
+            edges.append(rightmost < 0 ? -1 : CGFloat(rightmost + 1) / scale)
+            lineTop -= line.height
+        }
+        return edges
+    }
+
+    func testCommittedLabelKeepsTheEditorsLineBreaks() throws {
+        let window = NSWindow(
+            contentRect: overlayView.frame, styleMask: .borderless, backing: .buffered,
+            defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = overlayView
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        overlayView.fadeMode = false
+
+        // Each string leaves a single word on the last line. That is where AppKit's string
+        // drawing was seen to pull one more word down than the editor showed.
+        let cases: [(text: String, width: CGFloat)] = [
+            ("hello world this wraps at the edge again", 288),
+            ("slides left at the edge", 160),
+        ]
+        for (text, width) in cases {
+            let font = NSFont.systemFont(ofSize: 18)
+            overlayView.textAnnotations = []
+            overlayView.currentTool = .text
+            overlayView.currentTextAnnotation = TextAnnotation(
+                text: "", position: NSPoint(x: 100, y: 300), color: .red, fontSize: font.pointSize,
+                wrapWidth: width)
+            overlayView.createTextField(at: NSPoint(x: 100, y: 300), withText: "")
+            let textField = try XCTUnwrap(overlayView.activeTextField)
+            textField.stringValue = text
+            overlayView.resizeActiveTextField(textField)
+
+            let (editorLines, editorWrapWidth) = try fieldEditorLines(of: textField, in: window)
+            XCTAssertEqual(editorLines.count, 2, "Sanity check: the editor wraps \"\(text)\"")
+            XCTAssertEqual(textField.stringValue, text)
+
+            overlayView.finalizeTextAnnotation(textField)
+            overlayView.selectedObjects = []
+            let label = try XCTUnwrap(overlayView.textAnnotations.first)
+            XCTAssertEqual(
+                editorWrapWidth, label.layoutWidth, accuracy: 0.5,
+                "The editor breaks lines at the width the label lays out at")
+            let drawnEdges = try drawnLineRightEdges(
+                in: overlayView, top: label.textTop, lines: editorLines)
+
+            // Each drawn line has to end with the editor's last word on that line: its ink
+            // stops where that line's text ends, give or take the last glyph's side bearing.
+            for (line, drawnEdge) in zip(editorLines, drawnEdges) {
+                let lineText = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let expectedEdge =
+                    label.position.x + (lineText as NSString).size(withAttributes: [.font: font]).width
+                XCTAssertEqual(
+                    drawnEdge, expectedEdge, accuracy: 3,
+                    "\"\(text)\" at \(width) pt: the label draws \"\(lineText)\" on one line, like the editor")
+            }
+        }
+    }
+
     func testFinalizeTextAnnotationAccountsForPadding() {
         let clickPoint = NSPoint(x: 200, y: 300)
         overlayView.currentTool = .text
