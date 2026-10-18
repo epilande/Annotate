@@ -854,7 +854,9 @@ class OverlayWindow: NSPanel {
             startFadeLoop()
         }
         lastLiveShapeRect = nil
-        // A box drag whose mouse-up never arrived must not carry into this gesture.
+        // A box drag or side handle resize whose mouse-up never arrived must not carry into
+        // this gesture.
+        overlayView.endTextResize()
         overlayView.textBoxDragStart = nil
         overlayView.textBoxDraftRect = nil
 
@@ -1177,7 +1179,7 @@ class OverlayWindow: NSPanel {
         }
         
         // Side handle drag: the label changes width in place, it does not move with the cursor.
-        if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
+        if overlayView.resizeHandle != nil {
             overlayView.updateTextResize(to: currentPoint)
             return
         }
@@ -1567,7 +1569,7 @@ class OverlayWindow: NSPanel {
         
         // End a side handle drag before the move branch below, which would otherwise
         // register a move undo for a selection that never moved.
-        if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
+        if overlayView.resizeHandle != nil {
             overlayView.endTextResize()
             overlayView.needsDisplay = true
             return

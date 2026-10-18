@@ -167,9 +167,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Side handle being dragged to change a single selected label's width, plus that label
     /// and the box it started from. Every drag event measures against that start state, so
-    /// a gesture cannot accumulate rounding drift across frames.
+    /// a gesture cannot accumulate rounding drift across frames. The label is found by its
+    /// id, so deletes and fade compaction mid-gesture cannot point it at another label.
     var resizeHandle: TextResizeHandle?
-    var resizeStart: (index: Int, original: TextAnnotation, bounds: NSRect)?
+    var resizeStart: (original: TextAnnotation, bounds: NSRect)?
+
+    /// Where the label being resized sits in `textAnnotations` right now.
+    private var resizingTextIndex: Int? {
+        resizeStart.flatMap { start in textAnnotations.firstIndex { $0.id == start.original.id } }
+    }
 
     /// Where a Text-tool press on empty canvas began. Dragging from there far enough turns
     /// the click into a fixed-width box, whose outline is `textBoxDraftRect` until release.
@@ -183,7 +189,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         didSet { notifyToolbarChanged() }
     }
     var currentTool: ToolType = .pen {
-        didSet { notifyToolbarChanged() }
+        didSet {
+            // A tool change mid-drag ends a side handle resize where it is, so its mouse-up
+            // or the next gesture under any tool cannot pick it up again.
+            if currentTool != oldValue { endTextResize() }
+            notifyToolbarChanged()
+        }
     }
     var currentLineWidth: CGFloat = 3.0 {
         didSet { notifyToolbarChanged() }
@@ -301,6 +312,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func undo() {
+        // A resize still in progress becomes its own step first, so this undoes it.
+        endTextResize()
         // An undone object leaves its index behind in the selection, which would draw a
         // selection box over an object that is no longer there.
         clearSelectionForHistoryStep()
@@ -309,6 +322,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func redo() {
+        endTextResize()
         clearSelectionForHistoryStep()
         undoManager?.redo()
         startFadeLoopIfNeeded()
@@ -1097,14 +1111,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func beginTextResize(_ handle: TextResizeHandle) {
         guard let index = selectedTextIndex() else { return }
         resizeHandle = handle
-        resizeStart = (index, textAnnotations[index], calculateSelectionBoundingBox())
+        resizeStart = (textAnnotations[index], calculateSelectionBoundingBox())
     }
 
     /// Gives the label a fixed width from the dragged side. The opposite side and the top
     /// edge stay put; the text rewraps and the box grows or shrinks downward.
     func updateTextResize(to point: NSPoint) {
-        guard let handle = resizeHandle, let start = resizeStart,
-            start.index < textAnnotations.count
+        guard let handle = resizeHandle, let start = resizeStart, let index = resizingTextIndex
         else { return }
 
         let old = start.bounds
@@ -1132,18 +1145,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
             x: originX + Self.selectionPadding + insets.left,
             y: originY + Self.selectionPadding + insets.bottom)
 
-        textAnnotations[start.index] = annotation
+        textAnnotations[index] = annotation
         needsDisplay = true
     }
 
     /// Ends the gesture, leaving the whole resize (width and position) as one undo step.
+    /// Safe to call when no resize is in progress, which is how interruptions settle one.
     func endTextResize() {
         defer {
             resizeHandle = nil
             resizeStart = nil
         }
-        guard let start = resizeStart, start.index < textAnnotations.count else { return }
-        let resized = textAnnotations[start.index]
+        guard let start = resizeStart, let index = resizingTextIndex else { return }
+        let resized = textAnnotations[index]
         guard resized != start.original else { return }
         registerUndo(action: .resizeText(start.original, resized))
     }
@@ -1305,7 +1319,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // A label being edited, dragged or resized is addressed by a standalone index, so it
         // has to survive compaction and then follow its annotation to the new slot.
         let protectedTextIndices = Set(
-            [editingTextAnnotationIndex, draggedTextAnnotationIndex, resizeStart?.index]
+            [editingTextAnnotationIndex, draggedTextAnnotationIndex, resizingTextIndex]
                 .compactMap { $0 })
         let textIndexMap = compactItems(
             &textAnnotations,
@@ -1317,9 +1331,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         if let textIndexMap {
             editingTextAnnotationIndex = editingTextAnnotationIndex.flatMap { textIndexMap[$0] }
             draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
-            if let index = resizeStart?.index, let newIndex = textIndexMap[index] {
-                resizeStart?.index = newIndex
-            }
         }
         compactFadedPaths(
             &paths,
@@ -1867,6 +1878,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     @discardableResult
     func clearAll() -> Bool {
         cleanupActiveTextField()
+        endTextResize()
 
         currentPath = nil
         currentHighlight = nil

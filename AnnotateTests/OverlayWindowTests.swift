@@ -1929,3 +1929,117 @@ final class TextBoxDragTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.textAnnotations[0].position, NSPoint(x: 290, y: 300))
     }
 }
+
+/// Side-handle drags driven through the window's mouse events, including gestures that get
+/// interrupted before their mouse-up.
+@MainActor
+final class TextResizeGestureTests: XCTestCase, Sendable {
+    var window: OverlayWindow!
+    private let longText = "Wrapping needs several words before a line ever breaks"
+
+    nonisolated override func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated {
+            AppDelegate.shared = nil
+            window = OverlayWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                styleMask: .borderless, backing: .buffered, defer: false)
+            window.overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
+            window.overlayView.fadeMode = false
+            window.overlayView.currentTool = .select
+            window.overlayView.textAnnotations = [
+                TextAnnotation(
+                    text: longText, position: NSPoint(x: 100, y: 400), color: .red, fontSize: 24),
+                TextAnnotation(
+                    text: "Bravo", position: NSPoint(x: 100, y: 150), color: .blue, fontSize: 24),
+            ]
+            window.overlayView.selectedObjects = [.text(index: 0)]
+        }
+    }
+
+    nonisolated override func tearDown() {
+        MainActor.assumeIsolated {
+            window.overlayView.pickerUserDefaultsOverride = nil
+            window = nil
+        }
+        TestUserDefaults.removeSuite()
+        super.tearDown()
+    }
+
+    private func mouse(_ type: NSEvent.EventType, _ point: NSPoint) throws -> NSEvent {
+        try XCTUnwrap(TestEvents.createMouseEvent(type: type, location: point))
+    }
+
+    /// Presses the first label's right handle and drags it 150 pt in from its left edge.
+    private func startNarrowingTheFirstLabel() throws {
+        let box = window.overlayView.calculateSelectionBoundingBox()
+        window.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: box.maxX, y: box.midY)))
+        XCTAssertEqual(window.overlayView.resizeHandle, .right)
+        window.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: box.minX + 150, y: box.midY)))
+        XCTAssertNotNil(window.overlayView.textAnnotations[0].wrapWidth)
+    }
+
+    /// Selects Bravo and drags it 50 pt to the right.
+    private func dragBravo() throws {
+        window.overlayView.selectedObjects = [.text(index: 1)]
+        let inside = NSPoint(x: 110, y: 160)
+        window.mouseDown(with: try mouse(.leftMouseDown, inside))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: inside.x + 25, y: inside.y)))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: inside.x + 50, y: inside.y)))
+        window.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: inside.x + 50, y: inside.y)))
+    }
+
+    func testSwitchingToolsMidResizeEndsItSoTheNextDragMovesItsOwnLabel() throws {
+        try startNarrowingTheFirstLabel()
+        let resized = window.overlayView.textAnnotations[0]
+
+        // Pen is chosen while the button is still held, then the button comes up.
+        window.overlayView.currentTool = .pen
+        XCTAssertNil(window.overlayView.resizeHandle, "Changing tools ends the resize")
+        window.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 400, y: 300)))
+
+        window.overlayView.currentTool = .select
+        try dragBravo()
+
+        XCTAssertEqual(window.overlayView.textAnnotations[0], resized, "The first label stays as it was left")
+        XCTAssertEqual(window.overlayView.textAnnotations[1].position, NSPoint(x: 150, y: 150), "Bravo moved")
+    }
+
+    func testAFreshPressEndsAResizeWhoseMouseUpNeverArrived() throws {
+        try startNarrowingTheFirstLabel()
+        let resized = window.overlayView.textAnnotations[0]
+
+        // No mouse-up: the next press has to settle the resize before it does anything.
+        try dragBravo()
+
+        XCTAssertNil(window.overlayView.resizeHandle)
+        XCTAssertEqual(window.overlayView.textAnnotations[0], resized)
+        XCTAssertEqual(window.overlayView.textAnnotations[1].position, NSPoint(x: 150, y: 150))
+    }
+
+    func testUndoMidResizeSettlesItThenUndoesIt() throws {
+        let original = window.overlayView.textAnnotations[0]
+        try startNarrowingTheFirstLabel()
+
+        window.overlayView.undo()
+        XCTAssertNil(window.overlayView.resizeHandle)
+        XCTAssertEqual(window.overlayView.textAnnotations[0], original)
+
+        // The rest of the drag no longer reaches the label.
+        window.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: 300, y: 300)))
+        window.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 300, y: 300)))
+        XCTAssertEqual(window.overlayView.textAnnotations[0], original)
+    }
+
+    func testClearAllMidResizeEndsIt() throws {
+        try startNarrowingTheFirstLabel()
+
+        window.overlayView.clearAll()
+        XCTAssertNil(window.overlayView.resizeHandle)
+        XCTAssertNil(window.overlayView.resizeStart)
+
+        window.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: 300, y: 300)))
+        window.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 300, y: 300)))
+        XCTAssertTrue(window.overlayView.textAnnotations.isEmpty)
+    }
+}
