@@ -53,9 +53,9 @@ extension SettingKey<Bool> {
     static var clearDrawingsOnStart: Self { .bool("ClearDrawingsOnStart") }
     static var hideDockIcon: Self { .bool("HideDockIcon") }
     static var hideToolFeedback: Self { .bool("HideToolFeedback") }
-    static var fadeMode: Self { .bool("FadeMode", default: true) }
+    static var fadeMode: Self { .bool("FadeMode", default: true, acceptsText: false) }
     static var alwaysOnMode: Self { .bool("AlwaysOnMode") }
-    static var toolbarVisible: Self { .bool("ToolbarVisible", default: true) }
+    static var toolbarVisible: Self { .bool("ToolbarVisible", default: true, acceptsText: false) }
     static var soundsEnabled: Self { .bool("SoundsEnabled") }
     static var enableBoard: Self { .bool("EnableBoard") }
 
@@ -79,7 +79,7 @@ extension SettingKey<Double> {
 }
 
 extension SettingKey<CGFloat> {
-    static var lineWidth: Self { .cgFloat("LineWidth", default: 3.0) }
+    static var lineWidth: Self { .cgFloat("LineWidth", default: 3.0, acceptsText: false) }
     static var textFontSize: Self { .cgFloat("TextFontSize", default: defaultTextAnnotationFontSize, positive: true) }
     static var counterFontSize: Self { .cgFloat("CounterFontSize", default: defaultCounterFontSize, positive: true) }
 
@@ -182,14 +182,16 @@ extension SettingKey<ShortcutBinding> {
 
 /// Typed reads that return nil when the stored value has the wrong type, so it falls back to
 /// the key's default. `bool(forKey:)` and `double(forKey:)` would read it as false or 0.
+/// `acceptsText: false` is for keys that read with an `as?` cast before the store, so a string
+/// stored there has always read as the default.
 private extension UserDefaults {
-    /// Accepts a number, or a string `bool(forKey:)` understands ("YES", "true", "1"), so a
-    /// value set with `defaults write` but without `-bool` still reads.
-    func storedBool(forKey name: String) -> Bool? {
+    /// Accepts a number. With `acceptsText`, also a string `bool(forKey:)` understands ("YES",
+    /// "true", "1"), so a value set with `defaults write` but without `-bool` still reads.
+    func storedBool(forKey name: String, acceptsText: Bool) -> Bool? {
         switch object(forKey: name) {
         case let number as NSNumber:
             return number.boolValue
-        case let string as String:
+        case let string as String where acceptsText:
             switch string.lowercased() {
             case "yes", "true": return true
             case "no", "false": return false
@@ -200,12 +202,12 @@ private extension UserDefaults {
         }
     }
 
-    /// Accepts a number, or a string that parses as one.
-    func storedDouble(forKey name: String) -> Double? {
+    /// Accepts a number. With `acceptsText`, also a string that parses as one.
+    func storedDouble(forKey name: String, acceptsText: Bool = true) -> Double? {
         switch object(forKey: name) {
         case let number as NSNumber:
             return number.doubleValue
-        case let string as String:
+        case let string as String where acceptsText:
             return Double(string)
         default:
             return nil
@@ -214,10 +216,10 @@ private extension UserDefaults {
 }
 
 private extension SettingKey where Value == Bool {
-    static func bool(_ name: String, default defaultValue: Bool = false) -> Self {
+    static func bool(_ name: String, default defaultValue: Bool = false, acceptsText: Bool = true) -> Self {
         SettingKey(
             name: name, defaultValue: defaultValue,
-            decode: { defaults, name in defaults.storedBool(forKey: name) },
+            decode: { defaults, name in defaults.storedBool(forKey: name, acceptsText: acceptsText) },
             encode: { $0 })
     }
 }
@@ -235,11 +237,13 @@ private extension SettingKey where Value == Double {
 
 private extension SettingKey where Value == CGFloat {
     /// Stored as a Double. With `positive`, a stored value of 0 or less reads as unset.
-    static func cgFloat(_ name: String, default defaultValue: CGFloat, positive: Bool = false) -> Self {
+    static func cgFloat(
+        _ name: String, default defaultValue: CGFloat, positive: Bool = false, acceptsText: Bool = true
+    ) -> Self {
         SettingKey(
             name: name, defaultValue: defaultValue,
             decode: { defaults, name in
-                guard let stored = defaults.storedDouble(forKey: name) else { return nil }
+                guard let stored = defaults.storedDouble(forKey: name, acceptsText: acceptsText) else { return nil }
                 return !positive || stored > 0 ? CGFloat(stored) : nil
             },
             encode: { Double($0) })

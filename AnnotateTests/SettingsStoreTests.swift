@@ -153,17 +153,35 @@ final class SettingsStoreTests: XCTestCase {
     /// `defaults write` without a type flag stores a string, which `bool(forKey:)` and
     /// `double(forKey:)` coerce, so those keep reading.
     func testNumericAndBooleanStringsStillRead() {
-        defaults.set("NO", forKey: "FadeMode")
+        defaults.set("YES", forKey: "SoundsEnabled")
         defaults.set("1", forKey: "HideDockIcon")
         defaults.set("true", forKey: "EnableBoard")
-        defaults.set("5.5", forKey: "LineWidth")
+        defaults.set("90.5", forKey: "ClickRippleSize")
         defaults.set(2, forKey: "SpotlightSize")
 
-        XCTAssertFalse(settings[.fadeMode])
+        XCTAssertTrue(settings[.soundsEnabled])
         XCTAssertTrue(settings[.hideDockIcon])
         XCTAssertTrue(settings[.enableBoard])
-        XCTAssertEqual(settings[.lineWidth], 5.5)
+        XCTAssertEqual(settings[.clickRippleSize], 90.5)
         XCTAssertEqual(settings[.spotlightSize], 2)
+    }
+
+    /// These keys read with an `as?` cast before the store, so any string, even one that
+    /// `bool(forKey:)` or `double(forKey:)` would coerce, reads as the default.
+    func testStringsReadTheDefaultForKeysThatNeverAcceptedThem() {
+        defaults.set("NO", forKey: "FadeMode")
+        defaults.set("NO", forKey: "ToolbarVisible")
+        defaults.set("NO", forKey: "LineWidth")
+        XCTAssertTrue(settings[.fadeMode])
+        XCTAssertTrue(settings[.toolbarVisible])
+        XCTAssertEqual(settings[.lineWidth], 3)
+
+        defaults.set("0", forKey: "FadeMode")
+        defaults.set("false", forKey: "ToolbarVisible")
+        defaults.set("5.5", forKey: "LineWidth")
+        XCTAssertTrue(settings[.fadeMode])
+        XCTAssertTrue(settings[.toolbarVisible])
+        XCTAssertEqual(settings[.lineWidth], 3)
     }
 
     func testLineWidthKeepsAStoredZero() {
