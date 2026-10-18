@@ -856,6 +856,9 @@ class OverlayWindow: NSPanel {
             startFadeLoop()
         }
         lastLiveShapeRect = nil
+        // A box drag whose mouse-up never arrived must not carry into this gesture.
+        overlayView.textBoxDragStart = nil
+        overlayView.textBoxDraftRect = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -1021,15 +1024,11 @@ class OverlayWindow: NSPanel {
                 }
             }
 
-            // If we didn't click on existing text, create new one
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "",
-                position: startPoint,
-                color: currentColor,
-                fontSize: pickerUserDefaults.textToolFontSize,
-                hasBackground: pickerUserDefaults.textBackgroundEnabled
-            )
+            // If we didn't click on existing text, create new one. A drag from here turns
+            // it into a fixed-width box instead.
+            overlayView.currentTextAnnotation = newTextAnnotation(at: startPoint)
             overlayView.createTextField(at: startPoint)
+            overlayView.textBoxDragStart = startPoint
         }
 
         switch overlayView.currentTool {
@@ -1096,6 +1095,56 @@ class OverlayWindow: NSPanel {
         annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
 
+    /// An empty label in the Text tool's current color, size and background.
+    private func newTextAnnotation(at point: NSPoint, wrapWidth: CGFloat? = nil) -> TextAnnotation {
+        TextAnnotation(
+            text: "",
+            position: point,
+            color: currentColor,
+            fontSize: pickerUserDefaults.textToolFontSize,
+            hasBackground: pickerUserDefaults.textBackgroundEnabled,
+            wrapWidth: wrapWidth
+        )
+    }
+
+    /// How far a Text-tool press has to move sideways before it draws a box instead of
+    /// placing a label at the click.
+    static let textBoxDragThreshold: CGFloat = 8
+
+    /// Follows a Text-tool drag that started on empty canvas. Once it moves far enough
+    /// sideways, the label the press opened gives way to a box outline.
+    private func continueTextBoxDrag(to point: NSPoint) {
+        guard let start = overlayView.textBoxDragStart else { return }
+        if overlayView.textBoxDraftRect == nil {
+            guard abs(point.x - start.x) >= Self.textBoxDragThreshold else { return }
+            overlayView.cancelTextAnnotation()
+        }
+        overlayView.textBoxDraftRect = NSRect(
+            x: min(start.x, point.x), y: min(start.y, point.y),
+            width: abs(point.x - start.x), height: abs(point.y - start.y))
+        overlayView.needsDisplay = true
+    }
+
+    /// Opens a fixed-width box where a Text-tool drag was released: the outline's width,
+    /// hanging from its top edge. The height follows whatever gets typed.
+    private func finishTextBoxDrag() {
+        defer {
+            overlayView.textBoxDragStart = nil
+            overlayView.textBoxDraftRect = nil
+        }
+        guard let rect = overlayView.textBoxDraftRect, overlayView.currentTool == .text else {
+            return
+        }
+        let textLeft = rect.minX + OverlayView.textFieldInsets.left
+        overlayView.currentTextAnnotation = newTextAnnotation(
+            at: NSPoint(x: textLeft, y: rect.maxY),
+            wrapWidth: max(
+                TextAnnotation.minimumWrapWidth,
+                rect.width - OverlayView.textFieldHorizontalChrome))
+        overlayView.createTextField(at: NSPoint(x: textLeft, y: rect.maxY), topEdge: rect.maxY)
+        overlayView.needsDisplay = true
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if quickPicker != nil {
             handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
@@ -1155,6 +1204,11 @@ class OverlayWindow: NSPanel {
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
             overlayView.needsDisplay = true
+            return
+        }
+
+        if overlayView.currentTool == .text, overlayView.textBoxDragStart != nil {
+            continueTextBoxDrag(to: currentPoint)
             return
         }
 
@@ -1540,6 +1594,10 @@ class OverlayWindow: NSPanel {
             overlayView.selectionOriginalData.removeAll()
             overlayView.needsDisplay = true
             return
+        }
+
+        if overlayView.textBoxDragStart != nil {
+            finishTextBoxDrag()
         }
 
         if let draggedIndex = overlayView.draggedTextAnnotationIndex {

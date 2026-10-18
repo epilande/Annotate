@@ -1812,3 +1812,116 @@ private final class TrackingOverlayView: OverlayView {
         super.setNeedsDisplay(invalidRect)
     }
 }
+
+@MainActor
+final class TextBoxDragTests: XCTestCase, Sendable {
+    var window: OverlayWindow!
+
+    nonisolated override func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated {
+            AppDelegate.shared = nil
+            window = OverlayWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                styleMask: .borderless, backing: .buffered, defer: false)
+            window.overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
+            window.overlayView.fadeMode = false
+            window.overlayView.currentTool = .text
+        }
+    }
+
+    nonisolated override func tearDown() {
+        MainActor.assumeIsolated {
+            window.overlayView.cancelTextAnnotation()
+            window.overlayView.pickerUserDefaultsOverride = nil
+            window = nil
+        }
+        TestUserDefaults.removeSuite()
+        super.tearDown()
+    }
+
+    private func mouse(_ type: NSEvent.EventType, _ x: CGFloat, _ y: CGFloat) throws -> NSEvent {
+        try XCTUnwrap(TestEvents.createMouseEvent(type: type, location: NSPoint(x: x, y: y)))
+    }
+
+    func testClickWithoutDraggingPlacesAnAutoWidthLabel() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 200, 300))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 203, 298))
+        window.mouseUp(with: try mouse(.leftMouseUp, 203, 298))
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertNil(window.overlayView.currentTextAnnotation?.wrapWidth)
+        XCTAssertEqual(field.frame.midY, 300, accuracy: 0.5, "Still centered on the click")
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+    }
+
+    func testDraggingDrawsAnOutlineThenOpensAFixedWidthBoxHangingFromItsTop() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 200, 400))
+        let clickField = window.overlayView.activeTextField
+        XCTAssertNotNil(clickField, "A press opens a label right away, as before")
+
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 300, 380))
+        XCTAssertNil(window.overlayView.activeTextField, "The click's label gives way to a box")
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 450, 300))
+        XCTAssertEqual(
+            window.overlayView.textBoxDraftRect, NSRect(x: 200, y: 300, width: 250, height: 100))
+
+        window.mouseUp(with: try mouse(.leftMouseUp, 450, 300))
+
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+        XCTAssertNil(window.overlayView.textBoxDragStart)
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertFalse(field === clickField)
+        XCTAssertEqual(
+            window.overlayView.currentTextAnnotation?.wrapWidth,
+            250 - OverlayView.textFieldHorizontalChrome)
+        XCTAssertEqual(field.frame, NSRect(x: 200, y: field.frame.minY, width: 250, height: field.frame.height))
+        XCTAssertEqual(field.frame.maxY, 400, "The box hangs from the top of the drag")
+
+        field.stringValue = "Typing into a box wraps the text inside its width and grows it downward"
+        window.overlayView.resizeActiveTextField(field)
+        XCTAssertEqual(field.frame.width, 250, "The box keeps its width")
+        XCTAssertEqual(field.frame.maxY, 400)
+
+        window.overlayView.finalizeTextAnnotation(field)
+        let label = try XCTUnwrap(window.overlayView.textAnnotations.first)
+        XCTAssertEqual(label.wrapWidth, 250 - OverlayView.textFieldHorizontalChrome)
+        XCTAssertEqual(label.position.x, 200 + OverlayView.textFieldInsets.left)
+        XCTAssertEqual(label.textTop, 400 - OverlayView.textFieldInsets.top, accuracy: 0.5)
+    }
+
+    func testDraggingLeftwardsUsesTheOutlinesLeftEdge() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 500, 300))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 300, 340))
+        window.mouseUp(with: try mouse(.leftMouseUp, 300, 340))
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertEqual(field.frame.minX, 300)
+        XCTAssertEqual(field.frame.width, 200)
+        XCTAssertEqual(field.frame.maxY, 340, "The top is the higher edge of the drag")
+    }
+
+    func testANarrowDragStillOpensAUsableBox() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 200, 300))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 210, 300))
+        window.mouseUp(with: try mouse(.leftMouseUp, 210, 300))
+
+        XCTAssertEqual(
+            window.overlayView.currentTextAnnotation?.wrapWidth, TextAnnotation.minimumWrapWidth)
+    }
+
+    func testPressingOnALabelDragsItInsteadOfDrawingABox() throws {
+        window.overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Existing", position: NSPoint(x: 200, y: 300), color: .red,
+                fontSize: defaultTextAnnotationFontSize)
+        ]
+        window.mouseDown(with: try mouse(.leftMouseDown, 210, 305))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 300, 305))
+        window.mouseUp(with: try mouse(.leftMouseUp, 300, 305))
+
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+        XCTAssertNil(window.overlayView.activeTextField)
+        XCTAssertEqual(window.overlayView.textAnnotations[0].position, NSPoint(x: 290, y: 300))
+    }
+}

@@ -174,6 +174,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var resizeHandle: TextResizeHandle?
     var resizeStart: (index: Int, original: TextAnnotation, bounds: NSRect)?
 
+    /// Where a Text-tool press on empty canvas began. Dragging from there far enough turns
+    /// the click into a fixed-width box, whose outline is `textBoxDraftRect` until release.
+    var textBoxDragStart: NSPoint?
+    var textBoxDraftRect: NSRect?
+
     var clipboard: [ClipboardItem] = []
     var lastMousePosition: NSPoint = .zero
 
@@ -766,6 +771,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             if intersectsDirtyRect(box, dirtyRect) {
                 drawSelectionBoundingBox(box)
             }
+        }
+
+        if let rect = textBoxDraftRect, intersectsDirtyRect(rect, dirtyRect) {
+            let path = NSBezierPath(rect: rect)
+            path.lineWidth = 1.5
+            path.setLineDash([5, 3], count: 2, phase: 0)
+            currentColor.withAlphaComponent(0.8).setStroke()
+            path.stroke()
         }
 
         if isDrawingSelectionRect, let start = selectionRectStart, let end = selectionRectEnd {
@@ -2363,7 +2376,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
-    func createTextField(at point: NSPoint, withText existingText: String = "") {
+    /// Opens the text field for `currentTextAnnotation` with its text's left edge at
+    /// `point.x`. A new field centers its first line on `point`, or hangs below `topEdge`
+    /// when one is given; an edited one lines up with the label drawn at `point`.
+    func createTextField(
+        at point: NSPoint, withText existingText: String = "", topEdge: CGFloat? = nil
+    ) {
         if let existingField = activeTextField {
             finalizeTextAnnotation(existingField)
         }
@@ -2389,13 +2407,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 Self.minimumAutoWrapWidth, min(previous ?? .greatestFiniteMagnitude, room))
         }
 
-        // A new field centers its first line on the click. An edited one opens with its
-        // text's top edge right over the label's, so nothing jumps when it opens or closes.
+        // An edited field opens with its text's top edge right over the label's, so nothing
+        // jumps when it opens or closes.
         let boxSize = textFieldBoxSize(forText: existingText, font: font)
-        let fieldY =
-            isEditing
-            ? editedTextTop + Self.textFieldInsets.top - boxSize.height
-            : point.y - boxSize.height / 2
+        let fieldY: CGFloat
+        if isEditing {
+            fieldY = editedTextTop + Self.textFieldInsets.top - boxSize.height
+        } else if let topEdge {
+            fieldY = topEdge - boxSize.height
+        } else {
+            fieldY = point.y - boxSize.height / 2
+        }
         let textField = AnnotationTextField(
             frame: NSRect(x: fieldX, y: fieldY, width: boxSize.width, height: boxSize.height))
         textField.cell = PaddedTextFieldCell()
