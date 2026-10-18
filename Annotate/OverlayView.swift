@@ -1325,10 +1325,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
-        // A label being edited or dragged is addressed by a standalone index, so it has to
-        // survive compaction and then follow its annotation to the new slot.
+        // A label being edited, dragged or resized is addressed by a standalone index, so it
+        // has to survive compaction and then follow its annotation to the new slot.
         let protectedTextIndices = Set(
-            [editingTextAnnotationIndex, draggedTextAnnotationIndex].compactMap { $0 })
+            [editingTextAnnotationIndex, draggedTextAnnotationIndex, resizeStart?.index]
+                .compactMap { $0 })
         let textIndexMap = compactItems(
             &textAnnotations,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
@@ -1339,6 +1340,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         if let textIndexMap {
             editingTextAnnotationIndex = editingTextAnnotationIndex.flatMap { textIndexMap[$0] }
             draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
+            if let index = resizeStart?.index, let newIndex = textIndexMap[index] {
+                resizeStart?.index = newIndex
+            }
         }
         compactFadedPaths(
             &paths,

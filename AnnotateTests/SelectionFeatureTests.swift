@@ -1164,6 +1164,62 @@ final class SelectionFeatureTests: XCTestCase {
         overlayView.endTextResize()
     }
 
+    func testResizeFollowsItsLabelWhenAnOlderLabelFadesMidDrag() {
+        overlayView.fadeMode = true
+        let now = CACurrentMediaTime()
+        let expired = now - overlayView.fadeDuration - 1
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Fading", position: NSPoint(x: 100, y: 400), color: .red, fontSize: 24,
+                creationTime: expired),
+            TextAnnotation(
+                text: "Wrapping needs several words before a line ever breaks",
+                position: NSPoint(x: 100, y: 300), color: .red, fontSize: 24,
+                creationTime: now),
+            TextAnnotation(
+                text: "Bystander", position: NSPoint(x: 100, y: 100), color: .blue, fontSize: 24,
+                creationTime: now),
+        ]
+        let bystander = overlayView.textAnnotations[2]
+        overlayView.selectedObjects = [.text(index: 1)]
+        let box = overlayView.calculateSelectionBoundingBox()
+
+        overlayView.beginTextResize(.e)
+        // The first label expires mid-drag, so everything after it shifts down a slot.
+        overlayView.compactExpiredAnnotations()
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + 120, y: box.midY))
+        overlayView.endTextResize()
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 2)
+        XCTAssertEqual(
+            overlayView.textAnnotations[0].text,
+            "Wrapping needs several words before a line ever breaks")
+        XCTAssertNotNil(overlayView.textAnnotations[0].wrapWidth, "the resize must land on its own label")
+        XCTAssertEqual(overlayView.textAnnotations[1], bystander, "the label after it must be untouched")
+    }
+
+    func testLabelBeingResizedSurvivesItsOwnFade() {
+        overlayView.fadeMode = true
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Wrapping needs several words before a line ever breaks",
+                position: NSPoint(x: 100, y: 300), color: .red, fontSize: 24,
+                creationTime: CACurrentMediaTime() - overlayView.fadeDuration - 1)
+        ]
+        overlayView.selectedObjects = [.text(index: 0)]
+        let box = overlayView.calculateSelectionBoundingBox()
+
+        overlayView.beginTextResize(.e)
+        overlayView.compactExpiredAnnotations()
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + 120, y: box.midY))
+
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        XCTAssertNotNil(overlayView.textAnnotations[0].wrapWidth)
+        overlayView.endTextResize()
+    }
+
     func testCornerDragFixesTheWidthAsWellAsScalingTheFont() {
         _ = selectSingleLabel(fontSize: 24)
         overlayView.textAnnotations[0].text =
