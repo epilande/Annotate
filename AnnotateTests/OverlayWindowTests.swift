@@ -1770,21 +1770,40 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         return textField
     }
 
-    func testApplyingFontSizeAlsoResizesAPlacedSelectedLabel() {
-        UserDefaults.standard.textToolFontSize = 18
-        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+    func testSizingASelectedLabelLeavesTheTextToolDefaultAlone() {
+        let defaults = TestUserDefaults.create()
+        defaults.textToolFontSize = 18
+        window.overlayView.pickerUserDefaultsOverride = defaults
 
         window.overlayView.currentTool = .select
         window.overlayView.textAnnotations = [
             TextAnnotation(
-                text: "Placed", position: NSPoint(x: 50, y: 50), color: .red, fontSize: 18)
+                text: "Placed", position: NSPoint(x: 50, y: 50), color: .red, fontSize: 24),
+            TextAnnotation(
+                text: "Other", position: NSPoint(x: 300, y: 50), color: .red, fontSize: 24),
         ]
         window.overlayView.selectedObjects = [.text(index: 0)]
 
         window.applyTextFontSize(44, showsFeedback: false)
-
         XCTAssertEqual(window.overlayView.textAnnotations[0].fontSize, 44)
-        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+        XCTAssertEqual(window.overlayView.textAnnotations[1].fontSize, 24)
+        XCTAssertEqual(defaults.textToolFontSize, 18, "The next label keeps the Text tool size")
+
+        // The ladder steps from the selected label's own size, not the stored default.
+        window.stepTextFontSize(1)
+        XCTAssertGreaterThan(window.overlayView.textAnnotations[0].fontSize, 44)
+        XCTAssertEqual(defaults.textToolFontSize, 18)
+    }
+
+    func testSizingWithTheTextToolStillSetsTheDefault() {
+        let defaults = TestUserDefaults.create()
+        defaults.textToolFontSize = 18
+        window.overlayView.pickerUserDefaultsOverride = defaults
+        window.overlayView.currentTool = .text
+
+        window.applyTextFontSize(30, showsFeedback: false)
+
+        XCTAssertEqual(defaults.textToolFontSize, 30)
     }
 
     func testSizeChipFollowsTheTextContext() {
