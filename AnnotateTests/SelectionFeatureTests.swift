@@ -1149,6 +1149,18 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(overlayView.textAnnotations[1].fontSize, 44)
     }
 
+    func testSelectedLabelGrowsDownwardWhenItsFontSizeChanges() {
+        selectSingleLabel(text: "Grow", fontSize: 18)
+        let top = overlayView.textAnnotations[0].textTop
+        let left = overlayView.textAnnotations[0].position.x
+
+        overlayView.setSelectedTextFontSize(48)
+
+        XCTAssertEqual(overlayView.textAnnotations[0].textTop, top, accuracy: 0.001)
+        XCTAssertEqual(overlayView.textAnnotations[0].position.x, left)
+        XCTAssertLessThan(overlayView.textAnnotations[0].position.y, 100)
+    }
+
     // MARK: - Wrapped Text Boxes
 
     func testWrappingMakesTheBoxTallerInsteadOfWider() {

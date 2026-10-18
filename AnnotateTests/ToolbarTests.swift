@@ -994,7 +994,7 @@ final class ToolbarTests: XCTestCase {
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         window.overlayView.createTextField(
-            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+            at: NSPoint(x: 120, y: 120), withText: "")
         let field = try XCTUnwrap(
             window.overlayView.activeTextField, "Expected an annotation text field")
         if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {

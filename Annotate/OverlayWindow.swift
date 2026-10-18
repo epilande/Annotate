@@ -1013,16 +1013,9 @@ class OverlayWindow: NSPanel {
                         // Set currentTextAnnotation so finalizeTextAnnotation can save
                         overlayView.currentTextAnnotation = existingAnnotation
 
-                        let attributes: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.systemFont(ofSize: existingAnnotation.fontSize)
-                        ]
-                        let size = existingAnnotation.text.size(withAttributes: attributes)
-
                         overlayView.createTextField(
                             at: existingAnnotation.position,
-                            withText: existingAnnotation.text,
-                            width: max(300, size.width + 20)
-                        )
+                            withText: existingAnnotation.text)
                     }
                     return
                 }

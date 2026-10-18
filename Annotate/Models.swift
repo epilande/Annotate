@@ -256,13 +256,16 @@ struct TextAnnotation {
     var color: NSColor
     var fontSize: CGFloat
     var hasBackground: Bool = false
-    /// Fixed text width set by dragging a side anchor, so the label wraps to several lines
-    /// instead of growing wider. `nil` keeps the original behavior: one line, width
-    /// following the text.
+    /// Fixed text width from a Text-tool drag or a side handle. Lines wrap inside it and
+    /// the box keeps this width even when the text is shorter. `nil` makes the label auto
+    /// width: it grows with the text, up to `maxWidth`.
     var wrapWidth: CGFloat? = nil
+    /// Widest an auto-width label may grow before it wraps, set when it is placed so it
+    /// wraps at the screen edge instead of running off it. Ignored when `wrapWidth` is set.
+    var maxWidth: CGFloat? = nil
     var creationTime: CFTimeInterval?
 
-    /// The narrowest a side anchor can pull the box before the text has nowhere to go.
+    /// The narrowest a side handle can pull the box before the text has nowhere to go.
     static let minimumWrapWidth: CGFloat = 24
 
     /// Padding between the text and the edge of the background pill.
@@ -291,26 +294,38 @@ struct TextAnnotation {
 
     /// Bounds of the label, measuring the text with the annotation's own font.
     ///
-    /// Wrapped labels measure through `textSize()`, so the box grows taller as the text
-    /// breaks into more lines at `wrapWidth`.
+    /// Measures through `textSize()`, so the box grows taller as the text breaks into
+    /// more lines.
     func bounds(fallbackInsets: NSEdgeInsets) -> NSRect {
         bounds(textSize: textSize(), fallbackInsets: fallbackInsets)
     }
 
-    /// Measured text size at this annotation's font, wrapped to `wrapWidth` when set.
-    /// AppKit does the line breaking, so a wrapped label measures exactly what the drawn
-    /// text occupies.
+    /// Layout options shared by measuring and drawing, so both break lines identically.
+    static let layoutOptions: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+
+    /// Width lines break at. Drawing lays the text out at this same width rather than the
+    /// measured one, so a line that exactly fills the measured width never rewraps.
+    var layoutWidth: CGFloat { wrapWidth ?? maxWidth ?? .greatestFiniteMagnitude }
+
+    /// Measured text size at this annotation's font. Lines break at `wrapWidth` or
+    /// `maxWidth` and at every line break in the text. AppKit does the line breaking, so
+    /// the size is exactly what the drawn text occupies.
     func textSize() -> NSSize {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize)
-        ]
-        guard let wrapWidth else { return text.size(withAttributes: attributes) }
         let measured = (text as NSString).boundingRect(
-            with: NSSize(width: wrapWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: attributes)
+            with: NSSize(width: layoutWidth, height: .greatestFiniteMagnitude),
+            options: Self.layoutOptions,
+            attributes: [.font: NSFont.systemFont(ofSize: fontSize)])
         // Ceil so the last line's descenders are never clipped by the box.
-        return NSSize(width: wrapWidth, height: ceil(measured.height))
+        return NSSize(width: wrapWidth ?? measured.width, height: ceil(measured.height))
+    }
+
+    /// Top edge of the text. `position` is the text's bottom-left, so this is what has to
+    /// hold still for a label to grow downward.
+    var textTop: CGFloat { position.y + textSize().height }
+
+    /// Moves the label vertically so its text's top edge sits at `top`.
+    mutating func pinTextTop(to top: CGFloat) {
+        position.y = top - textSize().height
     }
 }
 
@@ -447,7 +462,7 @@ extension TextAnnotation: Equatable {
     public static func == (lhs: TextAnnotation, rhs: TextAnnotation) -> Bool {
         return lhs.text == rhs.text && lhs.position == rhs.position && lhs.color.isEqual(rhs.color)
             && lhs.fontSize == rhs.fontSize && lhs.hasBackground == rhs.hasBackground
-            && lhs.wrapWidth == rhs.wrapWidth
+            && lhs.wrapWidth == rhs.wrapWidth && lhs.maxWidth == rhs.maxWidth
             && lhs.creationTime == rhs.creationTime
     }
 }

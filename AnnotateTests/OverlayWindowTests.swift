@@ -1607,7 +1607,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         window.overlayView.createTextField(
-            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+            at: NSPoint(x: 120, y: 120), withText: "")
         guard let field = window.overlayView.activeTextField else {
             XCTFail("Expected an annotation text field")
             return nil
@@ -1764,7 +1764,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             text: "", position: point, color: .red,
             fontSize: defaultTextAnnotationFontSize
         )
-        window.overlayView.createTextField(at: point, withText: "", width: 100)
+        window.overlayView.createTextField(at: point, withText: "")
         let textField = try XCTUnwrap(window.overlayView.activeTextField)
         textField.stringValue = text
         return textField
