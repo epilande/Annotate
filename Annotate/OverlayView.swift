@@ -2484,8 +2484,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// `finalizeTextAnnotation` on purpose, because none of them is the user finishing a
     /// label: losing focus (`controlTextDidEndEditing`), pressing a toolbar button
     /// (`OverlayWindow.performToolbarAction`), closing the overlay or flipping always-on
-    /// mode (`AppDelegate`), Shift+Enter chaining straight into the next label, and
-    /// `createTextField` closing whatever field is still open before it opens a new one.
+    /// mode (`AppDelegate`), and `createTextField` closing whatever field is still open
+    /// before it opens a new one.
     @objc func commitTextField(_ textField: NSTextField) {
         finalizeTextAnnotation(textField)
 
@@ -2598,10 +2598,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
             // Cmd+Enter is handled by AnnotationTextField.performKeyEquivalent
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-                let position = textField.frame.origin
-                let newY = position.y - 32
-                finalizeTextAnnotation(textField)
-                createTextFieldForNewAnnotation(at: NSPoint(x: position.x, y: newY))
+                // A line break inside the same label. The field grows downward to fit it.
+                textView.insertNewlineIgnoringFieldEditor(nil)
                 return true
             } else {
                 commitTextField(textField)
@@ -2610,17 +2608,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         return false
-    }
-
-    private func createTextFieldForNewAnnotation(at point: NSPoint) {
-        currentTextAnnotation = TextAnnotation(
-            text: "",
-            position: point,
-            color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: pickerUserDefaults.textToolFontSize,
-            hasBackground: pickerUserDefaults.textBackgroundEnabled
-        )
-        createTextField(at: point)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

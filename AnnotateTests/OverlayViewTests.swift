@@ -1185,6 +1185,57 @@ final class OverlayViewTests: XCTestCase, Sendable {
 
     /// Opens a new-label field at a fixed point, seeded the way `OverlayWindow` seeds it on a
     /// click, and types `text` into it.
+    func testShiftReturnInsertsALineBreakInTheSameLabel() throws {
+        overlayView.currentTool = .text
+        seedNewTextField(text: "First")
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        let editor = NSTextView()
+        editor.string = "First"
+        editor.setSelectedRange(NSRange(location: 5, length: 0))
+
+        // `control(_:textView:doCommandBy:)` reads Shift from the app's current event, which
+        // only an event the app dequeued itself becomes.
+        let shiftReturn = try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 36, modifierFlags: .shift, characters: "\r"))
+        NSApplication.shared.postEvent(shiftReturn, atStart: true)
+        _ = NSApplication.shared.nextEvent(
+            matching: .keyDown, until: .distantPast, inMode: .default, dequeue: true)
+
+        let handled = overlayView.control(
+            textField, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(editor.string, "First\n", "Shift+Return types a line break")
+        XCTAssertTrue(overlayView.activeTextField === textField, "The same label stays open")
+        XCTAssertTrue(overlayView.textAnnotations.isEmpty, "Nothing is placed yet")
+    }
+
+    func testLineBreaksGrowTheFieldDownwardAndPlaceOneLabel() throws {
+        overlayView.currentTool = .text
+        seedNewTextField(text: "First")
+        let textField = try XCTUnwrap(overlayView.activeTextField)
+        overlayView.resizeActiveTextField(textField)
+        let top = textField.frame.maxY
+        let oneLineHeight = textField.frame.height
+
+        // A trailing line break already makes room for the cursor on the new line.
+        textField.stringValue = "First\n"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertGreaterThan(textField.frame.height, oneLineHeight)
+        XCTAssertEqual(textField.frame.maxY, top)
+
+        textField.stringValue = "First\nSecond"
+        overlayView.resizeActiveTextField(textField)
+        XCTAssertEqual(textField.frame.maxY, top)
+
+        overlayView.finalizeTextAnnotation(textField)
+        XCTAssertEqual(overlayView.textAnnotations.count, 1)
+        let label = overlayView.textAnnotations[0]
+        XCTAssertEqual(label.text, "First\nSecond")
+        XCTAssertEqual(label.textTop, top - 4, accuracy: 0.5, "The label keeps the field's text top")
+    }
+
     private func seedNewTextField(text: String) {
         let point = NSPoint(x: 100, y: 100)
         overlayView.currentTextAnnotation = TextAnnotation(
