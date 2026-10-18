@@ -1135,6 +1135,159 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(overlayView.textAnnotations[0], resized)
     }
 
+    // MARK: - Resize history follows its label
+
+    /// Attaches the view to a window with its own undo manager, one undo group per action.
+    private func makeUndoWindow() -> (TestWindow, UndoManager) {
+        let window = TestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.borderless],
+            backing: .buffered, defer: false)
+        window.contentView = overlayView
+        let undoManager = window.undoManager!
+        undoManager.groupsByEvent = false
+        return (window, undoManager)
+    }
+
+    private func asOneStep(_ undoManager: UndoManager, _ body: () -> Void) {
+        undoManager.beginUndoGrouping()
+        body()
+        undoManager.endUndoGrouping()
+    }
+
+    /// Three labels with the middle one selected.
+    private func placeThreeLabelsSelectingTheMiddle() -> NSRect {
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = ["Alpha", longLabelText, "Charlie"].enumerated().map {
+            TextAnnotation(
+                text: $0.element, position: NSPoint(x: 100, y: 400 - CGFloat($0.offset) * 120),
+                color: .red, fontSize: 24)
+        }
+        overlayView.selectedObjects = [.text(index: 1)]
+        return overlayView.calculateSelectionBoundingBox()
+    }
+
+    private func resizeSelectedLabel(from box: NSRect, by width: CGFloat) {
+        overlayView.beginTextResize(.right)
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + width, y: box.midY))
+        overlayView.endTextResize()
+    }
+
+    func testUndoingAResizeFindsItsLabelAfterTheListIsReordered() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        let box = placeThreeLabelsSelectingTheMiddle()
+        let original = overlayView.textAnnotations
+        asOneStep(undoManager) { resizeSelectedLabel(from: box, by: 120) }
+        asOneStep(undoManager) {
+            overlayView.selectedObjects = [.text(index: 0)]
+            overlayView.deleteSelectedObjects()
+        }
+
+        // Undoing the delete puts Alpha back at the end: [B, C, A].
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations.map(\.text), [longLabelText, "Charlie", "Alpha"])
+
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations[0], original[1], "The resize undoes on its own label")
+        XCTAssertEqual(overlayView.textAnnotations[1], original[2], "Charlie is untouched")
+        XCTAssertEqual(overlayView.textAnnotations[2], original[0], "Alpha is untouched")
+    }
+
+    func testUndoingAFontSizeChangeFindsItsLabelAfterTheListIsReordered() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        _ = placeThreeLabelsSelectingTheMiddle()
+        let original = overlayView.textAnnotations
+        asOneStep(undoManager) { overlayView.setSelectedTextFontSize(44) }
+        asOneStep(undoManager) {
+            overlayView.selectedObjects = [.text(index: 0)]
+            overlayView.deleteSelectedObjects()
+        }
+
+        undoManager.undo()
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations[0], original[1])
+        XCTAssertEqual(overlayView.textAnnotations[1], original[2])
+        XCTAssertEqual(overlayView.textAnnotations[2], original[0])
+    }
+
+    func testUndoingAResizeFindsItsLabelAfterFadeCompaction() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        overlayView.fadeMode = true
+        let box = placeThreeLabelsSelectingTheMiddle()
+        let now = CACurrentMediaTime()
+        for index in overlayView.textAnnotations.indices {
+            overlayView.textAnnotations[index].creationTime = now
+        }
+        let original = overlayView.textAnnotations
+        asOneStep(undoManager) { resizeSelectedLabel(from: box, by: 120) }
+
+        // Alpha fades out after the resize was recorded.
+        overlayView.textAnnotations[0].creationTime = now - overlayView.fadeDuration - 1
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(overlayView.textAnnotations.count, 2)
+
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations, [original[1], original[2]])
+    }
+
+    func testRedoingAResizeFindsItsLabelAfterFadeCompaction() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        overlayView.fadeMode = true
+        let box = placeThreeLabelsSelectingTheMiddle()
+        let now = CACurrentMediaTime()
+        for index in overlayView.textAnnotations.indices {
+            overlayView.textAnnotations[index].creationTime = now
+        }
+        let charlie = overlayView.textAnnotations[2]
+        asOneStep(undoManager) { resizeSelectedLabel(from: box, by: 120) }
+        let resized = overlayView.textAnnotations[1]
+        undoManager.undo()
+
+        overlayView.textAnnotations[0].creationTime = now - overlayView.fadeDuration - 1
+        overlayView.compactExpiredAnnotations()
+
+        undoManager.redo()
+        XCTAssertEqual(overlayView.textAnnotations, [resized, charlie])
+    }
+
+    func testUndoingAResizeOfALabelThatFadedAwayChangesNothing() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        overlayView.fadeMode = true
+        let box = placeThreeLabelsSelectingTheMiddle()
+        let now = CACurrentMediaTime()
+        for index in overlayView.textAnnotations.indices {
+            overlayView.textAnnotations[index].creationTime = now
+        }
+        asOneStep(undoManager) { resizeSelectedLabel(from: box, by: 120) }
+
+        overlayView.textAnnotations[1].creationTime = now - overlayView.fadeDuration - 1
+        overlayView.compactExpiredAnnotations()
+        let survivors = overlayView.textAnnotations
+
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations, survivors, "No other label takes its place")
+    }
+
+    func testADuplicatedLabelIsItsOwnLabelForUndo() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        selectSingleLabel(text: longLabelText)
+        asOneStep(undoManager) { overlayView.duplicateSelectedObjects() }
+        XCTAssertEqual(overlayView.textAnnotations.count, 2)
+        XCTAssertNotEqual(overlayView.textAnnotations[0].id, overlayView.textAnnotations[1].id)
+
+        overlayView.selectedObjects = [.text(index: 1)]
+        let original = overlayView.textAnnotations
+        let box = overlayView.calculateSelectionBoundingBox()
+        asOneStep(undoManager) { resizeSelectedLabel(from: box, by: 120) }
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations, original)
+    }
+
     func testSetSelectedTextFontSizeChangesOnlyTheSelectedLabel() {
         overlayView.currentTool = .select
         overlayView.textAnnotations = [

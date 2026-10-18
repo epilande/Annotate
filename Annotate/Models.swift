@@ -264,6 +264,10 @@ struct TextAnnotation {
     /// wraps at the screen edge instead of running off it. Ignored when `wrapWidth` is set.
     var maxWidth: CGFloat? = nil
     var creationTime: CFTimeInterval?
+    /// Stable identity, so history can find this label again after deletes, undo and fade
+    /// compaction have moved it within the array. Not part of equality: two labels that
+    /// look the same are equal. A pasted copy gets a fresh one.
+    var id = UUID()
 
     /// The narrowest a side handle can pull the box before the text has nowhere to go.
     static let minimumWrapWidth: CGFloat = 24
@@ -394,7 +398,7 @@ enum DrawingAction {
     case addText(TextAnnotation)
     case removeText(TextAnnotation)
     case moveText(Int, NSPoint, NSPoint)
-    case resizeText(Int, TextAnnotation, TextAnnotation)  // index, from, to
+    case resizeText(TextAnnotation, TextAnnotation)  // from, to; the label is found by id
     case moveArrow(Int, NSPoint, NSPoint, NSPoint, NSPoint)  // index, fromStart, fromEnd, toStart, toEnd
     case moveLine(Int, NSPoint, NSPoint, NSPoint, NSPoint)
     case moveRectangle(Int, NSPoint, NSPoint, NSPoint, NSPoint)

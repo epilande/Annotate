@@ -470,14 +470,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     }
                 }
             }
-        case .resizeText(let index, let from, let to):
+        case .resizeText(let from, let to):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if index < target.textAnnotations.count {
-                        target.textAnnotations[index] = from
-                        target.registerUndo(action: .resizeText(index, to, from))
-                        target.needsDisplay = true
-                    }
+                    // By identity, not index: deletes, undo and fade compaction all move
+                    // labels around. A label that has faded away has nothing to restore.
+                    guard let index = target.textAnnotations.firstIndex(where: { $0.id == from.id })
+                    else { return }
+                    target.textAnnotations[index] = from
+                    target.registerUndo(action: .resizeText(to, from))
+                    target.needsDisplay = true
                 }
             }
         case .moveArrow(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -1143,7 +1145,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         guard let start = resizeStart, start.index < textAnnotations.count else { return }
         let resized = textAnnotations[start.index]
         guard resized != start.original else { return }
-        registerUndo(action: .resizeText(start.index, start.original, resized))
+        registerUndo(action: .resizeText(start.original, resized))
     }
 
     /// Applies a picked size to the single selected label, leaving the old one undoable.
@@ -1157,7 +1159,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Keep the top edge, so a bigger size grows the label downward like typing does.
         updated.pinTextTop(to: original.textTop)
         textAnnotations[index] = updated
-        registerUndo(action: .resizeText(index, original, updated))
+        registerUndo(action: .resizeText(original, updated))
         needsDisplay = true
     }
     
@@ -2233,6 +2235,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.highlight(index: highlightPaths.count - 1))
 
             case .text(var text):
+                text.id = UUID()
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
                 text.creationTime = pasteTime
                 textAnnotations.append(text)
@@ -2560,7 +2563,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 wrapWidth: currentText.wrapWidth,
                 maxWidth: currentText.maxWidth,
                 creationTime: isEdit
-                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime())
+                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime()),
+                id: currentText.id
             )
             finalAnnotation.pinTextTop(to: textTop)
 
