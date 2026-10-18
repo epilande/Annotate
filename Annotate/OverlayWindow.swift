@@ -630,7 +630,7 @@ class OverlayWindow: NSPanel {
     }
 
     /// A size change should land on a label while the text tool is live, a field is being
-    /// edited, or exactly one label is selected — that last case is how a label that is
+    /// edited, or exactly one label is selected. That last case is how a label that is
     /// already placed gets resized after the fact.
     private var isTextSizingContext: Bool {
         overlayView.currentTool == .text || overlayView.activeTextField != nil
@@ -880,8 +880,8 @@ class OverlayWindow: NSPanel {
         
         // Handle selection mode
         if overlayView.currentTool == .select {
-            // Anchors sit inside the bounding box, so they get first refusal on the click:
-            // grabbing one scales the label instead of dragging the whole selection.
+            // Side handles sit on the bounding box, so they get first refusal on the click:
+            // grabbing one changes the label's width instead of dragging the selection.
             if !shiftPressed, let handle = overlayView.textResizeHandle(at: startPoint) {
                 overlayView.beginTextResize(handle)
                 return
@@ -1136,7 +1136,7 @@ class OverlayWindow: NSPanel {
             return
         }
         
-        // Anchor drag: the label rescales in place, it does not move with the cursor.
+        // Side handle drag: the label changes width in place, it does not move with the cursor.
         if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
             overlayView.updateTextResize(to: currentPoint)
             return
@@ -1520,8 +1520,8 @@ class OverlayWindow: NSPanel {
             return
         }
         
-        // End an anchor drag before the move branch below, which would otherwise register
-        // a move undo for a selection that never moved.
+        // End a side handle drag before the move branch below, which would otherwise
+        // register a move undo for a selection that never moved.
         if overlayView.currentTool == .select, overlayView.resizeHandle != nil {
             overlayView.endTextResize()
             overlayView.needsDisplay = true

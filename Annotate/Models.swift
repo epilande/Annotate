@@ -131,19 +131,10 @@ enum SelectedObject: Equatable, Hashable {
     }
 }
 
-/// The eight anchor squares drawn on a single selected text annotation's box. Which
-/// sides a handle leaves alone decides which edge stays put while you drag it.
-enum ResizeHandle: CaseIterable, Hashable {
-    case nw, n, ne, e, se, s, sw, w
-
-    /// The handle sits on the box's left edge, so dragging it changes `minX`.
-    var movesWest: Bool { self == .nw || self == .w || self == .sw }
-    /// The handle sits on the box's right edge.
-    var movesEast: Bool { self == .ne || self == .e || self == .se }
-    /// The handle sits on the box's top edge.
-    var movesNorth: Bool { self == .nw || self == .n || self == .ne }
-    /// The handle sits on the box's bottom edge.
-    var movesSouth: Bool { self == .sw || self == .s || self == .se }
+/// The side handles on a single selected label. They only change the label's width: the
+/// text rewraps, the height follows the content, and the font size stays where it is.
+enum TextResizeHandle: CaseIterable, Hashable {
+    case left, right
 }
 
 /// Represents a timed point for pen/highlighter so we can do trailing fade-out
