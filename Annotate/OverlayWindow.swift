@@ -316,6 +316,10 @@ class OverlayWindow: NSPanel {
     }
 
     override func close() {
+        // The fade timer retains the window, and the observer would keep re-measuring a toolbar
+        // nobody sees, so a closed overlay has to drop both or it lives for the rest of the process.
+        stopFadeLoop()
+        NotificationCenter.default.removeObserver(self, name: .shortcutsDidChange, object: nil)
         toolbarPanel?.tearDown()
         toolbarPanel = nil
         super.close()
