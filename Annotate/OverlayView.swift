@@ -1177,6 +1177,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         guard let index = selectedTextIndex(), size != textAnnotations[index].fontSize else {
             return
         }
+        // Mid side handle drag, the drag so far becomes its own step and the rest of it
+        // carries on from the new size, so neither change overwrites the other.
+        let heldHandle = resizeHandle
+        endTextResize()
+        defer {
+            if let heldHandle { beginTextResize(heldHandle) }
+        }
+
         let original = textAnnotations[index]
         var updated = original
         updated.fontSize = size

@@ -1272,6 +1272,41 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(overlayView.textAnnotations, survivors, "No other label takes its place")
     }
 
+    func testAFontChangeMidResizeSticksAndUndoesInOrder() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        let box = placeThreeLabelsSelectingTheMiddle()
+        let original = overlayView.textAnnotations[1]
+
+        // The size control is used while the handle is still held.
+        undoManager.beginUndoGrouping()
+        overlayView.beginTextResize(.right)
+        overlayView.updateTextResize(to: NSPoint(x: box.minX + 220, y: box.midY))
+        let firstWidth = overlayView.textAnnotations[1].wrapWidth
+        overlayView.setSelectedTextFontSize(44)
+        undoManager.endUndoGrouping()
+        let afterFont = overlayView.textAnnotations[1]
+        XCTAssertEqual(afterFont.fontSize, 44)
+        XCTAssertEqual(afterFont.wrapWidth, firstWidth)
+
+        asOneStep(undoManager) {
+            overlayView.updateTextResize(to: NSPoint(x: box.minX + 170, y: box.midY))
+            overlayView.endTextResize()
+        }
+        let final = overlayView.textAnnotations[1]
+        XCTAssertEqual(final.fontSize, 44, "The rest of the drag keeps the new size")
+        XCTAssertNotEqual(final.wrapWidth, firstWidth, "and still changes the width")
+
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations[1], afterFont)
+        undoManager.undo()
+        XCTAssertEqual(overlayView.textAnnotations[1], original, "Two undos get back to the start")
+        undoManager.redo()
+        XCTAssertEqual(overlayView.textAnnotations[1], afterFont)
+        undoManager.redo()
+        XCTAssertEqual(overlayView.textAnnotations[1], final)
+    }
+
     func testADuplicatedLabelIsItsOwnLabelForUndo() {
         let (window, undoManager) = makeUndoWindow()
         _ = window
