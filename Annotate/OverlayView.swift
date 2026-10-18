@@ -157,10 +157,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     let eraserRadius: CGFloat = 12.0
 
-    var selectedObjects: Set<SelectedObject> = [] {
-        // The bar's size chip reads the selection, so it refreshes when the selection does.
-        didSet { notifyToolbarChanged() }
-    }
+    var selectedObjects: Set<SelectedObject> = []
     var selectionDragOffset: NSPoint?
     var selectionOriginalData: [SelectedObject: Any] = [:]
 
@@ -1162,7 +1159,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textAnnotations[index] = updated
         registerUndo(action: .resizeText(index, original, updated))
         needsDisplay = true
-        notifyToolbarChanged()
     }
     
     /// Check if a point is inside the bounding box of any selected object

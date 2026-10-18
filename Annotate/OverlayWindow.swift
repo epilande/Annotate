@@ -158,20 +158,6 @@ class OverlayWindow: NSPanel {
         if toolbarModel.fadeMode != overlayView.fadeMode {
             toolbarModel.fadeMode = overlayView.fadeMode
         }
-        // The size chip only makes sense in a text context, so it appears and disappears
-        // with one — and the bar is re-measured, since a new chip widens it.
-        let size =
-            overlayView.currentTextAnnotation?.fontSize
-            ?? overlayView.selectedTextFontSize()
-            ?? pickerUserDefaults.textToolFontSize
-        if toolbarModel.currentFontSize != size {
-            toolbarModel.currentFontSize = size
-        }
-        let showsTextSize = isTextSizingContext
-        if toolbarModel.showsTextSize != showsTextSize {
-            toolbarModel.showsTextSize = showsTextSize
-            toolbarPanel?.fitToContent()
-        }
     }
 
     func updateToolbarVisibility() {
@@ -277,8 +263,6 @@ class OverlayWindow: NSPanel {
             beginQuickPicker(.color, anchor: toolbarActionAnchor)
         case .widthPicker:
             beginQuickPicker(.width, anchor: toolbarActionAnchor)
-        case .fontSizePicker:
-            beginQuickPicker(.fontSize, anchor: toolbarActionAnchor)
         case .toggleFade:
             AppDelegate.shared?.toggleFadeMode(nil)
         case .deleteLast:

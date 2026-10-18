@@ -1805,21 +1805,6 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertEqual(defaults.textToolFontSize, 30)
     }
-
-    func testSizeChipFollowsTheTextContext() {
-        XCTAssertFalse(window.toolbarModel.showsTextSize)
-
-        window.overlayView.currentTool = .select
-        window.overlayView.textAnnotations = [
-            TextAnnotation(
-                text: "Placed", position: NSPoint(x: 50, y: 50), color: .red, fontSize: 24)
-        ]
-        window.overlayView.selectedObjects = [.text(index: 0)]
-        window.refreshToolbar()
-
-        XCTAssertTrue(window.toolbarModel.showsTextSize)
-        XCTAssertEqual(window.toolbarModel.currentFontSize, 24)
-    }
 }
 
 @MainActor
