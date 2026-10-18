@@ -12,6 +12,7 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             AppDelegate.shared = nil
             previousAppearance = NSApp.appearance
             BoardManager.shared = BoardManager(userDefaults: TestUserDefaults.create())
@@ -29,6 +30,7 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
             NSApp.appearance = previousAppearance
             BoardManager.shared = BoardManager()
             previousAppearance = nil
+            assertNoLeakedWindows()
         }
         TestUserDefaults.removeSuite()
         super.tearDown()

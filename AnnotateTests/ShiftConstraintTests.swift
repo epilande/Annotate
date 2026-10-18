@@ -9,6 +9,7 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
             window = OverlayWindow(
                 contentRect: frame,
@@ -21,7 +22,9 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
 
     nonisolated override func tearDown() {
         MainActor.assumeIsolated {
+            window.close()
             window = nil
+            assertNoLeakedWindows()
         }
         super.tearDown()
     }
