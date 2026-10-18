@@ -1124,12 +1124,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let insets =
             start.original.hasBackground ? TextAnnotation.pillInsets : Self.plainLabelSlop
         let padding = Self.selectionPadding * 2 + insets.left + insets.right
-        // Clamped short of the opposite side, so dragging past it can never flip the label.
+        // Clamped short of the opposite side, so dragging past it can never flip the label,
+        // and to the widest text the screen allows, so editing it never has to rewrap.
         let minimumBoxWidth = TextAnnotation.minimumWrapWidth + padding
+        let maximumBoxWidth = max(minimumBoxWidth, maximumTextLayoutWidth + padding)
         var minX = old.minX, maxX = old.maxX
         switch handle {
-        case .left: minX = min(point.x, maxX - minimumBoxWidth)
-        case .right: maxX = max(point.x, minX + minimumBoxWidth)
+        case .left: minX = min(max(point.x, maxX - maximumBoxWidth), maxX - minimumBoxWidth)
+        case .right: maxX = max(min(point.x, minX + maximumBoxWidth), minX + minimumBoxWidth)
         }
 
         var annotation = start.original
@@ -2408,14 +2410,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // edge where it was placed. A label being edited keeps the width it already wrapped
         // at unless it has since moved too close to the edge for it. Right at the edge it
         // keeps a minimum width, and the field slides left instead.
-        if currentTextAnnotation?.wrapWidth == nil {
+        // Either way the width stays within what the screen allows, so the field never has
+        // to be clamped narrower than the width the label wraps at.
+        if let wrapWidth = currentTextAnnotation?.wrapWidth {
+            currentTextAnnotation?.wrapWidth = min(wrapWidth, maximumTextLayoutWidth)
+        } else {
             let screenWidth = window?.frame.width ?? bounds.width
             let room =
                 screenWidth - Self.textFieldScreenMargin - fieldX
                 - Self.textFieldHorizontalChrome
             let previous = isEditing ? currentTextAnnotation?.maxWidth : nil
-            currentTextAnnotation?.maxWidth = max(
-                Self.minimumAutoWrapWidth, min(previous ?? .greatestFiniteMagnitude, room))
+            currentTextAnnotation?.maxWidth = min(
+                maximumTextLayoutWidth,
+                max(Self.minimumAutoWrapWidth, min(previous ?? .greatestFiniteMagnitude, room)))
         }
 
         // An edited field opens with its text's top edge right over the label's, so nothing
@@ -2669,6 +2676,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
     static let textFieldScreenMargin: CGFloat = 20
     /// Narrowest an auto-width label wraps at when it is placed near the right edge.
     static let minimumAutoWrapWidth: CGFloat = 160
+
+    /// Widest any label may lay out its text: the screen minus the field's margins and
+    /// chrome. Every width the editor, the model and drawing use stays within it, so the
+    /// field is never clamped narrower than the width the label wraps at.
+    var maximumTextLayoutWidth: CGFloat {
+        (window?.frame.width ?? bounds.width) - Self.textFieldScreenMargin * 2
+            - Self.textFieldHorizontalChrome
+    }
 
     /// Text size the field lays out, broken into lines at the width the committed label
     /// will wrap at.

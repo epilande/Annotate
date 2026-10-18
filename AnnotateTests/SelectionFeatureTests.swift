@@ -1338,6 +1338,25 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(wrapped.textSize().width, 80, accuracy: 0.001)
     }
 
+    func testAHandleCannotWidenALabelPastWhatTheScreenAllows() {
+        overlayView.currentTool = .select
+        overlayView.textAnnotations = [
+            TextAnnotation(
+                text: longLabelText, position: NSPoint(x: 10, y: 300), color: .red, fontSize: 24)
+        ]
+        overlayView.selectedObjects = [.text(index: 0)]
+        let box = overlayView.calculateSelectionBoundingBox()
+
+        overlayView.beginTextResize(.right)
+        overlayView.updateTextResize(to: NSPoint(x: overlayView.bounds.maxX, y: box.midY))
+        overlayView.endTextResize()
+
+        XCTAssertEqual(
+            overlayView.textAnnotations[0].wrapWidth ?? 0, overlayView.maximumTextLayoutWidth,
+            accuracy: 0.001)
+        XCTAssertEqual(overlayView.calculateSelectionBoundingBox().minX, box.minX, accuracy: 0.001)
+    }
+
     func testResizeFollowsItsLabelWhenAnOlderLabelFadesMidDrag() {
         overlayView.fadeMode = true
         let now = CACurrentMediaTime()

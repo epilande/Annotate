@@ -1928,6 +1928,65 @@ final class TextBoxDragTests: XCTestCase, Sendable {
         XCTAssertNil(window.overlayView.activeTextField)
         XCTAssertEqual(window.overlayView.textAnnotations[0].position, NSPoint(x: 290, y: 300))
     }
+
+    /// The field wraps its text at its width minus the chrome; the label wraps at its
+    /// layout width. They have to be the same number or text reflows on commit.
+    private func assertFieldWrapsAtTheLabelWidth(
+        _ field: NSTextField, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let layoutWidth = window.overlayView.currentTextAnnotation?.layoutWidth ?? 0
+        XCTAssertEqual(
+            field.frame.width - OverlayView.textFieldHorizontalChrome, layoutWidth,
+            accuracy: 0.001, file: file, line: line)
+        XCTAssertLessThanOrEqual(
+            field.frame.maxX, window.frame.width - OverlayView.textFieldScreenMargin + 0.001,
+            file: file, line: line)
+    }
+
+    func testANearlyFullWidthBoxEditsAtTheWidthItCommitsAt() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 10, 400))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 790, 400))
+        window.mouseUp(with: try mouse(.leftMouseUp, 790, 400))
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertEqual(
+            window.overlayView.currentTextAnnotation?.wrapWidth,
+            window.overlayView.maximumTextLayoutWidth, "The box is as wide as the screen allows")
+        assertFieldWrapsAtTheLabelWidth(field)
+
+        field.stringValue = String(repeating: "wide box text ", count: 20)
+        window.overlayView.resizeActiveTextField(field)
+        assertFieldWrapsAtTheLabelWidth(field)
+    }
+
+    func testALabelClickedAtTheLeftEdgeEditsAtTheWidthItCommitsAt() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 12, 400))
+        window.mouseUp(with: try mouse(.leftMouseUp, 12, 400))
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        field.stringValue = String(repeating: "a label that runs across the screen ", count: 6)
+        window.overlayView.resizeActiveTextField(field)
+        assertFieldWrapsAtTheLabelWidth(field)
+    }
+
+    func testEditingAnOversizedBoxUsesTheWidthTheScreenAllows() throws {
+        let label = TextAnnotation(
+            text: String(repeating: "oversized ", count: 30), position: NSPoint(x: 30, y: 400),
+            color: .red, fontSize: defaultTextAnnotationFontSize, wrapWidth: 2000)
+        window.overlayView.textAnnotations = [label]
+        window.overlayView.editingTextAnnotationIndex = 0
+        window.overlayView.currentTextAnnotation = label
+        window.overlayView.createTextField(at: label.position, withText: label.text)
+
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        window.overlayView.resizeActiveTextField(field)
+        assertFieldWrapsAtTheLabelWidth(field)
+
+        window.overlayView.finalizeTextAnnotation(field)
+        XCTAssertEqual(
+            window.overlayView.textAnnotations[0].wrapWidth,
+            window.overlayView.maximumTextLayoutWidth)
+    }
 }
 
 /// Side-handle drags driven through the window's mouse events, including gestures that get
