@@ -1480,6 +1480,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentRectangle = nil
         overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
+        overlayView.cancelTextBoxDrag()
         lastLiveShapeRect = nil
         overlayView.needsDisplay = true
     }

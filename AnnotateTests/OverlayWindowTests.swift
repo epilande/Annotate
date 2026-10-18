@@ -1987,6 +1987,7 @@ final class TextBoxDragTests: XCTestCase, Sendable {
             window.overlayView.textAnnotations[0].wrapWidth,
             window.overlayView.maximumTextLayoutWidth)
     }
+
     /// Sends an event through the window's own dispatch, the way AppKit delivers it, so
     /// routing between the canvas and the open text field is part of what gets tested.
     private func dispatch(_ type: NSEvent.EventType, _ x: CGFloat, _ y: CGFloat) throws {
@@ -2027,6 +2028,37 @@ final class TextBoxDragTests: XCTestCase, Sendable {
         XCTAssertNil(window.overlayView.textBoxDraftRect)
     }
 
+    func testClearAllMidBoxDragCancelsTheBox() throws {
+        window.mouseDown(with: try mouse(.leftMouseDown, 200, 400))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 450, 300))
+        XCTAssertNotNil(window.overlayView.textBoxDraftRect)
+
+        window.performClearAll()
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+        XCTAssertNil(window.overlayView.textBoxDragStart)
+
+        window.mouseUp(with: try mouse(.leftMouseUp, 450, 300))
+        XCTAssertNil(window.overlayView.activeTextField, "Releasing opens no box")
+        XCTAssertTrue(window.overlayView.textAnnotations.isEmpty)
+    }
+
+    func testClearAllMidBoxDragCancelsTheBoxOnAPopulatedCanvas() throws {
+        window.overlayView.textAnnotations = [
+            TextAnnotation(
+                text: "Existing", position: NSPoint(x: 500, y: 100), color: .red,
+                fontSize: defaultTextAnnotationFontSize)
+        ]
+        window.mouseDown(with: try mouse(.leftMouseDown, 200, 400))
+        window.mouseDragged(with: try mouse(.leftMouseDragged, 450, 300))
+
+        window.performClearAll()
+        window.mouseUp(with: try mouse(.leftMouseUp, 450, 300))
+
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+        XCTAssertNil(window.overlayView.textBoxDragStart)
+        XCTAssertNil(window.overlayView.activeTextField)
+        XCTAssertTrue(window.overlayView.textAnnotations.isEmpty)
+    }
 }
 
 /// Side-handle drags driven through the window's mouse events, including gestures that get

@@ -182,6 +182,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var textBoxDragStart: NSPoint?
     var textBoxDraftRect: NSRect?
 
+    /// Drops a Text-tool box drag in progress, so its mouse-up opens nothing.
+    func cancelTextBoxDrag() {
+        guard textBoxDragStart != nil || textBoxDraftRect != nil else { return }
+        textBoxDragStart = nil
+        textBoxDraftRect = nil
+        needsDisplay = true
+    }
+
     var clipboard: [ClipboardItem] = []
     var lastMousePosition: NSPoint = .zero
 
@@ -1881,6 +1889,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func clearAll() -> Bool {
         cleanupActiveTextField()
         endTextResize()
+        cancelTextBoxDrag()
 
         currentPath = nil
         currentHighlight = nil
