@@ -1987,6 +1987,46 @@ final class TextBoxDragTests: XCTestCase, Sendable {
             window.overlayView.textAnnotations[0].wrapWidth,
             window.overlayView.maximumTextLayoutWidth)
     }
+    /// Sends an event through the window's own dispatch, the way AppKit delivers it, so
+    /// routing between the canvas and the open text field is part of what gets tested.
+    private func dispatch(_ type: NSEvent.EventType, _ x: CGFloat, _ y: CGFloat) throws {
+        window.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createMouseEvent(
+                    type: type, location: NSPoint(x: x, y: y), windowNumber: window.windowNumber)))
+    }
+
+    func testAShortDragOverTheNewFieldStillCreatesABox() throws {
+        // The press opens a field around (200, 300); the whole drag stays inside it.
+        try dispatch(.leftMouseDown, 200, 300)
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertTrue(field.frame.contains(NSPoint(x: 250, y: 300)))
+        try dispatch(.leftMouseDragged, 250, 300)
+        try dispatch(.leftMouseUp, 250, 300)
+
+        XCTAssertNotNil(window.overlayView.currentTextAnnotation?.wrapWidth, "The drag made a box")
+        XCTAssertNil(window.overlayView.textBoxDragStart, "The gesture finished")
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+        let box = try XCTUnwrap(window.overlayView.activeTextField)
+        XCTAssertEqual(box.frame.minX, 200)
+        XCTAssertEqual(box.frame.width, 50)
+    }
+
+    func testAClickInsideTheOpenFieldStillGoesToTheField() throws {
+        try dispatch(.leftMouseDown, 200, 300)
+        try dispatch(.leftMouseUp, 200, 300)
+        let field = try XCTUnwrap(window.overlayView.activeTextField)
+
+        // A later press on the field belongs to the field, not to a new label or box.
+        try dispatch(.leftMouseDown, 210, 300)
+        try dispatch(.leftMouseDragged, 260, 300)
+        try dispatch(.leftMouseUp, 260, 300)
+
+        XCTAssertTrue(window.overlayView.activeTextField === field)
+        XCTAssertNil(window.overlayView.currentTextAnnotation?.wrapWidth)
+        XCTAssertNil(window.overlayView.textBoxDraftRect)
+    }
+
 }
 
 /// Side-handle drags driven through the window's mouse events, including gestures that get

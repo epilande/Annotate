@@ -447,6 +447,22 @@ class OverlayWindow: NSPanel {
             return true
         }
 
+        // A press on empty canvas with the Text tool opens a field right under the pointer.
+        // The rest of that press still belongs to the canvas, so a short drag that never
+        // leaves the new field draws a box instead of selecting text in it.
+        if overlayView.textBoxDragStart != nil {
+            switch event.type {
+            case .leftMouseDragged:
+                mouseDragged(with: event)
+                return true
+            case .leftMouseUp:
+                mouseUp(with: event)
+                return true
+            default:
+                break
+            }
+        }
+
         if isEventOverAnnotationText(event) {
             return false
         }
