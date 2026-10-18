@@ -47,20 +47,8 @@ jobs:
             -project Annotate.xcodeproj \
             -scheme Annotate \
             -configuration Debug \
-            -derivedDataPath build/derivedData \
             -destination "platform=macOS" \
             clean build | xcpretty && exit ${PIPESTATUS[0]}
-
-      # Uploaded straight after the build so a test failure later in the job still leaves
-      # a runnable app to try. Debug builds are ad-hoc signed: remove the quarantine after
-      # downloading (`xattr -dr com.apple.quarantine Annotate.app`).
-      - name: Upload Annotate.app
-        uses: actions/upload-artifact@v4
-        with:
-          name: Annotate-debug-app
-          path: build/derivedData/Build/Products/Debug/
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Xcode - Test
         run: |
