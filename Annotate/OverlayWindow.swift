@@ -316,6 +316,10 @@ class OverlayWindow: NSPanel {
     }
 
     override func close() {
+        // The fade timer retains the window, and the observer would keep re-measuring a toolbar
+        // nobody sees, so a closed overlay has to drop both or it lives for the rest of the process.
+        stopFadeLoop()
+        NotificationCenter.default.removeObserver(self, name: .shortcutsDidChange, object: nil)
         toolbarPanel?.tearDown()
         toolbarPanel = nil
         super.close()
@@ -377,28 +381,28 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        switch event.type {
-        case .keyDown:
+        switch (event.type, KeyChord(event: event)) {
+        case (.keyDown, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyDown(event)
+                _ = handleQuickPickerKeyDown(chord)
                 return
             }
-            if handleOverlayShortcut(event) {
+            if handleOverlayShortcut(chord) {
                 return
             }
-            if isEditingAnnotationText, deliverKeyToAnnotationField(event) {
+            if isEditingAnnotationText, deliverKeyToAnnotationField(chord) {
                 return
             }
-        case .keyUp:
+        case (.keyUp, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyUp(event)
+                _ = handleQuickPickerKeyUp(chord)
                 return
             }
             if isEditingAnnotationText {
                 super.sendEvent(event)
                 return
             }
-            if handleQuickPickerKeyUp(event) {
+            if handleQuickPickerKeyUp(chord) {
                 return
             }
         default:
@@ -445,6 +449,22 @@ class OverlayWindow: NSPanel {
                 break
             }
             return true
+        }
+
+        // A press on empty canvas with the Text tool opens a field right under the pointer.
+        // The rest of that press still belongs to the canvas, so a short drag that never
+        // leaves the new field draws a box instead of selecting text in it.
+        if overlayView.textBoxDragStart != nil {
+            switch event.type {
+            case .leftMouseDragged:
+                mouseDragged(with: event)
+                return true
+            case .leftMouseUp:
+                mouseUp(with: event)
+                return true
+            default:
+                break
+            }
         }
 
         if isEventOverAnnotationText(event) {
@@ -502,7 +522,7 @@ class OverlayWindow: NSPanel {
             within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
-            currentFontSize: defaults.textToolFontSize,
+            currentFontSize: selectedLabelFontSize ?? defaults.textToolFontSize,
             currentCounterSize: defaults.counterToolFontSize,
             previewTool: overlayView.currentTool)
 
@@ -584,14 +604,15 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyUp(with event: NSEvent) {
-        if handleQuickPickerKeyUp(event) {
+        if let chord = KeyChord(event: event), handleQuickPickerKeyUp(chord) {
             return
         }
         super.keyUp(with: event)
     }
 
+    /// Resolves like the overlay view's, so its test hook covers the window too.
     private var pickerUserDefaults: UserDefaults {
-        AppDelegate.shared?.userDefaults ?? .standard
+        overlayView?.pickerUserDefaults ?? AppDelegate.shared?.userDefaults ?? .standard
     }
 
     private var runtimeOverlayWindows: [OverlayWindow] {
@@ -604,13 +625,34 @@ class OverlayWindow: NSPanel {
 
     private func contextualPickerMode(for requestedMode: QuickPickerView.Mode) -> QuickPickerView.Mode {
         guard requestedMode == .width else { return requestedMode }
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             return .fontSize
         }
         if overlayView.currentTool == .counter {
             return .counterSize
         }
         return .width
+    }
+
+    /// A size change should land on a label while the text tool is live, a field is being
+    /// edited, or exactly one label is selected. That last case is how a label that is
+    /// already placed gets resized after the fact.
+    private var isTextSizingContext: Bool {
+        overlayView.currentTool == .text || overlayView.activeTextField != nil
+            || sizesSelectedLabel
+    }
+
+    /// A size change lands on the one selected label and nowhere else: not the Text tool
+    /// default, and not labels selected on other screens.
+    private var sizesSelectedLabel: Bool {
+        overlayView.currentTool != .text && overlayView.activeTextField == nil
+            && overlayView.selectedTextIndex() != nil
+    }
+
+    /// The selected label's size when a size change would land on it, so the ladder,
+    /// picker and Cmd+scroll step from that label instead of the stored default.
+    private var selectedLabelFontSize: CGFloat? {
+        sizesSelectedLabel ? overlayView.selectedTextFontSize() : nil
     }
 
     private func shortcut(for mode: QuickPickerView.Mode) -> String {
@@ -665,17 +707,13 @@ class OverlayWindow: NSPanel {
     /// stolen. Other keys, including Shift+Return, Cmd shortcuts, and Delete, take
     /// the normal sendEvent path and are never appended via stringValue.
     @discardableResult
-    private func deliverKeyToAnnotationField(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-        else { return false }
-        let chars = event.characters ?? ""
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        guard key == "c" || key == "[" || key == "]" else { return false }
-        guard !chars.isEmpty else { return false }
+    private func deliverKeyToAnnotationField(_ chord: KeyChord) -> Bool {
+        guard ["c", "[", "]"].contains(where: { ShortcutBinding($0).matches(chord) }) else { return false }
+        guard !chord.characters.isEmpty else { return false }
         guard let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
         else { return false }
 
-        editor.insertText(chars)
+        editor.insertText(chord.characters)
         if let field = overlayView.activeTextField {
             overlayView.controlTextDidChange(
                 Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -683,27 +721,25 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-
+    private func handleQuickPickerKeyDown(_ chord: KeyChord) -> Bool {
         if let picker = quickPicker {
             if pickerCommitInFlight {
                 return true
             }
-            if event.isARepeat {
+            if chord.isRepeat {
                 return true
             }
-            if event.keyCode == 53 {
+            if chord.keyCode == 53 {
                 cancelQuickPicker()
                 return true
             }
-            if let digit = Int(key), (1...picker.optionCount).contains(digit) {
+            if let digit = Int(chord.key), (1...picker.optionCount).contains(digit) {
                 picker.select(index: digit - 1)
                 commitQuickPicker()
                 return true
             }
             let action: ShortcutKey = picker.mode == .color ? .colorPicker : .lineWidthPicker
-            if ShortcutManager.shared.matches(event, tool: action) {
+            if ShortcutManager.shared.matches(chord, tool: action) {
                 cancelQuickPicker()
             }
             return true
@@ -714,9 +750,9 @@ class OverlayWindow: NSPanel {
 
     /// All editable overlay actions share exact key/modifier matching and the same focus guards.
     @discardableResult
-    private func handleOverlayShortcut(_ event: NSEvent) -> Bool {
+    private func handleOverlayShortcut(_ chord: KeyChord) -> Bool {
         guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
-            let action = ShortcutManager.shared.action(for: event)
+            let action = ShortcutManager.shared.action(for: chord)
         else { return false }
 
         switch action {
@@ -732,17 +768,17 @@ class OverlayWindow: NSPanel {
         case .select: AppDelegate.shared?.enableSelectMode(NSMenuItem())
         case .eraser: AppDelegate.shared?.enableEraserMode(NSMenuItem())
         case .colorPicker, .lineWidthPicker:
-            if !event.isARepeat {
+            if !chord.isRepeat {
                 beginQuickPicker(action == .colorPicker ? .color : .width,
                     activationKey: ShortcutManager.shared.getShortcut(for: action),
-                    activationKeyCode: event.keyCode)
+                    activationKeyCode: chord.keyCode)
             }
         case .toggleBoard: AppDelegate.shared?.toggleBoardVisibility(nil)
         case .toggleClickEffects: AppDelegate.shared?.toggleClickEffects(nil)
-        case .toggleBackgroundDimming: toggleBackgroundDimming(with: event)
+        case .toggleBackgroundDimming: toggleBackgroundDimming(with: chord)
         case .toggleFade: AppDelegate.shared?.toggleFadeMode(nil)
         case .toggleToolbar:
-            if !event.isARepeat { AppDelegate.shared?.toggleToolbar() }
+            if !chord.isRepeat { AppDelegate.shared?.toggleToolbar() }
         case .decreaseSize: stepActiveLadder(-1)
         case .increaseSize: stepActiveLadder(1)
         case .clearAll: performClearAll()
@@ -750,12 +786,11 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyUp(_ event: NSEvent) -> Bool {
+    private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {
         guard quickPicker != nil, let interaction = quickPickerInteraction,
             case .waitingForRelease(let key, let openedAt, let moved, let holdActive) =
                 interaction,
-            quickPickerActivationKeyCode.map({ event.keyCode == $0 })
-                ?? (event.charactersIgnoringModifiers?.lowercased() == key)
+            quickPickerActivationKeyCode.map({ chord.keyCode == $0 }) ?? (chord.key == key)
         else { return false }
 
         quickPickerHoldTask?.cancel()
@@ -832,6 +867,11 @@ class OverlayWindow: NSPanel {
             startFadeLoop()
         }
         lastLiveShapeRect = nil
+        // A box drag or side handle resize whose mouse-up never arrived must not carry into
+        // this gesture.
+        overlayView.endTextResize()
+        overlayView.textBoxDragStart = nil
+        overlayView.textBoxDraftRect = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -856,6 +896,13 @@ class OverlayWindow: NSPanel {
         
         // Handle selection mode
         if overlayView.currentTool == .select {
+            // Side handles sit on the bounding box, so they get first refusal on the click:
+            // grabbing one changes the label's width instead of dragging the selection.
+            if !shiftPressed, let handle = overlayView.textResizeHandle(at: startPoint) {
+                overlayView.beginTextResize(handle)
+                return
+            }
+
             // First check if we clicked inside the bounding box of already selected objects
             if !overlayView.selectedObjects.isEmpty && overlayView.isPointInSelectionBoundingBox(startPoint) {
                 // Clicked inside the selection bounding box
@@ -982,30 +1029,19 @@ class OverlayWindow: NSPanel {
                         // Set currentTextAnnotation so finalizeTextAnnotation can save
                         overlayView.currentTextAnnotation = existingAnnotation
 
-                        let attributes: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.systemFont(ofSize: existingAnnotation.fontSize)
-                        ]
-                        let size = existingAnnotation.text.size(withAttributes: attributes)
-
                         overlayView.createTextField(
                             at: existingAnnotation.position,
-                            withText: existingAnnotation.text,
-                            width: max(300, size.width + 20)
-                        )
+                            withText: existingAnnotation.text)
                     }
                     return
                 }
             }
 
-            // If we didn't click on existing text, create new one
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "",
-                position: startPoint,
-                color: currentColor,
-                fontSize: pickerUserDefaults.textToolFontSize,
-                hasBackground: pickerUserDefaults.textBackgroundEnabled
-            )
+            // If we didn't click on existing text, create new one. A drag from here turns
+            // it into a fixed-width box instead.
+            overlayView.currentTextAnnotation = newTextAnnotation(at: startPoint)
             overlayView.createTextField(at: startPoint)
+            overlayView.textBoxDragStart = startPoint
         }
 
         switch overlayView.currentTool {
@@ -1072,6 +1108,56 @@ class OverlayWindow: NSPanel {
         annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
 
+    /// An empty label in the Text tool's current color, size and background.
+    private func newTextAnnotation(at point: NSPoint, wrapWidth: CGFloat? = nil) -> TextAnnotation {
+        TextAnnotation(
+            text: "",
+            position: point,
+            color: currentColor,
+            fontSize: pickerUserDefaults.textToolFontSize,
+            hasBackground: pickerUserDefaults.textBackgroundEnabled,
+            wrapWidth: wrapWidth
+        )
+    }
+
+    /// How far a Text-tool press has to move sideways before it draws a box instead of
+    /// placing a label at the click.
+    static let textBoxDragThreshold: CGFloat = 8
+
+    /// Follows a Text-tool drag that started on empty canvas. Once it moves far enough
+    /// sideways, the label the press opened gives way to a box outline.
+    private func continueTextBoxDrag(to point: NSPoint) {
+        guard let start = overlayView.textBoxDragStart else { return }
+        if overlayView.textBoxDraftRect == nil {
+            guard abs(point.x - start.x) >= Self.textBoxDragThreshold else { return }
+            overlayView.cancelTextAnnotation()
+        }
+        overlayView.textBoxDraftRect = NSRect(
+            x: min(start.x, point.x), y: min(start.y, point.y),
+            width: abs(point.x - start.x), height: abs(point.y - start.y))
+        overlayView.needsDisplay = true
+    }
+
+    /// Opens a fixed-width box where a Text-tool drag was released: the outline's width,
+    /// hanging from its top edge. The height follows whatever gets typed.
+    private func finishTextBoxDrag() {
+        defer {
+            overlayView.textBoxDragStart = nil
+            overlayView.textBoxDraftRect = nil
+        }
+        guard let rect = overlayView.textBoxDraftRect, overlayView.currentTool == .text else {
+            return
+        }
+        let textLeft = rect.minX + OverlayView.textFieldInsets.left
+        overlayView.currentTextAnnotation = newTextAnnotation(
+            at: NSPoint(x: textLeft, y: rect.maxY),
+            wrapWidth: max(
+                TextAnnotation.minimumWrapWidth,
+                rect.width - OverlayView.textFieldHorizontalChrome))
+        overlayView.createTextField(at: NSPoint(x: textLeft, y: rect.maxY), topEdge: rect.maxY)
+        overlayView.needsDisplay = true
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if quickPicker != nil {
             handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
@@ -1105,6 +1191,12 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // Side handle drag: the label changes width in place, it does not move with the cursor.
+        if overlayView.resizeHandle != nil {
+            overlayView.updateTextResize(to: currentPoint)
+            return
+        }
+
         // Handle selection dragging
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Get or set drag start point
@@ -1125,6 +1217,11 @@ class OverlayWindow: NSPanel {
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
             overlayView.needsDisplay = true
+            return
+        }
+
+        if overlayView.currentTool == .text, overlayView.textBoxDragStart != nil {
+            continueTextBoxDrag(to: currentPoint)
             return
         }
 
@@ -1380,6 +1477,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentRectangle = nil
         overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
+        overlayView.cancelTextBoxDrag()
         lastLiveShapeRect = nil
         overlayView.needsDisplay = true
     }
@@ -1483,6 +1581,14 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // End a side handle drag before the move branch below, which would otherwise
+        // register a move undo for a selection that never moved.
+        if overlayView.resizeHandle != nil {
+            overlayView.endTextResize()
+            overlayView.needsDisplay = true
+            return
+        }
+
         // Handle selection drag end
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Register undo for all moved objects
@@ -1502,6 +1608,10 @@ class OverlayWindow: NSPanel {
             overlayView.selectionOriginalData.removeAll()
             overlayView.needsDisplay = true
             return
+        }
+
+        if overlayView.textBoxDragStart != nil {
+            finishTextBoxDrag()
         }
 
         if let draggedIndex = overlayView.draggedTextAnnotationIndex {
@@ -1528,48 +1638,48 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
-        if handleQuickPickerKeyDown(event) {
+        guard let chord = KeyChord(event: event) else {
+            super.keyDown(with: event)
+            return
+        }
+        if handleQuickPickerKeyDown(chord) {
             return
         }
 
-        if handleOverlayShortcut(event) { return }
+        if handleOverlayShortcut(chord) { return }
         // The field editor already handles typing before it reaches the window.
         // Do not let an unhandled editing key reach another window's shortcuts.
         guard !isEditingAnnotationText else { return }
-        let cmdPressed = event.modifierFlags.contains(.command)
-        let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
             cancelFreehandStroke()
         }
 
-        // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
-        // Match on `characters` only. With Command held, `characters` carries the layout's
-        // Command layer (QWERTY letters on Dvorak - QWERTY ⌘, Latin letters on Russian, Greek
-        // and Hebrew) and falls back to the base letter on layouts with no Command layer, so it
-        // is correct everywhere. `charactersIgnoringModifiers` reports the base layer instead:
-        // it misses those layouts and aliases unrelated chords, for example on Dvorak - QWERTY ⌘
-        // the base letter behind Cmd+, is "w", so Cmd+, would close the overlay.
-        if cmdPressed {
-            if key == "w" {
-                AppDelegate.shared?.closeOverlay()
-                return
-            }
-            if key == "z" {
-                if event.modifierFlags.contains(.shift) {
-                    overlayView.redo()
-                } else {
-                    overlayView.undo()
-                }
-                return
-            }
-            if key == "r", !event.modifierFlags.contains(.shift),
-                !event.modifierFlags.contains(.option), overlayView.currentTool == .counter
-            {
-                overlayView.resetCounter()
-                showToggleFeedback("Counter Reset", icon: "🔄")
-                return
-            }
+        // These follow the layout's Command layer, not QWERTY key positions (see `KeyChord`).
+        if ShortcutBinding("w", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.shift, .option, .control])
+        {
+            AppDelegate.shared?.closeOverlay()
+            return
+        }
+        if ShortcutBinding("z", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.undo()
+            return
+        }
+        if ShortcutBinding("z", modifiers: [.command, .shift])
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.redo()
+            return
+        }
+        if ShortcutBinding("r", modifiers: .command).matches(chord, on: .command, ignoring: .control),
+            overlayView.currentTool == .counter
+        {
+            overlayView.resetCounter()
+            showToggleFeedback("Counter Reset", icon: "🔄")
+            return
         }
 
         switch event.keyCode {
@@ -1722,7 +1832,7 @@ class OverlayWindow: NSPanel {
         let cmdPressed = event.modifierFlags.contains(.command)
         
         if cmdPressed {
-            if overlayView.currentTool == .text {
+            if isTextSizingContext {
                 scrollWheelForFontSize(with: event)
             } else if overlayView.currentTool == .counter {
                 scrollWheelForCounterSize(with: event)
@@ -1782,14 +1892,25 @@ class OverlayWindow: NSPanel {
         guard scrollDelta != 0 else { return }
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
-        let size =
-            (pickerUserDefaults.textToolFontSize + increment)
-            .clamped(to: textAnnotationFontSizeRange)
+        let base = selectedLabelFontSize ?? pickerUserDefaults.textToolFontSize
+        let size = (base + increment).clamped(to: textAnnotationFontSizeRange)
         applyTextFontSize(size)
     }
 
     func applyTextFontSize(_ requestedSize: CGFloat, showsFeedback: Bool = true) {
         let size = requestedSize.clamped(to: textAnnotationFontSizeRange)
+
+        // A placed label resizes from the same entry points as the Text tool: ladder,
+        // picker, and Cmd+scroll. Sizing one label leaves the size of the next one alone.
+        if sizesSelectedLabel {
+            guard size != overlayView.selectedTextFontSize() else { return }
+            overlayView.setSelectedTextFontSize(size)
+            if showsFeedback {
+                showFontSizeFeedback(size)
+            }
+            return
+        }
+
         guard size != pickerUserDefaults.textToolFontSize
             || runtimeOverlayWindows.contains(where: {
                 $0.overlayView.activeTextField != nil
@@ -1815,7 +1936,9 @@ class OverlayWindow: NSPanel {
 
     func stepTextFontSize(_ direction: Int) {
         let currentSize =
-            overlayView.currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+            overlayView.currentTextAnnotation?.fontSize
+            ?? selectedLabelFontSize
+            ?? pickerUserDefaults.textToolFontSize
         applyTextFontSize(
             QuickPickerView.steppedValue(
                 in: QuickPickerView.fontSizeOptions,
@@ -1865,7 +1988,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func stepActiveLadder(_ direction: Int) {
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             stepTextFontSize(direction)
             return
         }
@@ -1886,8 +2009,8 @@ class OverlayWindow: NSPanel {
                 direction: direction))
     }
     
-    private func toggleBackgroundDimming(with event: NSEvent) {
-        guard !event.isARepeat else { return }
+    private func toggleBackgroundDimming(with chord: KeyChord) {
+        guard !chord.isRepeat else { return }
         let manager = CursorHighlightManager.shared
         manager.toggleSpotlightDimming()
         showToggleFeedback(
@@ -2171,13 +2294,18 @@ class OverlayWindow: NSPanel {
     // MARK: - Keyboard Commands for Copy/Paste/Cut/Duplicate
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if handleQuickPickerKeyDown(event) || handleOverlayShortcut(event) { return true }
-        // Check for Command key combinations
-        guard event.modifierFlags.contains(.command) else {
+        guard let chord = KeyChord(event: event) else {
             return super.performKeyEquivalent(with: event)
         }
+        if handleQuickPickerKeyDown(chord) || handleOverlayShortcut(chord) { return true }
 
-        switch event.charactersIgnoringModifiers?.lowercased() {
+        // Selection commands accept any extra modifiers. Command-B accepts only Shift.
+        let selectionCommand = ["a", "c", "x", "v", "d"].first {
+            ShortcutBinding($0, modifiers: .command).matches(chord, ignoring: [.shift, .option, .control])
+        }
+        let isTextBackgroundCommand = ShortcutBinding("b", modifiers: .command).matches(chord, ignoring: .shift)
+
+        switch selectionCommand ?? (isTextBackgroundCommand ? "b" : nil) {
         case "a":
             // Defer to text field when editing text
             if overlayView.activeTextField != nil {
@@ -2230,10 +2358,7 @@ class OverlayWindow: NSPanel {
             // Command-B toggles the label background whenever the text tool is in play,
             // with or without an active field. Bare "b" stays Toggle Board; that path runs
             // in keyDown and only fires when no modifier is held.
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard modifiers.isDisjoint(with: [.option, .control]),
-                overlayView.currentTool == .text || overlayView.activeTextField != nil
-            else {
+            guard overlayView.currentTool == .text || overlayView.activeTextField != nil else {
                 return super.performKeyEquivalent(with: event)
             }
             toggleTextBackground()

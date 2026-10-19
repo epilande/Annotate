@@ -11,6 +11,7 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestWindows.recordOpenWindows()
         let defaults = TestUserDefaults.create()
         originalAppDelegate = AppDelegate.shared
         originalShortcutManager = ShortcutManager.shared
@@ -25,13 +26,13 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
     }
 
     override func tearDown() {
-        window.stopFadeLoop()
         window.close()
         window = nil
         AppDelegate.shared = originalAppDelegate
         ShortcutManager.shared = originalShortcutManager
         appDelegate = nil
         TestUserDefaults.removeSuite()
+        assertNoLeakedWindows()
         super.tearDown()
     }
 

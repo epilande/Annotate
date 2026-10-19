@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class CursorHighlightWindowTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestWindows.recordOpenWindows()
+    }
+
+    override func tearDown() {
+        assertNoLeakedWindows()
+        super.tearDown()
+    }
+
     func testAnimationLoopOwnsWindowDisplayLinkOnlyWhileRunning() {
         let window = CursorHighlightWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -22,6 +32,7 @@ final class CursorHighlightWindowTests: XCTestCase {
 
         window.stopAnimationLoop()
         XCTAssertNil(window.animationDisplayLink)
+        window.close()
     }
 
     func testUpdateVisibilityHidesSpotlightAndDimmingImmediatelyWhenClickEffectsKeepWindowAlive() throws {
@@ -37,7 +48,7 @@ final class CursorHighlightWindowTests: XCTestCase {
         )
         defer {
             window.stopAnimationLoop()
-            window.orderOut(nil)
+            window.close()
             CursorHighlightManager.shared = originalShared
             TestUserDefaults.removeSuite()
         }

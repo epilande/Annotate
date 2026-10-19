@@ -178,11 +178,12 @@ Fade mode, toolbar visibility, size stepping, and Clear All can be rebound in **
 
 #### 🔤 Text Editing (While Typing a Label)
 
-| Shortcut                          | Action               | Description                                        |
-| --------------------------------- | -------------------- | -------------------------------------------------- |
-| <kbd>Command</kbd> + <kbd>+</kbd> | **Increase Size**    | Step the label font size up one notch              |
-| <kbd>Command</kbd> + <kbd>-</kbd> | **Decrease Size**    | Step the label font size down one notch            |
-| <kbd>Command</kbd> + <kbd>B</kbd> | **Label Background** | Toggle the rounded background pill behind the text |
+| Shortcut                            | Action               | Description                                        |
+| ----------------------------------- | -------------------- | -------------------------------------------------- |
+| <kbd>Shift</kbd> + <kbd>Enter</kbd> | **Line Break**       | Start a new line in the same label                 |
+| <kbd>Command</kbd> + <kbd>+</kbd>   | **Increase Size**    | Step the label font size up one notch              |
+| <kbd>Command</kbd> + <kbd>-</kbd>   | **Decrease Size**    | Step the label font size down one notch            |
+| <kbd>Command</kbd> + <kbd>B</kbd>   | **Label Background** | Toggle the rounded background pill behind the text |
 
 <kbd>Command</kbd> + <kbd>B</kbd> also works with the Text tool selected, so you can set the background on or off before you place a label.
 
@@ -254,13 +255,16 @@ Hide confidential content before you take a screenshot or share your screen:
 
 #### Text Annotations
 
-- Click to place a text annotation
+- Click to place a text annotation. It grows with the text and wraps at the edge of the screen
+- Click and drag to draw a fixed-width text box, like in Keynote or Figma. The text wraps inside it and the box grows downward as you type
+- Press <kbd>Shift</kbd> + <kbd>Enter</kbd> to start a new line in the same label
 - Type your text and press <kbd>Enter</kbd> or <kbd>Esc</kbd> to place it. <kbd>Esc</kbd> on an empty field discards it, and <kbd>Esc</kbd> while editing an existing label leaves that label untouched
 - Double-click any text annotation to edit its content
-- Click and drag to reposition text
+- With the Text tool, drag an existing label to reposition it
 - Press <kbd>Command</kbd> + <kbd>+</kbd> or <kbd>Command</kbd> + <kbd>-</kbd> while typing to resize the label
 - Press <kbd>Command</kbd> + <kbd>B</kbd> to toggle a rounded background pill behind the text
 - With the Text tool active and no label open, <kbd>[</kbd> and <kbd>]</kbd> step the size used for the next label
+- Select a single label to resize it: drag its left or right handle to change the width, and use <kbd>W</kbd>, <kbd>[</kbd> <kbd>]</kbd>, or <kbd>Command</kbd> + scroll to change its font size. Sizing a placed label leaves the size of the next one alone
 
 #### Counter Tool
 
