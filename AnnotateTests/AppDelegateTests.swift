@@ -648,7 +648,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             text: "", position: point, color: .red,
             fontSize: defaultTextAnnotationFontSize
         )
-        overlayView.createTextField(at: point, withText: "", width: 100)
+        overlayView.createTextField(at: point, withText: "")
         let textField = try XCTUnwrap(overlayView.activeTextField)
         textField.stringValue = "Hello"
         overlayView.commitTextField(textField)

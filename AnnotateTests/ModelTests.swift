@@ -120,6 +120,45 @@ final class ModelTests: XCTestCase {
         XCTAssertNil(emptyAnnotation.creationTime)
     }
 
+    func testAutoWidthLabelFollowsItsTextUpToTheMaximumWidth() {
+        let short = TextAnnotation(
+            text: "Short", position: .zero, color: .black, fontSize: 18, maxWidth: 200)
+        let natural = "Short".size(withAttributes: [.font: NSFont.systemFont(ofSize: 18)])
+        XCTAssertEqual(short.textSize().width, natural.width, accuracy: 0.001)
+        XCTAssertEqual(short.textSize().height, natural.height, accuracy: 0.001)
+
+        let long = TextAnnotation(
+            text: "A sentence long enough to need more than one line at this width",
+            position: .zero, color: .black, fontSize: 18, maxWidth: 200)
+        XCTAssertLessThanOrEqual(long.textSize().width, 200)
+        XCTAssertGreaterThan(long.textSize().height, natural.height * 2)
+    }
+
+    func testFixedWidthWinsOverTheMaximumWidth() {
+        let annotation = TextAnnotation(
+            text: "Short", position: .zero, color: .black, fontSize: 18,
+            wrapWidth: 300, maxWidth: 120)
+        XCTAssertEqual(annotation.textSize().width, 300)
+        XCTAssertEqual(annotation.layoutWidth, 300)
+    }
+
+    func testLineBreaksMakeTheLabelTaller() {
+        let oneLine = TextAnnotation(text: "One", position: .zero, color: .black, fontSize: 18)
+        let twoLines = TextAnnotation(text: "One\nTwo", position: .zero, color: .black, fontSize: 18)
+        XCTAssertEqual(twoLines.textSize().height, oneLine.textSize().height * 2, accuracy: 0.001)
+    }
+
+    func testPinTextTopMovesOnlyTheBottomEdge() {
+        var annotation = TextAnnotation(
+            text: "One", position: NSPoint(x: 40, y: 100), color: .black, fontSize: 18)
+        let top = annotation.textTop
+        annotation.text = "One\nTwo\nThree"
+        annotation.pinTextTop(to: top)
+        XCTAssertEqual(annotation.textTop, top, accuracy: 0.001)
+        XCTAssertEqual(annotation.position.x, 40)
+        XCTAssertLessThan(annotation.position.y, 100)
+    }
+
     func testCounterAnnotation() {
         let position = NSPoint(x: 50, y: 50)
         let color = NSColor.blue

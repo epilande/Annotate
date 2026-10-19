@@ -1289,8 +1289,10 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertNil(view.editingTextAnnotationIndex, "The partly hidden label must not open for editing")
         XCTAssertEqual(view.currentTextAnnotation?.text, "", "The click starts a new label instead")
 
-        // The next click commits the empty field, which leaves nothing behind.
+        // The next press commits the empty field, which leaves nothing behind, and its drag
+        // draws a new text box instead of dragging the label.
         window.mouseDown(with: try XCTUnwrap(TestEvents.createMouseEvent(type: .leftMouseDown, location: uncovered)))
+        XCTAssertEqual(view.currentTextAnnotation?.position, uncovered, "The click starts a new label again")
         window.mouseDragged(with: try XCTUnwrap(TestEvents.createMouseEvent(
             type: .leftMouseDragged, location: NSPoint(x: 300, y: 250))))
         window.mouseUp(with: try XCTUnwrap(TestEvents.createMouseEvent(
@@ -1298,7 +1300,7 @@ final class RedactionTests: XCTestCase, Sendable {
 
         XCTAssertNil(view.draggedTextAnnotationIndex)
         XCTAssertEqual(view.currentTool, .text)
-        XCTAssertEqual(view.currentTextAnnotation?.position, uncovered, "The click starts a new label again")
+        XCTAssertNotNil(view.currentTextAnnotation?.wrapWidth, "The drag opened a new box")
         XCTAssertEqual(view.textAnnotations.first?.position, label.position, "The label stays under the redaction")
         XCTAssertEqual(view.textAnnotations.count, 1)
         XCTAssertEqual(view.textAnnotations.first?.text, "Secret")
