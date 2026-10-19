@@ -165,6 +165,31 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var selectionRectStart: NSPoint?
     var selectionRectEnd: NSPoint?
 
+    /// Side handle being dragged to change a single selected label's width, plus that label
+    /// and the box it started from. Every drag event measures against that start state, so
+    /// a gesture cannot accumulate rounding drift across frames. The label is found by its
+    /// id, so deletes and fade compaction mid-gesture cannot point it at another label.
+    var resizeHandle: TextResizeHandle?
+    var resizeStart: (original: TextAnnotation, bounds: NSRect)?
+
+    /// Where the label being resized sits in `textAnnotations` right now.
+    private var resizingTextIndex: Int? {
+        resizeStart.flatMap { start in textAnnotations.firstIndex { $0.id == start.original.id } }
+    }
+
+    /// Where a Text-tool press on empty canvas began. Dragging from there far enough turns
+    /// the click into a fixed-width box, whose outline is `textBoxDraftRect` until release.
+    var textBoxDragStart: NSPoint?
+    var textBoxDraftRect: NSRect?
+
+    /// Drops a Text-tool box drag in progress, so its mouse-up opens nothing.
+    func cancelTextBoxDrag() {
+        guard textBoxDragStart != nil || textBoxDraftRect != nil else { return }
+        textBoxDragStart = nil
+        textBoxDraftRect = nil
+        needsDisplay = true
+    }
+
     var clipboard: [ClipboardItem] = []
     var lastMousePosition: NSPoint = .zero
 
@@ -172,7 +197,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         didSet { notifyToolbarChanged() }
     }
     var currentTool: ToolType = .pen {
-        didSet { notifyToolbarChanged() }
+        didSet {
+            // A tool change mid-drag ends a side handle resize where it is, so its mouse-up
+            // or the next gesture under any tool cannot pick it up again.
+            if currentTool != oldValue { endTextResize() }
+            notifyToolbarChanged()
+        }
     }
     var currentLineWidth: CGFloat = 3.0 {
         didSet { notifyToolbarChanged() }
@@ -243,6 +273,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        // Over a side handle, the label's width is what is about to change.
+        if resizeHandle != nil
+            || textResizeHandle(at: convert(event.locationInWindow, from: nil)) != nil {
+            NSCursor.resizeLeftRight.set()
+            return
+        }
         updateCursor()
         if !shouldShowActiveCursorForThisOverlay() && currentTool != .text {
             super.cursorUpdate(with: event)
@@ -284,6 +320,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func undo() {
+        // A resize still in progress becomes its own step first, so this undoes it.
+        endTextResize()
         // An undone object leaves its index behind in the selection, which would draw a
         // selection box over an object that is no longer there.
         clearSelectionForHistoryStep()
@@ -292,6 +330,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func redo() {
+        endTextResize()
         clearSelectionForHistoryStep()
         undoManager?.redo()
         startFadeLoopIfNeeded()
@@ -451,6 +490,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.registerUndo(action: .moveText(index, newPosition, oldPosition))
                         target.needsDisplay = true
                     }
+                }
+            }
+        case .resizeText(let from, let to):
+            manager?.registerUndo(withTarget: self) { target in
+                MainActor.assumeIsolated {
+                    // By identity, not index: deletes, undo and fade compaction all move
+                    // labels around. A label that has faded away has nothing to restore.
+                    guard let index = target.textAnnotations.firstIndex(where: { $0.id == from.id })
+                    else { return }
+                    target.textAnnotations[index] = from
+                    target.registerUndo(action: .resizeText(to, from))
+                    target.needsDisplay = true
                 }
             }
         case .moveArrow(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -743,6 +794,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         }
 
+        if let rect = textBoxDraftRect, intersectsDirtyRect(rect, dirtyRect) {
+            let path = NSBezierPath(rect: rect)
+            path.lineWidth = 1.5
+            path.setLineDash([5, 3], count: 2, phase: 0)
+            currentColor.withAlphaComponent(0.8).setStroke()
+            path.stroke()
+        }
+
         if isDrawingSelectionRect, let start = selectionRectStart, let end = selectionRectEnd {
             let rect = NSRect(
                 x: min(start.x, end.x),
@@ -892,7 +951,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // Add padding
-        let padding: CGFloat = 5.0
+        let padding = Self.selectionPadding
         return NSRect(
             x: minX - padding,
             y: minY - padding,
@@ -1000,6 +1059,140 @@ class OverlayView: NSView, NSTextFieldDelegate {
         path.setLineDash([5.0, 3.0], count: 2, phase: 0)
         NSColor.systemBlue.withAlphaComponent(0.8).setStroke()
         path.stroke()
+
+        // Handles only on a single selected label: a multi-selection has no one width to
+        // change, so it keeps the plain dashed rectangle.
+        guard selectedTextIndex() != nil else { return }
+        for handle in TextResizeHandle.allCases {
+            let square = NSBezierPath(rect: Self.handleRect(for: handle, in: rect))
+            square.lineWidth = 1.5
+            NSColor.white.withAlphaComponent(0.95).setFill()
+            square.fill()
+            NSColor.systemBlue.setStroke()
+            square.stroke()
+        }
+    }
+
+    // MARK: - Text Resizing
+
+    /// The label a size or width change applies to: only a single selected text annotation
+    /// has one box to change, so anything larger gets no handles.
+    func selectedTextIndex() -> Int? {
+        guard selectedObjects.count == 1, case .text(let index) = selectedObjects.first!,
+            index < textAnnotations.count
+        else { return nil }
+        return index
+    }
+
+    /// The selected label's font size. Size ladders, the size picker and Cmd+scroll all
+    /// read and step this, so a label can be resized after it was placed.
+    func selectedTextFontSize() -> CGFloat? {
+        selectedTextIndex().map { textAnnotations[$0].fontSize }
+    }
+
+    /// The side handle under `point`, or nil when no single label is selected there.
+    func textResizeHandle(at point: NSPoint) -> TextResizeHandle? {
+        guard selectedTextIndex() != nil else { return nil }
+        let box = calculateSelectionBoundingBox()
+        return TextResizeHandle.allCases.first {
+            Self.handleRect(for: $0, in: box)
+                .insetBy(dx: -Self.handleHitSlop, dy: -Self.handleHitSlop)
+                .contains(point)
+        }
+    }
+
+    /// Visible size of a handle square. Small on purpose: they must not bury the label.
+    static let handleSize: CGFloat = 7
+    /// Grabbing a few pixels outside a square still starts the drag.
+    static let handleHitSlop: CGFloat = 5
+
+    /// A handle sits at the middle of its side of `box`.
+    static func handleRect(for handle: TextResizeHandle, in box: NSRect) -> NSRect {
+        let x = handle == .left ? box.minX : box.maxX
+        return NSRect(
+            x: x - handleSize / 2, y: box.midY - handleSize / 2,
+            width: handleSize, height: handleSize)
+    }
+
+    /// Captures where the gesture starts: the label as it was and the box the handles
+    /// were drawn on.
+    func beginTextResize(_ handle: TextResizeHandle) {
+        guard let index = selectedTextIndex() else { return }
+        resizeHandle = handle
+        resizeStart = (textAnnotations[index], calculateSelectionBoundingBox())
+    }
+
+    /// Gives the label a fixed width from the dragged side. The opposite side and the top
+    /// edge stay put; the text rewraps and the box grows or shrinks downward.
+    func updateTextResize(to point: NSPoint) {
+        guard let handle = resizeHandle, let start = resizeStart, let index = resizingTextIndex
+        else { return }
+
+        let old = start.bounds
+        let insets =
+            start.original.hasBackground ? TextAnnotation.pillInsets : Self.plainLabelSlop
+        let padding = Self.selectionPadding * 2 + insets.left + insets.right
+        // Clamped short of the opposite side, so dragging past it can never flip the label,
+        // and to the widest text the screen allows, so editing it never has to rewrap.
+        let minimumBoxWidth = TextAnnotation.minimumWrapWidth + padding
+        let maximumBoxWidth = max(minimumBoxWidth, maximumTextLayoutWidth + padding)
+        var minX = old.minX, maxX = old.maxX
+        switch handle {
+        case .left: minX = min(max(point.x, maxX - maximumBoxWidth), maxX - minimumBoxWidth)
+        case .right: maxX = max(min(point.x, minX + maximumBoxWidth), minX + minimumBoxWidth)
+        }
+
+        var annotation = start.original
+        annotation.wrapWidth = (maxX - minX) - padding
+
+        // Measure at the new width, then pad back out so the fixed edges line up with the
+        // box the handles were drawn on rather than the raw text rect inside it.
+        let measured = annotation.bounds(fallbackInsets: Self.plainLabelSlop)
+            .insetBy(dx: -Self.selectionPadding, dy: -Self.selectionPadding)
+        let originX = handle == .left ? maxX - measured.width : old.minX
+        let originY = old.maxY - measured.height
+        annotation.position = NSPoint(
+            x: originX + Self.selectionPadding + insets.left,
+            y: originY + Self.selectionPadding + insets.bottom)
+
+        textAnnotations[index] = annotation
+        needsDisplay = true
+    }
+
+    /// Ends the gesture, leaving the whole resize (width and position) as one undo step.
+    /// Safe to call when no resize is in progress, which is how interruptions settle one.
+    func endTextResize() {
+        defer {
+            resizeHandle = nil
+            resizeStart = nil
+        }
+        guard let start = resizeStart, let index = resizingTextIndex else { return }
+        let resized = textAnnotations[index]
+        guard resized != start.original else { return }
+        registerUndo(action: .resizeText(start.original, resized))
+    }
+
+    /// Applies a picked size to the single selected label, leaving the old one undoable.
+    func setSelectedTextFontSize(_ size: CGFloat) {
+        guard let index = selectedTextIndex(), size != textAnnotations[index].fontSize else {
+            return
+        }
+        // Mid side handle drag, the drag so far becomes its own step and the rest of it
+        // carries on from the new size, so neither change overwrites the other.
+        let heldHandle = resizeHandle
+        endTextResize()
+        defer {
+            if let heldHandle { beginTextResize(heldHandle) }
+        }
+
+        let original = textAnnotations[index]
+        var updated = original
+        updated.fontSize = size
+        // Keep the top edge, so a bigger size grows the label downward like typing does.
+        updated.pinTextTop(to: original.textTop)
+        textAnnotations[index] = updated
+        registerUndo(action: .resizeText(original, updated))
+        needsDisplay = true
     }
     
     /// Check if a point is inside the bounding box of any selected object
@@ -1141,10 +1334,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
-        // A label being edited or dragged is addressed by a standalone index, so it has to
-        // survive compaction and then follow its annotation to the new slot.
+        // A label being edited, dragged or resized is addressed by a standalone index, so it
+        // has to survive compaction and then follow its annotation to the new slot.
         let protectedTextIndices = Set(
-            [editingTextAnnotationIndex, draggedTextAnnotationIndex].compactMap { $0 })
+            [editingTextAnnotationIndex, draggedTextAnnotationIndex, resizingTextIndex]
+                .compactMap { $0 })
         let textIndexMap = compactItems(
             &textAnnotations,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
@@ -1628,11 +1822,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// which for a label with a background is exactly the pill.
     private func drawText(_ annotation: TextAnnotation, alpha: CGFloat, bounds: NSRect) {
         let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: annotation.fontSize),
-        ]
-        let attributedString = NSAttributedString(string: annotation.text, attributes: attributes)
 
         if annotation.hasBackground {
             let pill = NSBezierPath(
@@ -1646,7 +1835,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             pill.fill()
         }
 
-        attributedString.draw(at: annotation.position)
+        // The same layout `textSize()` measures, so wrapped lines break where the box
+        // expects them and where the editor showed them.
+        let layout = annotation.textLayout(color: adaptedColor.withAlphaComponent(alpha))
+        layout.draw(
+            topLeft: NSPoint(x: annotation.position.x, y: annotation.position.y + layout.size.height))
     }
 
     private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
@@ -1695,6 +1888,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     @discardableResult
     func clearAll() -> Bool {
         cleanupActiveTextField()
+        endTextResize()
+        cancelTextBoxDrag()
 
         currentPath = nil
         currentHighlight = nil
@@ -2063,6 +2258,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.highlight(index: highlightPaths.count - 1))
 
             case .text(var text):
+                text.id = UUID()
                 text.position = NSPoint(x: text.position.x + offsetX, y: text.position.y + offsetY)
                 text.creationTime = pasteTime
                 textAnnotations.append(text)
@@ -2202,28 +2398,55 @@ class OverlayView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
+    /// Opens the text field for `currentTextAnnotation` with its text's left edge at
+    /// `point.x`. A new field centers its first line on `point`, or hangs below `topEdge`
+    /// when one is given; an edited one lines up with the label drawn at `point`.
     func createTextField(
-        at point: NSPoint, withText existingText: String = "", width: CGFloat = 100
+        at point: NSPoint, withText existingText: String = "", topEdge: CGFloat? = nil
     ) {
         if let existingField = activeTextField {
             finalizeTextAnnotation(existingField)
         }
 
-        let initialWidth = existingText.isEmpty ? Self.textFieldMinWidth : width
         let isEditing = !existingText.isEmpty
-
-        // Offset to align text cursor with click point:
-        // X: -8 for left padding
-        // Y: center the box on the click for new text (-height/2), -4 for editing (top padding only)
         let fontSize = currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
         let font = NSFont.systemFont(ofSize: fontSize)
-        // Size the empty new field to one line of the current font so large text and the cursor
-        // aren't clipped top/bottom. "Ay" is a full ascender+descender sample; reusing the same
-        // sizing helper as typing/editing keeps the height consistent across every path.
-        let textFieldHeight = textFieldBoxSize(forText: "Ay", font: font).height
-        let yOffset: CGFloat = isEditing ? -4 : -textFieldHeight / 2
+        let fieldX = point.x - Self.textFieldInsets.left
+        // Measured before the width cap below can change, so this is the label as drawn.
+        let editedTextTop = point.y + textFieldTextSize(forText: existingText, font: font).height
+
+        // An auto-width label wraps where it would run off the right edge, keeping its left
+        // edge where it was placed. A label being edited keeps the width it already wrapped
+        // at unless it has since moved too close to the edge for it. Right at the edge it
+        // keeps a minimum width, and the field slides left instead.
+        // Either way the width stays within what the screen allows, so the field never has
+        // to be clamped narrower than the width the label wraps at.
+        if let wrapWidth = currentTextAnnotation?.wrapWidth {
+            currentTextAnnotation?.wrapWidth = min(wrapWidth, maximumTextLayoutWidth)
+        } else {
+            let screenWidth = window?.frame.width ?? bounds.width
+            let room =
+                screenWidth - Self.textFieldScreenMargin - fieldX
+                - Self.textFieldHorizontalChrome
+            let previous = isEditing ? currentTextAnnotation?.maxWidth : nil
+            currentTextAnnotation?.maxWidth = min(
+                maximumTextLayoutWidth,
+                max(Self.minimumAutoWrapWidth, min(previous ?? .greatestFiniteMagnitude, room)))
+        }
+
+        // An edited field opens with its text's top edge right over the label's, so nothing
+        // jumps when it opens or closes.
+        let boxSize = textFieldBoxSize(forText: existingText, font: font)
+        let fieldY: CGFloat
+        if isEditing {
+            fieldY = editedTextTop + Self.textFieldInsets.top - boxSize.height
+        } else if let topEdge {
+            fieldY = topEdge - boxSize.height
+        } else {
+            fieldY = point.y - boxSize.height / 2
+        }
         let textField = AnnotationTextField(
-            frame: NSRect(x: point.x - 8, y: point.y + yOffset, width: initialWidth, height: textFieldHeight))
+            frame: NSRect(x: fieldX, y: fieldY, width: boxSize.width, height: boxSize.height))
         textField.cell = PaddedTextFieldCell()
         textField.onCommandReturn = { [weak self, weak textField] in
             guard let self = self, let textField = textField else { return }
@@ -2247,7 +2470,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         textField.isSelectable = true
         textField.isBezeled = false
         textField.usesSingleLineMode = false
-        textField.cell?.wraps = false
+        // Wrapping is always on: the field is sized so it only wraps where the label will.
+        textField.cell?.wraps = true
         textField.cell?.truncatesLastVisibleLine = false
         textField.stringValue = existingText
         textField.target = self
@@ -2272,10 +2496,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Dark Mode cannot paint a dark field-editor fill behind black (or other
         // low-contrast) text. Committed drawing still uses `currentTextAnnotation.color`.
         AnnotationTextEditorContrast.apply(to: textField, textColor: editorTextColor)
-
-        if isEditing {
-            textField.frame.size = textFieldBoxSize(forText: existingText, font: font)
-        }
 
         self.addSubview(textField)
         textField.becomeFirstResponder()
@@ -2313,8 +2533,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// `finalizeTextAnnotation` on purpose, because none of them is the user finishing a
     /// label: losing focus (`controlTextDidEndEditing`), pressing a toolbar button
     /// (`OverlayWindow.performToolbarAction`), closing the overlay or flipping always-on
-    /// mode (`AppDelegate`), Shift+Enter chaining straight into the next label, and
-    /// `createTextField` closing whatever field is still open before it opens a new one.
+    /// mode (`AppDelegate`), and `createTextField` closing whatever field is still open
+    /// before it opens a new one.
     @objc func commitTextField(_ textField: NSTextField) {
         finalizeTextAnnotation(textField)
 
@@ -2344,11 +2564,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
         lastCommittedTextIndex = nil
         let typedText = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Account for PaddedTextFieldCell padding when storing position
-        let position = NSPoint(
-            x: sender.frame.origin.x + 8,   // left padding
-            y: sender.frame.origin.y + 4    // top padding
-        )
+        // The field draws its text from the top, inset by PaddedTextFieldCell's padding, so
+        // the label keeps that left edge and that top edge.
+        let textLeft = sender.frame.minX + Self.textFieldInsets.left
+        let textTop = sender.frame.maxY - Self.textFieldInsets.top
         sender.removeFromSuperview()
         activeTextField = nil
         window?.makeFirstResponder(nil)
@@ -2363,15 +2582,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
             // Finishing an edit restarts the fade clock. Keeping the original creationTime
             // would let a label the user just retyped disappear immediately.
             let isEdit = editingTextAnnotationIndex != nil
-            let finalAnnotation = TextAnnotation(
+            var finalAnnotation = TextAnnotation(
                 text: typedText,
-                position: position,
+                position: NSPoint(x: textLeft, y: textTop),
                 color: currentText.color,
                 fontSize: currentText.fontSize,
                 hasBackground: currentText.hasBackground,
+                wrapWidth: currentText.wrapWidth,
+                maxWidth: currentText.maxWidth,
                 creationTime: isEdit
-                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime())
+                    ? CACurrentMediaTime() : (currentText.creationTime ?? CACurrentMediaTime()),
+                id: currentText.id
             )
+            finalAnnotation.pinTextTop(to: textTop)
 
             if let editingIndex = editingTextAnnotationIndex {
                 if editingIndex < textAnnotations.count {
@@ -2425,10 +2648,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
             // Cmd+Enter is handled by AnnotationTextField.performKeyEquivalent
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-                let position = textField.frame.origin
-                let newY = position.y - 32
-                finalizeTextAnnotation(textField)
-                createTextFieldForNewAnnotation(at: NSPoint(x: position.x, y: newY))
+                // A line break inside the same label. The field grows downward to fit it.
+                textView.insertNewlineIgnoringFieldEditor(nil)
                 return true
             } else {
                 commitTextField(textField)
@@ -2437,17 +2658,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         return false
-    }
-
-    private func createTextFieldForNewAnnotation(at point: NSPoint) {
-        currentTextAnnotation = TextAnnotation(
-            text: "",
-            position: point,
-            color: adaptColorForBoard(currentColor, boardType: currentBoardType),
-            fontSize: pickerUserDefaults.textToolFontSize,
-            hasBackground: pickerUserDefaults.textBackgroundEnabled
-        )
-        createTextField(at: point)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -2465,20 +2675,62 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Minimum width of the active text-editing field.
     private static let textFieldMinWidth: CGFloat = 100
+    /// Padding `PaddedTextFieldCell` puts around the text.
+    static let textFieldInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+    /// Horizontal space the field adds around its text: the cell insets plus the field
+    /// editor's 2 pt line fragment padding on each side. A field this much wider than a
+    /// label's layout width wraps its lines exactly where the label does.
+    static let textFieldHorizontalChrome: CGFloat = 20
+    /// Gap kept between the field and the screen's left and right edges.
+    static let textFieldScreenMargin: CGFloat = 20
+    /// Narrowest an auto-width label wraps at when it is placed near the right edge.
+    static let minimumAutoWrapWidth: CGFloat = 160
+
+    /// Widest any label may lay out its text: the screen minus the field's margins and
+    /// chrome. Every width the editor, the model and drawing use stays within it, so the
+    /// field is never clamped narrower than the width the label wraps at.
+    var maximumTextLayoutWidth: CGFloat {
+        (window?.frame.width ?? bounds.width) - Self.textFieldScreenMargin * 2
+            - Self.textFieldHorizontalChrome
+    }
+
+    /// Text size the field lays out, broken into lines at the width the committed label
+    /// will wrap at.
+    private func textFieldTextSize(forText text: String, font: NSFont) -> NSSize {
+        let layoutWidth = currentTextAnnotation?.layoutWidth ?? .greatestFiniteMagnitude
+        return TextLayout(text: text, attributes: [.font: font], width: layoutWidth).size
+    }
 
     /// The unclamped box size needed to fit `text` at `font`, including the field's
     /// padding (horizontal cursor slack and a 32pt height floor). Callers apply any
     /// screen-edge clamping themselves. Single source of truth for text-field sizing.
     private func textFieldBoxSize(forText text: String, font: NSFont) -> NSSize {
-        let size = text.size(withAttributes: [.font: font])
-        return NSSize(width: max(Self.textFieldMinWidth, size.width + 32), height: max(32, size.height + 8))
+        // An empty field, or one whose text ends in a line break, still needs a line for
+        // the cursor. "Ay" is a full ascender+descender sample.
+        let needsCursorLine = text.isEmpty || text.hasSuffix("\n")
+        let textHeight = textFieldTextSize(
+            forText: needsCursorLine ? text + "Ay" : text, font: font
+        ).height
+        let height = max(32, textHeight + Self.textFieldInsets.top + Self.textFieldInsets.bottom)
+
+        if let wrapWidth = currentTextAnnotation?.wrapWidth {
+            return NSSize(width: wrapWidth + Self.textFieldHorizontalChrome, height: height)
+        }
+        // Auto width: the field follows the text with some slack for the cursor until the
+        // text reaches the label's maximum width, where both start wrapping.
+        let naturalWidth = text.size(withAttributes: [.font: font]).width
+        var width = max(Self.textFieldMinWidth, naturalWidth + 32)
+        if let maxWidth = currentTextAnnotation?.maxWidth {
+            width = min(width, maxWidth + Self.textFieldHorizontalChrome)
+        }
+        return NSSize(width: width, height: height)
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
         let font = textField.font ?? NSFont.systemFont(ofSize: pickerUserDefaults.textToolFontSize)
         let box = textFieldBoxSize(forText: textField.stringValue, font: font)
 
-        let margin: CGFloat = 20
+        let margin = Self.textFieldScreenMargin
         let availableWidth = window?.frame.width ?? bounds.width
 
         // Fit the text, but never wider than the screen minus margins.
@@ -2488,8 +2740,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // shrinks, instead of staying stuck left after a previous overflow.
         let anchorX = (textField as? AnnotationTextField)?.anchorX ?? textField.frame.origin.x
         let newX = min(anchorX, availableWidth - margin - newWidth)
+        // Hold the top edge, so new lines push the box downward.
+        let top = textField.frame.maxY
 
-        textField.frame = NSRect(x: newX, y: textField.frame.origin.y, width: newWidth, height: box.height)
+        textField.frame = NSRect(x: newX, y: top - box.height, width: newWidth, height: box.height)
     }
 
     func isAnythingFading() -> Bool {
@@ -2971,6 +3225,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Slop added to a label that draws without a background, so hit testing, erasing and
     /// marquee selection stay as forgiving as they were before background pills existed.
     static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 4, left: 0, bottom: 0, right: 4) }
+
+    /// Space between a selected label's text and the dashed box (and its side handles) drawn
+    /// on it. Kept in one place so drawing and the resize math agree on where the edges are.
+    static let selectionPadding: CGFloat = 5.0
 
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
         annotation.bounds(fallbackInsets: Self.plainLabelSlop)
