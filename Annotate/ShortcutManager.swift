@@ -171,14 +171,14 @@ class ShortcutManager: @unchecked Sendable {
 
     private let defaults: UserDefaults
     private let shortcutPrefix = "shortcut."
-    private let globalShortcutProvider: (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut?
+    private let globalShortcutProvider: @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut?
     private static let globalActions: [(name: KeyboardShortcuts.Name, label: String)] = [
         (.toggleOverlay, "Activation Shortcut"),
         (.toggleAlwaysOnMode, "Always-On Mode")
     ]
 
     init(userDefaults: UserDefaults = .standard,
-         globalShortcutProvider: @escaping (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut) {
+         globalShortcutProvider: @escaping @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut) {
         self.defaults = userDefaults
         self.globalShortcutProvider = globalShortcutProvider
         // Existing assignments win over newly introduced defaults. Persist the unbound state

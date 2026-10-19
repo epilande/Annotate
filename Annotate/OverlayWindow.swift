@@ -447,6 +447,22 @@ class OverlayWindow: NSPanel {
             return true
         }
 
+        // A press on empty canvas with the Text tool opens a field right under the pointer.
+        // The rest of that press still belongs to the canvas, so a short drag that never
+        // leaves the new field draws a box instead of selecting text in it.
+        if overlayView.textBoxDragStart != nil {
+            switch event.type {
+            case .leftMouseDragged:
+                mouseDragged(with: event)
+                return true
+            case .leftMouseUp:
+                mouseUp(with: event)
+                return true
+            default:
+                break
+            }
+        }
+
         if isEventOverAnnotationText(event) {
             return false
         }
@@ -502,7 +518,7 @@ class OverlayWindow: NSPanel {
             within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
-            currentFontSize: defaults.textToolFontSize,
+            currentFontSize: selectedLabelFontSize ?? defaults.textToolFontSize,
             currentCounterSize: defaults.counterToolFontSize,
             previewTool: overlayView.currentTool)
 
@@ -590,8 +606,9 @@ class OverlayWindow: NSPanel {
         super.keyUp(with: event)
     }
 
+    /// Resolves like the overlay view's, so its test hook covers the window too.
     private var pickerUserDefaults: UserDefaults {
-        AppDelegate.shared?.userDefaults ?? .standard
+        overlayView?.pickerUserDefaults ?? AppDelegate.shared?.userDefaults ?? .standard
     }
 
     private var runtimeOverlayWindows: [OverlayWindow] {
@@ -604,13 +621,34 @@ class OverlayWindow: NSPanel {
 
     private func contextualPickerMode(for requestedMode: QuickPickerView.Mode) -> QuickPickerView.Mode {
         guard requestedMode == .width else { return requestedMode }
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             return .fontSize
         }
         if overlayView.currentTool == .counter {
             return .counterSize
         }
         return .width
+    }
+
+    /// A size change should land on a label while the text tool is live, a field is being
+    /// edited, or exactly one label is selected. That last case is how a label that is
+    /// already placed gets resized after the fact.
+    private var isTextSizingContext: Bool {
+        overlayView.currentTool == .text || overlayView.activeTextField != nil
+            || sizesSelectedLabel
+    }
+
+    /// A size change lands on the one selected label and nowhere else: not the Text tool
+    /// default, and not labels selected on other screens.
+    private var sizesSelectedLabel: Bool {
+        overlayView.currentTool != .text && overlayView.activeTextField == nil
+            && overlayView.selectedTextIndex() != nil
+    }
+
+    /// The selected label's size when a size change would land on it, so the ladder,
+    /// picker and Cmd+scroll step from that label instead of the stored default.
+    private var selectedLabelFontSize: CGFloat? {
+        sizesSelectedLabel ? overlayView.selectedTextFontSize() : nil
     }
 
     private func shortcut(for mode: QuickPickerView.Mode) -> String {
@@ -832,6 +870,11 @@ class OverlayWindow: NSPanel {
             startFadeLoop()
         }
         lastLiveShapeRect = nil
+        // A box drag or side handle resize whose mouse-up never arrived must not carry into
+        // this gesture.
+        overlayView.endTextResize()
+        overlayView.textBoxDragStart = nil
+        overlayView.textBoxDraftRect = nil
 
         let startPoint = event.locationInWindow
         anchorPoint = startPoint
@@ -856,6 +899,13 @@ class OverlayWindow: NSPanel {
         
         // Handle selection mode
         if overlayView.currentTool == .select {
+            // Side handles sit on the bounding box, so they get first refusal on the click:
+            // grabbing one changes the label's width instead of dragging the selection.
+            if !shiftPressed, let handle = overlayView.textResizeHandle(at: startPoint) {
+                overlayView.beginTextResize(handle)
+                return
+            }
+
             // First check if we clicked inside the bounding box of already selected objects
             if !overlayView.selectedObjects.isEmpty && overlayView.isPointInSelectionBoundingBox(startPoint) {
                 // Clicked inside the selection bounding box
@@ -982,30 +1032,19 @@ class OverlayWindow: NSPanel {
                         // Set currentTextAnnotation so finalizeTextAnnotation can save
                         overlayView.currentTextAnnotation = existingAnnotation
 
-                        let attributes: [NSAttributedString.Key: Any] = [
-                            .font: NSFont.systemFont(ofSize: existingAnnotation.fontSize)
-                        ]
-                        let size = existingAnnotation.text.size(withAttributes: attributes)
-
                         overlayView.createTextField(
                             at: existingAnnotation.position,
-                            withText: existingAnnotation.text,
-                            width: max(300, size.width + 20)
-                        )
+                            withText: existingAnnotation.text)
                     }
                     return
                 }
             }
 
-            // If we didn't click on existing text, create new one
-            overlayView.currentTextAnnotation = TextAnnotation(
-                text: "",
-                position: startPoint,
-                color: currentColor,
-                fontSize: pickerUserDefaults.textToolFontSize,
-                hasBackground: pickerUserDefaults.textBackgroundEnabled
-            )
+            // If we didn't click on existing text, create new one. A drag from here turns
+            // it into a fixed-width box instead.
+            overlayView.currentTextAnnotation = newTextAnnotation(at: startPoint)
             overlayView.createTextField(at: startPoint)
+            overlayView.textBoxDragStart = startPoint
         }
 
         switch overlayView.currentTool {
@@ -1072,6 +1111,56 @@ class OverlayWindow: NSPanel {
         annotation.bounds(fallbackInsets: Self.plainLabelSlop)
     }
 
+    /// An empty label in the Text tool's current color, size and background.
+    private func newTextAnnotation(at point: NSPoint, wrapWidth: CGFloat? = nil) -> TextAnnotation {
+        TextAnnotation(
+            text: "",
+            position: point,
+            color: currentColor,
+            fontSize: pickerUserDefaults.textToolFontSize,
+            hasBackground: pickerUserDefaults.textBackgroundEnabled,
+            wrapWidth: wrapWidth
+        )
+    }
+
+    /// How far a Text-tool press has to move sideways before it draws a box instead of
+    /// placing a label at the click.
+    static let textBoxDragThreshold: CGFloat = 8
+
+    /// Follows a Text-tool drag that started on empty canvas. Once it moves far enough
+    /// sideways, the label the press opened gives way to a box outline.
+    private func continueTextBoxDrag(to point: NSPoint) {
+        guard let start = overlayView.textBoxDragStart else { return }
+        if overlayView.textBoxDraftRect == nil {
+            guard abs(point.x - start.x) >= Self.textBoxDragThreshold else { return }
+            overlayView.cancelTextAnnotation()
+        }
+        overlayView.textBoxDraftRect = NSRect(
+            x: min(start.x, point.x), y: min(start.y, point.y),
+            width: abs(point.x - start.x), height: abs(point.y - start.y))
+        overlayView.needsDisplay = true
+    }
+
+    /// Opens a fixed-width box where a Text-tool drag was released: the outline's width,
+    /// hanging from its top edge. The height follows whatever gets typed.
+    private func finishTextBoxDrag() {
+        defer {
+            overlayView.textBoxDragStart = nil
+            overlayView.textBoxDraftRect = nil
+        }
+        guard let rect = overlayView.textBoxDraftRect, overlayView.currentTool == .text else {
+            return
+        }
+        let textLeft = rect.minX + OverlayView.textFieldInsets.left
+        overlayView.currentTextAnnotation = newTextAnnotation(
+            at: NSPoint(x: textLeft, y: rect.maxY),
+            wrapWidth: max(
+                TextAnnotation.minimumWrapWidth,
+                rect.width - OverlayView.textFieldHorizontalChrome))
+        overlayView.createTextField(at: NSPoint(x: textLeft, y: rect.maxY), topEdge: rect.maxY)
+        overlayView.needsDisplay = true
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if quickPicker != nil {
             handleQuickPickerMouseMovement(screenPoint: convertPoint(toScreen: event.locationInWindow))
@@ -1105,6 +1194,12 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // Side handle drag: the label changes width in place, it does not move with the cursor.
+        if overlayView.resizeHandle != nil {
+            overlayView.updateTextResize(to: currentPoint)
+            return
+        }
+
         // Handle selection dragging
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Get or set drag start point
@@ -1125,6 +1220,11 @@ class OverlayWindow: NSPanel {
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
             overlayView.needsDisplay = true
+            return
+        }
+
+        if overlayView.currentTool == .text, overlayView.textBoxDragStart != nil {
+            continueTextBoxDrag(to: currentPoint)
             return
         }
 
@@ -1380,6 +1480,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentRectangle = nil
         overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
+        overlayView.cancelTextBoxDrag()
         lastLiveShapeRect = nil
         overlayView.needsDisplay = true
     }
@@ -1483,6 +1584,14 @@ class OverlayWindow: NSPanel {
             return
         }
         
+        // End a side handle drag before the move branch below, which would otherwise
+        // register a move undo for a selection that never moved.
+        if overlayView.resizeHandle != nil {
+            overlayView.endTextResize()
+            overlayView.needsDisplay = true
+            return
+        }
+
         // Handle selection drag end
         if overlayView.currentTool == .select && !overlayView.selectedObjects.isEmpty {
             // Register undo for all moved objects
@@ -1502,6 +1611,10 @@ class OverlayWindow: NSPanel {
             overlayView.selectionOriginalData.removeAll()
             overlayView.needsDisplay = true
             return
+        }
+
+        if overlayView.textBoxDragStart != nil {
+            finishTextBoxDrag()
         }
 
         if let draggedIndex = overlayView.draggedTextAnnotationIndex {
@@ -1722,7 +1835,7 @@ class OverlayWindow: NSPanel {
         let cmdPressed = event.modifierFlags.contains(.command)
         
         if cmdPressed {
-            if overlayView.currentTool == .text {
+            if isTextSizingContext {
                 scrollWheelForFontSize(with: event)
             } else if overlayView.currentTool == .counter {
                 scrollWheelForCounterSize(with: event)
@@ -1782,14 +1895,25 @@ class OverlayWindow: NSPanel {
         guard scrollDelta != 0 else { return }
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
-        let size =
-            (pickerUserDefaults.textToolFontSize + increment)
-            .clamped(to: textAnnotationFontSizeRange)
+        let base = selectedLabelFontSize ?? pickerUserDefaults.textToolFontSize
+        let size = (base + increment).clamped(to: textAnnotationFontSizeRange)
         applyTextFontSize(size)
     }
 
     func applyTextFontSize(_ requestedSize: CGFloat, showsFeedback: Bool = true) {
         let size = requestedSize.clamped(to: textAnnotationFontSizeRange)
+
+        // A placed label resizes from the same entry points as the Text tool: ladder,
+        // picker, and Cmd+scroll. Sizing one label leaves the size of the next one alone.
+        if sizesSelectedLabel {
+            guard size != overlayView.selectedTextFontSize() else { return }
+            overlayView.setSelectedTextFontSize(size)
+            if showsFeedback {
+                showFontSizeFeedback(size)
+            }
+            return
+        }
+
         guard size != pickerUserDefaults.textToolFontSize
             || runtimeOverlayWindows.contains(where: {
                 $0.overlayView.activeTextField != nil
@@ -1815,7 +1939,9 @@ class OverlayWindow: NSPanel {
 
     func stepTextFontSize(_ direction: Int) {
         let currentSize =
-            overlayView.currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+            overlayView.currentTextAnnotation?.fontSize
+            ?? selectedLabelFontSize
+            ?? pickerUserDefaults.textToolFontSize
         applyTextFontSize(
             QuickPickerView.steppedValue(
                 in: QuickPickerView.fontSizeOptions,
@@ -1865,7 +1991,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func stepActiveLadder(_ direction: Int) {
-        if overlayView.currentTool == .text || overlayView.activeTextField != nil {
+        if isTextSizingContext {
             stepTextFontSize(direction)
             return
         }

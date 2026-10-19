@@ -242,7 +242,7 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
         )
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
-        window.overlayView.createTextField(at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+        window.overlayView.createTextField(at: NSPoint(x: 120, y: 120), withText: "")
 
         let field = try XCTUnwrap(window.overlayView.activeTextField)
         if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
@@ -308,7 +308,7 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
             fontSize: defaultTextAnnotationFontSize,
             hasBackground: hasBackground
         )
-        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "", width: 100)
+        overlayView.createTextField(at: NSPoint(x: 100, y: 100), withText: "")
         return overlayView.activeTextField!
     }
 
