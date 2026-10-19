@@ -36,6 +36,8 @@ class CursorHighlightWindow: NSPanel {
         hasShadow = false
         ignoresMouseEvents = true
         isRestorable = false
+        // Swift owns the reference, so closing must not also release the window.
+        isReleasedWhenClosed = false
         hidesOnDeactivate = false  // Stay visible even when app is hidden
         collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
 

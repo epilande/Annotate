@@ -60,6 +60,7 @@ final class RedactionTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             AppDelegate.shared = nil
             // Redaction rendering consults the board state; keep it off the user's live defaults.
             originalBoardManager = BoardManager.shared
@@ -77,6 +78,7 @@ final class RedactionTests: XCTestCase, Sendable {
             overlayView = nil
             sampler = nil
             BoardManager.shared = originalBoardManager
+            assertNoLeakedWindows()
         }
         TestUserDefaults.removeSuite()
         super.tearDown()
