@@ -7,18 +7,18 @@ import XCTest
 final class AppDelegateTests: XCTestCase, Sendable {
     var appDelegate: AppDelegate!
     var testDefaults: UserDefaults!
+    private var launchedDelegates: [AppDelegate] = []
 
     nonisolated override func setUp() {
         super.setUp()
 
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             testDefaults = TestUserDefaults.create()
             BoardManager.shared = BoardManager(userDefaults: testDefaults)
             ShortcutManager.shared = ShortcutManager(userDefaults: testDefaults)
 
-            appDelegate = AppDelegate(userDefaults: testDefaults)
-            appDelegate.applicationDidFinishLaunching(
-                Notification(name: NSApplication.didFinishLaunchingNotification))
+            appDelegate = launchAppDelegate()
         }
     }
 
@@ -26,10 +26,24 @@ final class AppDelegateTests: XCTestCase, Sendable {
         MainActor.assumeIsolated {
             SettingsWindowManager.shared.settingsWindow?.close()
             appDelegate.overlayKeyWindowOverride = nil
+            launchedDelegates.forEach { $0.tearDownAfterLaunch() }
+            launchedDelegates = []
             appDelegate = nil
+            assertNoLeakedWindows()
         }
         TestUserDefaults.removeSuite()
         super.tearDown()
+    }
+
+    /// Every delegate a test launches goes through here so tearDown can dismantle it. Launching
+    /// opens an overlay and a cursor highlight window per screen, a status item and seven event
+    /// monitors, none of which go away on their own.
+    private func launchAppDelegate() -> AppDelegate {
+        let delegate = AppDelegate(userDefaults: testDefaults)
+        launchedDelegates.append(delegate)
+        delegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification))
+        return delegate
     }
 
     func testInitialization() {
@@ -267,9 +281,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testToggleFadeModeUpdatesPersistence() {
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window found")
@@ -412,9 +424,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
     func testOverlayWindowsRestorePersistedFadeMode() {
         testDefaults.set(false, forKey: UserDefaults.fadeModeKey)
 
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         // All overlay windows should be initialized with fade mode set to false.
         for window in appDelegate.overlayWindows.values {
@@ -609,9 +619,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
     func testLaunchRestoresPersistedLastUsedTool() {
         testDefaults.lastUsedTool = .highlighter
 
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .highlighter, "Overlay windows should restore the persisted last-used tool on launch")
@@ -649,7 +657,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             text: "", position: point, color: .red,
             fontSize: defaultTextAnnotationFontSize
         )
-        overlayView.createTextField(at: point, withText: "", width: 100)
+        overlayView.createTextField(at: point, withText: "")
         let textField = try XCTUnwrap(overlayView.activeTextField)
         textField.stringValue = "Hello"
         overlayView.commitTextField(textField)

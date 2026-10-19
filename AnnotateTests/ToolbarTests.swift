@@ -12,6 +12,7 @@ final class ToolbarTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestWindows.recordOpenWindows()
         defaults = TestUserDefaults.create()
         appDelegate = AppDelegate(userDefaults: defaults)
         AppDelegate.shared = appDelegate
@@ -36,6 +37,7 @@ final class ToolbarTests: XCTestCase {
         ShortcutManager.shared = ShortcutManager()
         TestUserDefaults.removeSuite()
         defaults = nil
+        assertNoLeakedWindows()
         super.tearDown()
     }
 
@@ -994,7 +996,7 @@ final class ToolbarTests: XCTestCase {
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         window.overlayView.createTextField(
-            at: NSPoint(x: 120, y: 120), withText: "", width: 200)
+            at: NSPoint(x: 120, y: 120), withText: "")
         let field = try XCTUnwrap(
             window.overlayView.activeTextField, "Expected an annotation text field")
         if window.firstResponder !== field && window.firstResponder !== field.currentEditor() {
