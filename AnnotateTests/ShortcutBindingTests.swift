@@ -118,12 +118,13 @@ final class ShortcutBindingTests: XCTestCase {
     func testEventNormalizationUsesLogicalKeyAndExactModifiers() throws {
         let chord = try event("†", keyCode: 17, modifiers: [.option, .command, .capsLock], ignoring: "T")
         XCTAssertEqual(ShortcutBinding(event: chord), ShortcutKey.toggleToolbar.defaultBinding)
-        XCTAssertEqual(manager.action(for: chord), .toggleToolbar)
-        XCTAssertNil(manager.action(for: try event("t", keyCode: 17, modifiers: [.option, .command, .shift])))
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 49)), .toggleFade)
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 51, modifiers: .option)), .clearAll)
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 117, modifiers: [.option, .function])), .clearAll)
-        XCTAssertNil(manager.action(for: try event("", keyCode: 0)))
+        XCTAssertEqual(manager.action(for: try keyChord(chord)), .toggleToolbar)
+        XCTAssertNil(manager.action(for: try keyChord(event("t", keyCode: 17, modifiers: [.option, .command, .shift]))))
+        XCTAssertEqual(manager.action(for: try keyChord(event("", keyCode: 49))), .toggleFade)
+        XCTAssertEqual(manager.action(for: try keyChord(event("", keyCode: 51, modifiers: .option))), .clearAll)
+        XCTAssertEqual(
+            manager.action(for: try keyChord(event("", keyCode: 117, modifiers: [.option, .function]))), .clearAll)
+        XCTAssertNil(manager.action(for: try keyChord(event("", keyCode: 0))))
         XCTAssertFalse(manager.matches("", tool: .toggleBackgroundDimming))
     }
 
@@ -288,5 +289,9 @@ final class ShortcutBindingTests: XCTestCase {
                        ignoring: String? = nil) throws -> NSEvent {
         try XCTUnwrap(TestEvents.createKeyEvent(type: .keyDown, keyCode: keyCode,
             modifierFlags: modifiers, characters: characters, charactersIgnoringModifiers: ignoring))
+    }
+
+    private func keyChord(_ event: NSEvent) throws -> KeyChord {
+        try XCTUnwrap(KeyChord(event: event))
     }
 }

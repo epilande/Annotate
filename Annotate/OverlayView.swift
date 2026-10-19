@@ -28,20 +28,21 @@ class AnnotationTextField: NSTextField {
             }
             // Shift is allowed because Command-Shift-equals is how "+" is typed on a US
             // layout, but Option and Control belong to other key equivalents.
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifiers.isDisjoint(with: [.option, .control]) {
-                switch event.charactersIgnoringModifiers?.lowercased() {
-                case "=", "+":
+            if let chord = KeyChord(event: event) {
+                func matches(_ keys: String...) -> Bool {
+                    keys.contains { ShortcutBinding($0, modifiers: .command).matches(chord, ignoring: .shift) }
+                }
+                if matches("=", "+") {
                     onFontSizeStep?(1)
                     return true
-                case "-", "_":
+                }
+                if matches("-", "_") {
                     onFontSizeStep?(-1)
                     return true
-                case "b":
+                }
+                if matches("b") {
                     onToggleBackground?()
                     return true
-                default:
-                    break
                 }
             }
         }

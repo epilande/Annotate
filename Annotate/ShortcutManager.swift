@@ -14,23 +14,17 @@ struct ShortcutBinding: Equatable, Hashable {
     static let relevantModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
 
     init(_ key: String, modifiers: NSEvent.ModifierFlags = []) {
-        self.key = key == "\u{8}" || key == "\u{f728}" ? "\u{7f}" : key.lowercased()
+        self.key = Self.normalizedKey(key)
         self.modifiers = key.isEmpty ? [] : modifiers.intersection(Self.relevantModifiers)
     }
 
+    static func normalizedKey(_ key: String) -> String {
+        key == "\u{8}" || key == "\u{f728}" ? "\u{7f}" : key.lowercased()
+    }
+
     init?(event: NSEvent) {
-        guard event.type == .keyDown || event.type == .keyUp else { return nil }
-        let key: String
-        switch event.keyCode {
-        case 49: key = " "
-        case 51, 117: key = "\u{7f}" // Backspace and forward Delete share the overlay action.
-        case 53: key = "\u{1b}"
-        case 36, 76: key = "\r"
-        case 48: key = "\t"
-        default: key = event.charactersIgnoringModifiers ?? ""
-        }
-        guard key.count == 1 else { return nil }
-        self.init(key, modifiers: event.modifierFlags)
+        guard let chord = KeyChord(event: event) else { return nil }
+        self.init(chord: chord)
     }
 
     init?(globalShortcut: KeyboardShortcuts.Shortcut) {
@@ -219,14 +213,12 @@ class ShortcutManager: @unchecked Sendable {
         !key.isEmpty && binding(for: tool) == ShortcutBinding(key)
     }
 
-    func matches(_ event: NSEvent, tool: ShortcutKey) -> Bool {
-        guard let candidate = ShortcutBinding(event: event) else { return false }
-        return binding(for: tool) == candidate
+    func matches(_ chord: KeyChord, tool: ShortcutKey) -> Bool {
+        binding(for: tool).matches(chord)
     }
 
-    func action(for event: NSEvent) -> ShortcutKey? {
-        guard let candidate = ShortcutBinding(event: event) else { return nil }
-        return ShortcutKey.allCases.first { binding(for: $0) == candidate }
+    func action(for chord: KeyChord) -> ShortcutKey? {
+        ShortcutKey.allCases.first { binding(for: $0).matches(chord) }
     }
 
     @discardableResult

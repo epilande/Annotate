@@ -10,6 +10,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     nonisolated override func setUp() {
         super.setUp()
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             // A spy leaked from another suite would redirect pickerUserDefaults.
             AppDelegate.shared = nil
             originalMouseCoalescingEnabled = NSEvent.isMouseCoalescingEnabled
@@ -28,8 +29,10 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             window.cancelQuickPicker()
             window.stopFadeLoop()
             window.overlayView.pickerUserDefaultsOverride = nil
+            window.close()
             window = nil
             NSEvent.isMouseCoalescingEnabled = originalMouseCoalescingEnabled
+            assertNoLeakedWindows()
         }
         TestUserDefaults.removeSuite()
         super.tearDown()

@@ -38,9 +38,6 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty --no-document
 
-      - name: Swift Package Manager - Build
-        run: swift build
-
       - name: Swift Package Manager - Test
         run: swift test
 
@@ -51,7 +48,7 @@ jobs:
             -scheme Annotate \
             -configuration Debug \
             -destination "platform=macOS" \
-            clean build | xcpretty && exit ${PIPESTATUS[0]}
+            build | xcpretty && exit ${PIPESTATUS[0]}
 
       - name: Xcode - Test
         run: |

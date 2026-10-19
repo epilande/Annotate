@@ -9,6 +9,7 @@ final class CursorHighlightManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestWindows.recordOpenWindows()
         testDefaults = TestUserDefaults.create()
         manager = CursorHighlightManager(userDefaults: testDefaults)
         AppDelegate.shared = nil
@@ -18,6 +19,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         TestUserDefaults.removeSuite()
         manager = nil
         AppDelegate.shared = nil
+        assertNoLeakedWindows()
         super.tearDown()
     }
 
@@ -272,7 +274,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         )
         appDelegate.overlayWindows[screen] = overlayWindow
         AppDelegate.shared = appDelegate
-        defer { overlayWindow.orderOut(nil) }
+        defer { overlayWindow.close() }
 
         overlayWindow.orderFront(nil)
         try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
@@ -740,7 +742,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         )
         appDelegate.overlayWindows[screen] = overlayWindow
         AppDelegate.shared = appDelegate
-        defer { overlayWindow.orderOut(nil) }
+        defer { overlayWindow.close() }
 
         overlayWindow.orderFront(nil)
         try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
@@ -904,7 +906,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         )
         appDelegate.overlayWindows[screen] = overlayWindow
         AppDelegate.shared = appDelegate
-        defer { overlayWindow.orderOut(nil) }
+        defer { overlayWindow.close() }
 
         overlayWindow.orderFront(nil)
         try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
@@ -936,7 +938,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         )
         appDelegate.overlayWindows[screen] = overlayWindow
         AppDelegate.shared = appDelegate
-        defer { overlayWindow.orderOut(nil) }
+        defer { overlayWindow.close() }
 
         overlayWindow.orderFront(nil)
         try XCTSkipUnless(overlayWindow.isVisible, "Overlay window is not visible in this test environment")
