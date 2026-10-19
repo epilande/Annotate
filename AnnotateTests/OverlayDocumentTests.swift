@@ -295,4 +295,23 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         XCTAssertEqual(view.counterAnnotations.count, 1)
         XCTAssertTrue(view.needsDisplay)
     }
+
+    func testTextBoxOutlineRedrawsWithoutTheWindowAskingForIt() throws {
+        let window = makeOverlayWindow()
+        defer { window.close() }
+        let view: OverlayView = window.overlayView
+        view.currentTool = .text
+
+        window.mouseDown(with: try mouse(.leftMouseDown, at: NSPoint(x: 50, y: 150)))
+        displayPendingChanges(of: view)
+
+        window.mouseDragged(with: try mouse(.leftMouseDragged, at: NSPoint(x: 200, y: 120)))
+        XCTAssertNotNil(view.textBoxDraftRect)
+        XCTAssertTrue(view.needsDisplay, "The outline draws as the drag grows it")
+
+        displayPendingChanges(of: view)
+        view.cancelTextBoxDrag()
+        XCTAssertNil(view.textBoxDraftRect)
+        XCTAssertTrue(view.needsDisplay, "A cancelled drag clears its outline")
+    }
 }
