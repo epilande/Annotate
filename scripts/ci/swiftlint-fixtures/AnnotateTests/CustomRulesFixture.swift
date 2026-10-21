@@ -34,8 +34,10 @@ final class RealUpdaterFixture: XCTestCase {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+        controller.startUpdater() // expect: real_updater_in_tests
         XCTAssertNoThrow(try controller.startUpdater(), "Should be able to start updater") // expect: real_updater_in_tests
-        // try updater.startUpdater() in a comment is fine.
+        // controller.startUpdater() or try updater.startUpdater() in a comment is fine.
+        _ = "controller.startUpdater()"
         XCTAssertFalse(controller.updater.sessionInProgress)
     }
 }

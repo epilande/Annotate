@@ -152,11 +152,13 @@ custom_rules:
     message: 'Look the layer/view up by name (e.g. `sublayers.first { $0.name == "spotlight" }`), not by position; a positional lookup can grab the wrong layer and pass for the wrong reason (#92)'
     severity: error
 
-  # Triggers: `try controller.startUpdater()`. Fixture: same script as above.
+  # Triggers: `controller.startUpdater()`, with or without `try`.
+  # Does not trigger: `SPUStandardUpdaterController(startingUpdater: false, ...)`.
+  # Fixture: same script as above.
   real_updater_in_tests:
     name: "Real Sparkle updater started in tests"
     included: 'AnnotateTests/.*\.swift'
-    regex: 'try\s+\w+\.startUpdater\(\)'
+    regex: '\.startUpdater\s*\(\s*\)'
     excluded_match_kinds:
       - comment
       - doccomment
