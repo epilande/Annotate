@@ -93,22 +93,48 @@ class PaddedTextFieldCell: NSTextFieldCell {
 class OverlayView: NSView, NSTextFieldDelegate {
     var adaptColorsToBoardType: Bool = true
 
-    var arrows: [Arrow] = []
-    var currentArrow: Arrow?
+    /// Everything committed to the canvas. Any change redraws the view.
+    var document = OverlayDocument() {
+        didSet { needsDisplay = true }
+    }
 
-    var lines: [Line] = []
-    var currentLine: Line?
+    var arrows: [Arrow] {
+        get { document.arrows }
+        _modify { yield &document.arrows }
+    }
+    var currentArrow: Arrow? {
+        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentArrow.map(redrawBounds)) }
+    }
 
-    var paths: [DrawingPath] = []
+    var lines: [Line] {
+        get { document.lines }
+        _modify { yield &document.lines }
+    }
+    var currentLine: Line? {
+        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentLine.map(redrawBounds)) }
+    }
+
+    var paths: [DrawingPath] {
+        get { document.paths }
+        _modify { yield &document.paths }
+    }
     var currentPath: DrawingPath?
 
-    var highlightPaths: [DrawingPath] = []
+    var highlightPaths: [DrawingPath] {
+        get { document.highlightPaths }
+        _modify { yield &document.highlightPaths }
+    }
     var currentHighlight: DrawingPath?
     private var currentPathBezier: NSBezierPath?
     private var currentHighlightBezier: NSBezierPath?
 
-    var rectangles: [Rectangle] = []
-    var currentRectangle: Rectangle?
+    var rectangles: [Rectangle] {
+        get { document.rectangles }
+        _modify { yield &document.rectangles }
+    }
+    var currentRectangle: Rectangle? {
+        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentRectangle.map(redrawBounds)) }
+    }
 
     /// Supplies pixels for pixelate/blur redactions. Tests swap in a stub so drawing a
     /// redaction never asks for Screen Recording access.
@@ -137,34 +163,69 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// new key anyway.
     private var failedSampleKeys: Set<RedactionSampleKey> = []
 
-    var circles: [Circle] = []
-    var currentCircle: Circle?
+    var circles: [Circle] {
+        get { document.circles }
+        _modify { yield &document.circles }
+    }
+    var currentCircle: Circle? {
+        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentCircle.map(redrawBounds)) }
+    }
 
-    var textAnnotations: [TextAnnotation] = []
+    var textAnnotations: [TextAnnotation] {
+        get { document.textAnnotations }
+        _modify { yield &document.textAnnotations }
+    }
     /// Annotation being created/edited; holds color and font size for finalize. Not rendered.
     var currentTextAnnotation: TextAnnotation?
     var activeTextField: NSTextField?
     var originalTextPosition: NSPoint?
     var draggedTextAnnotationIndex: Int?
     var dragOffset: NSPoint?
-    var editingTextAnnotationIndex: Int?
+    var editingTextAnnotationIndex: Int? {
+        get { document.editingTextAnnotationIndex }
+        _modify { yield &document.editingTextAnnotationIndex }
+    }
 
     /// Index of the label written by the last `finalizeTextAnnotation` call, or nil when that
     /// call committed nothing. Lets `commitTextField` select what the user just placed.
     private(set) var lastCommittedTextIndex: Int?
 
-    var counterAnnotations: [CounterAnnotation] = []
-    var nextCounterNumber: Int = 1
+    var counterAnnotations: [CounterAnnotation] {
+        get { document.counterAnnotations }
+        _modify { yield &document.counterAnnotations }
+    }
+    var nextCounterNumber: Int {
+        get { document.nextCounterNumber }
+        _modify { yield &document.nextCounterNumber }
+    }
 
     let eraserRadius: CGFloat = 12.0
 
-    var selectedObjects: Set<SelectedObject> = []
-    var selectionDragOffset: NSPoint?
-    var selectionOriginalData: [SelectedObject: Any] = [:]
+    var selectedObjects: Set<SelectedObject> {
+        get { document.selectedObjects }
+        _modify { yield &document.selectedObjects }
+    }
+    var selectionDragOffset: NSPoint? {
+        get { document.selectionDragOffset }
+        _modify { yield &document.selectionDragOffset }
+    }
+    var selectionOriginalData: [SelectedObject: Any] {
+        get { document.selectionOriginalData }
+        _modify { yield &document.selectionOriginalData }
+    }
 
-    var isDrawingSelectionRect: Bool = false
-    var selectionRectStart: NSPoint?
-    var selectionRectEnd: NSPoint?
+    var isDrawingSelectionRect: Bool {
+        get { document.isDrawingSelectionRect }
+        _modify { yield &document.isDrawingSelectionRect }
+    }
+    var selectionRectStart: NSPoint? {
+        get { document.selectionRectStart }
+        _modify { yield &document.selectionRectStart }
+    }
+    var selectionRectEnd: NSPoint? {
+        get { document.selectionRectEnd }
+        _modify { yield &document.selectionRectEnd }
+    }
 
     /// Side handle being dragged to change a single selected label's width, plus that label
     /// and the box it started from. Every drag event measures against that start state, so
@@ -181,14 +242,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Where a Text-tool press on empty canvas began. Dragging from there far enough turns
     /// the click into a fixed-width box, whose outline is `textBoxDraftRect` until release.
     var textBoxDragStart: NSPoint?
-    var textBoxDraftRect: NSRect?
+    var textBoxDraftRect: NSRect? {
+        didSet {
+            invalidateLivePreview(
+                oldValue.map(redrawBounds(forTextBoxDraft:)),
+                textBoxDraftRect.map(redrawBounds(forTextBoxDraft:)))
+        }
+    }
+    static let textBoxDraftLineWidth: CGFloat = 1.5
 
     /// Drops a Text-tool box drag in progress, so its mouse-up opens nothing.
     func cancelTextBoxDrag() {
         guard textBoxDragStart != nil || textBoxDraftRect != nil else { return }
         textBoxDragStart = nil
         textBoxDraftRect = nil
-        needsDisplay = true
     }
 
     var clipboard: [ClipboardItem] = []
@@ -341,7 +408,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func clearSelectionForHistoryStep() {
         guard !selectedObjects.isEmpty else { return }
         selectedObjects.removeAll()
-        needsDisplay = true
     }
 
     func startFadeLoopIfNeeded() {
@@ -349,6 +415,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
         compactExpiredAnnotations()
         guard isAnythingFading() else { return }
         (window as? OverlayWindow)?.startFadeLoop()
+    }
+
+    /// One fade-loop tick. Fading alphas follow the clock rather than the document, so the
+    /// view repaints even when compaction leaves the document as it was.
+    func advanceFade() {
+        compactExpiredAnnotations()
+        needsDisplay = true
     }
 
     func registerUndo(action: DrawingAction) {
@@ -360,7 +433,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.paths.isEmpty {
                         target.paths.removeLast()
                         target.registerUndo(action: .removePath(path))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -370,7 +442,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.arrows.isEmpty {
                         target.arrows.removeLast()
                         target.registerUndo(action: .removeArrow(arrow))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -380,7 +451,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.lines.isEmpty {
                         target.lines.removeLast()
                         target.registerUndo(action: .removeLine(line))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -390,7 +460,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.highlightPaths.isEmpty {
                         target.highlightPaths.removeLast()
                         target.registerUndo(action: .removeHighlight(highlight))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -399,7 +468,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.paths.append(path)
                     target.registerUndo(action: .addPath(path))
-                    target.needsDisplay = true
                 }
             }
         case .removeArrow(let arrow):
@@ -407,7 +475,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.arrows.append(arrow)
                     target.registerUndo(action: .addArrow(arrow))
-                    target.needsDisplay = true
                 }
             }
         case .removeLine(let line):
@@ -415,7 +482,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.lines.append(line)
                     target.registerUndo(action: .addLine(line))
-                    target.needsDisplay = true
                 }
             }
         case .removeHighlight(let highlight):
@@ -423,7 +489,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.highlightPaths.append(highlight)
                     target.registerUndo(action: .addHighlight(highlight))
-                    target.needsDisplay = true
                 }
             }
         case .addRectangle(let rectangle):
@@ -435,7 +500,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if let index = target.rectangles.lastIndex(of: rectangle) {
                         target.rectangles.remove(at: index)
                         target.registerUndo(action: .removeRectangle(rectangle))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -444,7 +508,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.rectangles.append(rectangle)
                     target.registerUndo(action: .addRectangle(rectangle))
-                    target.needsDisplay = true
                 }
             }
         case .addCircle(let circle):
@@ -453,7 +516,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.circles.isEmpty {
                         target.circles.removeLast()
                         target.registerUndo(action: .removeCircle(circle))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -462,7 +524,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.circles.append(circle)
                     target.registerUndo(action: .addCircle(circle))
-                    target.needsDisplay = true
                 }
             }
         case .addText(let annotation):
@@ -471,7 +532,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if !target.textAnnotations.isEmpty {
                         target.textAnnotations.removeLast()
                         target.registerUndo(action: .removeText(annotation))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -480,7 +540,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     target.textAnnotations.append(annotation)
                     target.registerUndo(action: .addText(annotation))
-                    target.needsDisplay = true
                 }
             }
         case .moveText(let index, let oldPosition, let newPosition):
@@ -489,7 +548,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.textAnnotations.count {
                         target.textAnnotations[index].position = oldPosition
                         target.registerUndo(action: .moveText(index, newPosition, oldPosition))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -502,7 +560,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     else { return }
                     target.textAnnotations[index] = from
                     target.registerUndo(action: .resizeText(to, from))
-                    target.needsDisplay = true
                 }
             }
         case .moveArrow(let index, let fromStart, let fromEnd, let toStart, let toEnd):
@@ -512,7 +569,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.arrows[index].startPoint = fromStart
                         target.arrows[index].endPoint = fromEnd
                         target.registerUndo(action: .moveArrow(index, toStart, toEnd, fromStart, fromEnd))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -523,7 +579,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.lines[index].startPoint = fromStart
                         target.lines[index].endPoint = fromEnd
                         target.registerUndo(action: .moveLine(index, toStart, toEnd, fromStart, fromEnd))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -540,7 +595,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.rectangles[index].endPoint = fromEnd
                         target.rectangles[index].sample = nil
                         target.registerUndo(action: .moveRectangle(index, toStart, toEnd, fromStart, fromEnd))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -551,7 +605,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.circles[index].startPoint = fromStart
                         target.circles[index].endPoint = fromEnd
                         target.registerUndo(action: .moveCircle(index, toStart, toEnd, fromStart, fromEnd))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -560,13 +613,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if index < target.paths.count {
                         // Undo: move back by negative delta
-                        for i in 0..<target.paths[index].points.count {
-                            target.paths[index].points[i].point.x -= delta.x
-                            target.paths[index].points[i].point.y -= delta.y
-                        }
+                        Self.translate(&target.paths[index], by: NSPoint(x: -delta.x, y: -delta.y))
                         target.rebuildPathGeometry(&target.paths[index])
                         target.registerUndo(action: .movePath(index, NSPoint(x: -delta.x, y: -delta.y)))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -575,13 +624,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 MainActor.assumeIsolated {
                     if index < target.highlightPaths.count {
                         // Undo: move back by negative delta
-                        for i in 0..<target.highlightPaths[index].points.count {
-                            target.highlightPaths[index].points[i].point.x -= delta.x
-                            target.highlightPaths[index].points[i].point.y -= delta.y
-                        }
+                        Self.translate(&target.highlightPaths[index], by: NSPoint(x: -delta.x, y: -delta.y))
                         target.rebuildPathGeometry(&target.highlightPaths[index])
                         target.registerUndo(action: .moveHighlight(index, NSPoint(x: -delta.x, y: -delta.y)))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -591,7 +636,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     if index < target.counterAnnotations.count {
                         target.counterAnnotations[index].position = from
                         target.registerUndo(action: .moveCounter(index, to, from))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -602,7 +646,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                         target.counterAnnotations.removeLast()
                         target.nextCounterNumber = max(1, target.nextCounterNumber - 1)
                         target.registerUndo(action: .removeCounter(counter))
-                        target.needsDisplay = true
                     }
                 }
             }
@@ -612,7 +655,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.counterAnnotations.append(counter)
                     target.nextCounterNumber = max(target.nextCounterNumber, counter.number + 1)
                     target.registerUndo(action: .addCounter(counter))
-                    target.needsDisplay = true
                 }
             }
         case .clearAll(
@@ -632,7 +674,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.nextCounterNumber =
                         counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
                     target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))
-                    target.needsDisplay = true
                 }
             }
         case .pasteObjects(_):
@@ -660,7 +701,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.registerUndo(action: .restoreAnnotations(
                         paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
                     ))
-                    target.needsDisplay = true
                 }
             }
         case .restoreAnnotations(
@@ -681,7 +721,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.registerUndo(action: .eraseAnnotations(
                         paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
                     ))
-                    target.needsDisplay = true
                 }
             }
         }
@@ -701,24 +740,34 @@ class OverlayView: NSView, NSTextFieldDelegate {
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
         }
+        invalidateLivePreview(nil, dirtyBounds(for: stroke, tool: tool))
     }
 
     // Drops the point when the stroke was already cancelled mid-drag.
     func appendFreehandPoint(_ point: TimedPoint, tool: ToolType) {
+        let previous: TimedPoint?
+        let lineWidth: CGFloat
         switch tool {
         case .pen:
-            guard currentPath != nil, currentPathBezier != nil else { return }
+            guard let width = currentPath?.lineWidth, currentPathBezier != nil else { return }
+            lineWidth = width
+            previous = currentPath?.points.last
             currentPath?.points.append(point)
             currentPath?.expandCachedBounds(with: point.point)
             currentPathBezier?.line(to: point.point)
         case .highlighter:
-            guard currentHighlight != nil, currentHighlightBezier != nil else { return }
+            guard let width = currentHighlight?.lineWidth, currentHighlightBezier != nil else { return }
+            lineWidth = width
+            previous = currentHighlight?.points.last
             currentHighlight?.points.append(point)
             currentHighlight?.expandCachedBounds(with: point.point)
             currentHighlightBezier?.line(to: point.point)
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
         }
+        // Pad with the stroke's own width. The picker width can change mid-drag.
+        let padding = lineWidth * tool.strokeWidthMultiplier / 2 + 6
+        invalidateLivePreview(nil, boundsForLine(previous?.point ?? point.point, point.point, padding: padding))
     }
 
     func rebuildCurrentFreehandStroke(tool: ToolType) {
@@ -736,24 +785,46 @@ class OverlayView: NSView, NSTextFieldDelegate {
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
         }
+        needsDisplay = true
     }
 
     func endFreehandStroke(tool: ToolType) -> DrawingPath? {
+        let stroke: DrawingPath
         switch tool {
         case .pen:
-            guard var stroke = currentPath else { return nil }
-            stroke.bezierPath = currentPathBezier
+            guard var path = currentPath else { return nil }
+            path.bezierPath = currentPathBezier
             currentPath = nil
             currentPathBezier = nil
-            return stroke
+            stroke = path
         case .highlighter:
-            guard var stroke = currentHighlight else { return nil }
-            stroke.bezierPath = currentHighlightBezier
+            guard var path = currentHighlight else { return nil }
+            path.bezierPath = currentHighlightBezier
             currentHighlight = nil
             currentHighlightBezier = nil
-            return stroke
+            stroke = path
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
+        }
+        needsDisplay = true
+        return stroke
+    }
+
+    /// Repaints the strip a live preview left and the one it covers now, so dragging a
+    /// shape or stroke never repaints the whole overlay.
+    private func invalidateLivePreview(_ old: NSRect?, _ new: NSRect?) {
+        switch (old, new) {
+        case let (old?, new?): setNeedsDisplay(old.union(new))
+        case let (rect?, nil), let (nil, rect?): setNeedsDisplay(rect)
+        case (nil, nil): break
+        }
+    }
+
+    /// Moves every point in one write, so a long stroke redraws once rather than per point.
+    private static func translate(_ path: inout DrawingPath, by delta: NSPoint) {
+        for i in path.points.indices {
+            path.points[i].point.x += delta.x
+            path.points[i].point.y += delta.y
         }
     }
 
@@ -766,28 +837,29 @@ class OverlayView: NSView, NSTextFieldDelegate {
         super.draw(dirtyRect)
         let now = fadeMode ? CACurrentMediaTime() : 0
 
-        // Each redaction hides what was created before it and sits under what came after,
-        // so content paints in layers split at every redaction's creation time. Without
-        // redactions this is a single pass in the usual order.
-        var layer = RedactionLayer()
-        for index in redactionIndicesByCreation {
-            let rectangle = rectangles[index]
-            layer.end = RedactionLayer.time(of: rectangle.creationTime)
-            drawAnnotations(in: layer, includingCurrent: false, now: now, dirtyRect: dirtyRect)
-            if intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) {
-                drawRectangle(rectangle, alpha: 1)
+        for step in document.paintOrder() {
+            switch step {
+            case .content(let content, let layer, let includesLive):
+                draw(content, in: layer, includingLive: includesLive, now: now, dirtyRect: dirtyRect)
+            case .redaction(let index):
+                let rectangle = rectangles[index]
+                if intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) {
+                    drawRectangle(rectangle, alpha: 1)
+                }
+            case .liveRedaction:
+                if let rectangle = currentRectangle, rectangle.isRedaction,
+                    intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
+                {
+                    drawRectangle(rectangle, alpha: 1)
+                }
+            case .selection:
+                drawSelection(dirtyRect: dirtyRect)
             }
-            layer = RedactionLayer(start: layer.end)
-        }
-        // Items still being drawn are the newest of all, so they join the top layer.
-        drawAnnotations(in: layer, includingCurrent: true, now: now, dirtyRect: dirtyRect)
-        if let rectangle = currentRectangle, rectangle.isRedaction,
-            intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-        {
-            drawRectangle(rectangle, alpha: 1)
         }
         updateRedactionSamples()
+    }
 
+    private func drawSelection(dirtyRect: NSRect) {
         if !selectedObjects.isEmpty {
             let box = calculateSelectionBoundingBox()
             if intersectsDirtyRect(box, dirtyRect) {
@@ -797,7 +869,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         if let rect = textBoxDraftRect, intersectsDirtyRect(rect, dirtyRect) {
             let path = NSBezierPath(rect: rect)
-            path.lineWidth = 1.5
+            path.lineWidth = Self.textBoxDraftLineWidth
             path.setLineDash([5, 3], count: 2, phase: 0)
             currentColor.withAlphaComponent(0.8).setStroke()
             path.stroke()
@@ -823,113 +895,118 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
     
-    /// Paints the non-redaction annotations created within `layer`, each kind in its usual
-    /// order. `includingCurrent` adds the items still being drawn, which belong on top.
-    private func drawAnnotations(
-        in layer: RedactionLayer, includingCurrent: Bool, now: CFTimeInterval, dirtyRect: NSRect
+    /// Paints the committed `content` created within `layer`. `includingLive` adds the item
+    /// of that kind still being drawn, which belongs on top.
+    private func draw(
+        _ content: OverlayContent, in layer: RedactionLayer, includingLive: Bool, now: CFTimeInterval,
+        dirtyRect: NSRect
     ) {
-        for arrow in arrows where layer.contains(arrow.creationTime) {
-            guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect) else { continue }
-            drawArrow(
-                from: arrow.startPoint,
-                to: arrow.endPoint,
-                color: arrow.color.withAlphaComponent(alpha),
-                lineWidth: arrow.lineWidth
-            )
-        }
+        switch content {
+        case .arrows:
+            for arrow in arrows where layer.contains(arrow.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
+                guard intersectsDirtyRect(redrawBounds(for: arrow), dirtyRect) else { continue }
+                drawArrow(
+                    from: arrow.startPoint,
+                    to: arrow.endPoint,
+                    color: arrow.color.withAlphaComponent(alpha),
+                    lineWidth: arrow.lineWidth
+                )
+            }
 
-        if includingCurrent, let arrow = currentArrow,
-            intersectsDirtyRect(boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30)), dirtyRect)
-        {
-            drawArrow(
-                from: arrow.startPoint,
-                to: arrow.endPoint,
-                color: arrow.color,
-                lineWidth: arrow.lineWidth
-            )
-        }
+            if includingLive, let arrow = currentArrow, intersectsDirtyRect(redrawBounds(for: arrow), dirtyRect) {
+                drawArrow(
+                    from: arrow.startPoint,
+                    to: arrow.endPoint,
+                    color: arrow.color,
+                    lineWidth: arrow.lineWidth
+                )
+            }
 
-        for line in lines where layer.contains(line.creationTime) {
-            guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect) else { continue }
-            drawLine(
-                from: line.startPoint,
-                to: line.endPoint,
-                color: line.color.withAlphaComponent(alpha),
-                lineWidth: line.lineWidth
-            )
-        }
+        case .lines:
+            for line in lines where layer.contains(line.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
+                guard intersectsDirtyRect(redrawBounds(for: line), dirtyRect) else { continue }
+                drawLine(
+                    from: line.startPoint,
+                    to: line.endPoint,
+                    color: line.color.withAlphaComponent(alpha),
+                    lineWidth: line.lineWidth
+                )
+            }
 
-        if includingCurrent, let line = currentLine,
-            intersectsDirtyRect(boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6), dirtyRect)
-        {
-            drawLine(
-                from: line.startPoint,
-                to: line.endPoint,
-                color: line.color,
-                lineWidth: line.lineWidth
-            )
-        }
+            if includingLive, let line = currentLine, intersectsDirtyRect(redrawBounds(for: line), dirtyRect) {
+                drawLine(
+                    from: line.startPoint,
+                    to: line.endPoint,
+                    color: line.color,
+                    lineWidth: line.lineWidth
+                )
+            }
 
-        for path in paths where layer.contains(path.creationTime) {
-            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
-            drawPath(path, tool: .pen, bezierPath: path.bezierPath)
-        }
+        case .penStrokes:
+            for path in paths where layer.contains(path.creationTime) {
+                guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
+                drawPath(path, tool: .pen, bezierPath: path.bezierPath)
+            }
 
-        if includingCurrent, let path = currentPath,
-            intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
-        {
-            drawPath(path, tool: .pen, bezierPath: currentPathBezier)
-        }
+            if includingLive, let path = currentPath,
+                intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
+            {
+                drawPath(path, tool: .pen, bezierPath: currentPathBezier)
+            }
 
-        for path in highlightPaths where layer.contains(path.creationTime) {
-            guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
-            drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
-        }
+        case .highlights:
+            for path in highlightPaths where layer.contains(path.creationTime) {
+                guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
+                drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
+            }
 
-        if includingCurrent, let highlight = currentHighlight,
-            intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
-        {
-            drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
-        }
+            if includingLive, let highlight = currentHighlight,
+                intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
+            {
+                drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
+            }
 
-        for rectangle in rectangles where !rectangle.isRedaction && layer.contains(rectangle.creationTime) {
-            guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
-            guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
-            drawRectangle(rectangle, alpha: alpha)
-        }
+        case .outlines:
+            for rectangle in rectangles where !rectangle.isRedaction && layer.contains(rectangle.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
+                guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
+                drawRectangle(rectangle, alpha: alpha)
+            }
 
-        if includingCurrent, let rectangle = currentRectangle, !rectangle.isRedaction,
-            intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-        {
-            drawRectangle(rectangle, alpha: 1)
-        }
+            if includingLive, let rectangle = currentRectangle, !rectangle.isRedaction,
+                intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
+            {
+                drawRectangle(rectangle, alpha: 1)
+            }
 
-        for circle in circles where layer.contains(circle.creationTime) {
-            guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect) else { continue }
-            drawCircle(circle, alpha: alpha)
-        }
+        case .circles:
+            for circle in circles where layer.contains(circle.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
+                guard intersectsDirtyRect(redrawBounds(for: circle), dirtyRect) else { continue }
+                drawCircle(circle, alpha: alpha)
+            }
 
-        if includingCurrent, let circle = currentCircle,
-            intersectsDirtyRect(boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6), dirtyRect)
-        {
-            drawCircle(circle, alpha: 1)
-        }
+            if includingLive, let circle = currentCircle, intersectsDirtyRect(redrawBounds(for: circle), dirtyRect) {
+                drawCircle(circle, alpha: 1)
+            }
 
-        for (index, annotation) in textAnnotations.enumerated() where layer.contains(annotation.creationTime) {
-            if index == editingTextAnnotationIndex { continue }
-            guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
-            let textRect = getTextRect(for: annotation)
-            guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
-            drawText(annotation, alpha: alpha, bounds: textRect)
-        }
+        case .labels:
+            for (index, annotation) in textAnnotations.enumerated() where layer.contains(annotation.creationTime) {
+                if index == editingTextAnnotationIndex { continue }
+                guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
+                let textRect = getTextRect(for: annotation)
+                guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
+                drawText(annotation, alpha: alpha, bounds: textRect)
+            }
 
-        for counter in counterAnnotations where layer.contains(counter.creationTime) {
-            guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
-            guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
-            drawCounter(counter, alpha: alpha)
+        case .counters:
+            for counter in counterAnnotations where layer.contains(counter.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
+                guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
+                drawCounter(counter, alpha: alpha)
+            }
         }
     }
 
@@ -1157,7 +1234,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
             y: originY + Self.selectionPadding + insets.bottom)
 
         textAnnotations[index] = annotation
-        needsDisplay = true
     }
 
     /// Ends the gesture, leaving the whole resize (width and position) as one undo step.
@@ -1193,7 +1269,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         updated.pinTextTop(to: original.textTop)
         textAnnotations[index] = updated
         registerUndo(action: .resizeText(original, updated))
-        needsDisplay = true
     }
     
     /// Check if a point is inside the bounding box of any selected object
@@ -1211,32 +1286,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return alphaForAge(age)
     }
 
-    /// A stretch of creation times between two consecutive redactions. Everything created
-    /// in `start..<end` paints over the redaction made at `start` and under the one at `end`.
-    private struct RedactionLayer {
-        var start: CFTimeInterval = -.infinity
-        var end: CFTimeInterval = .infinity
+    private typealias RedactionLayer = OverlayDocument.RedactionLayer
 
-        /// Only test fixtures leave a committed object without a creation time; those
-        /// count as the oldest.
-        static func time(of creationTime: CFTimeInterval?) -> CFTimeInterval {
-            creationTime ?? -.infinity
-        }
-
-        func contains(_ creationTime: CFTimeInterval?) -> Bool {
-            let time = Self.time(of: creationTime)
-            return time >= start && time < end
-        }
-    }
-
-    /// Redaction indices from oldest to newest, which is the order they paint in.
-    var redactionIndicesByCreation: [Int] {
-        rectangles.indices.filter { rectangles[$0].isRedaction }.sorted {
-            let lhs = RedactionLayer.time(of: rectangles[$0].creationTime)
-            let rhs = RedactionLayer.time(of: rectangles[$1].creationTime)
-            return lhs != rhs ? lhs < rhs : $0 < $1
-        }
-    }
+    var redactionIndicesByCreation: [Int] { document.redactionIndicesByCreation }
 
     /// Whether a redaction newer than something created at `creationTime` covers `point`,
     /// so interactions do not reach what that redaction hides.
@@ -1287,6 +1339,23 @@ class OverlayView: NSView, NSTextFieldDelegate {
         boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6)
     }
 
+    private func redrawBounds(for arrow: Arrow) -> NSRect {
+        boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30))
+    }
+
+    private func redrawBounds(for line: Line) -> NSRect {
+        boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6)
+    }
+
+    private func redrawBounds(for circle: Circle) -> NSRect {
+        boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6)
+    }
+
+    private func redrawBounds(forTextBoxDraft rect: NSRect) -> NSRect {
+        let padding = Self.textBoxDraftLineWidth / 2 + 6
+        return rect.insetBy(dx: -padding, dy: -padding)
+    }
+
     private func dirtyBounds(for path: DrawingPath, tool: ToolType) -> NSRect {
         let padding = path.lineWidth * tool.strokeWidthMultiplier / 2 + 6
         let bounds = path.cachedBounds.isNull ? DrawingPath.bounds(of: path.points) : path.cachedBounds
@@ -1306,31 +1375,31 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let now = CACurrentMediaTime()
 
         compactItems(
-            &arrows,
+            \.arrows,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .arrow(let index) = $0 { return index }; return nil },
             make: { .arrow(index: $0) }
         )
         compactItems(
-            &lines,
+            \.lines,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .line(let index) = $0 { return index }; return nil },
             make: { .line(index: $0) }
         )
         compactItems(
-            &rectangles,
+            \.rectangles,
             keep: { fadeAlphaIfVisible(for: $0, now: now) != nil },
             extractIndex: { if case .rectangle(let index) = $0 { return index }; return nil },
             make: { .rectangle(index: $0) }
         )
         compactItems(
-            &circles,
+            \.circles,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .circle(let index) = $0 { return index }; return nil },
             make: { .circle(index: $0) }
         )
         compactItems(
-            &counterAnnotations,
+            \.counterAnnotations,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
@@ -1341,7 +1410,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             [editingTextAnnotationIndex, draggedTextAnnotationIndex, resizingTextIndex]
                 .compactMap { $0 })
         let textIndexMap = compactItems(
-            &textAnnotations,
+            \.textAnnotations,
             keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             protectedIndices: protectedTextIndices,
             extractIndex: { if case .text(let index) = $0 { return index }; return nil },
@@ -1352,13 +1421,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
         }
         compactFadedPaths(
-            &paths,
+            \.paths,
             now: now,
             extractIndex: { if case .path(let index) = $0 { return index }; return nil },
             make: { .path(index: $0) }
         )
         compactFadedPaths(
-            &highlightPaths,
+            \.highlightPaths,
             now: now,
             extractIndex: { if case .highlight(let index) = $0 { return index }; return nil },
             make: { .highlight(index: $0) }
@@ -1372,12 +1441,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// map so those callers can follow their index, or nil when nothing was removed.
     @discardableResult
     private func compactItems<T>(
-        _ items: inout [T],
+        _ itemsKey: WritableKeyPath<OverlayDocument, [T]>,
         keep: (T) -> Bool,
         protectedIndices: Set<Int> = [],
         extractIndex: (SelectedObject) -> Int?,
         make: (Int) -> SelectedObject
     ) -> [Int: Int]? {
+        let items = document[keyPath: itemsKey]
         var newItems: [T] = []
         var indexMap: [Int: Int] = [:]
         newItems.reserveCapacity(items.count)
@@ -1388,19 +1458,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         }
         guard newItems.count != items.count else { return nil }
-        items = newItems
+        document[keyPath: itemsKey] = newItems
         remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
         return indexMap
     }
 
     private func compactFadedPaths(
-        _ paths: inout [DrawingPath],
+        _ pathsKey: WritableKeyPath<OverlayDocument, [DrawingPath]>,
         now: CFTimeInterval,
         extractIndex: (SelectedObject) -> Int?,
         make: (Int) -> SelectedObject
     ) {
+        let paths = document[keyPath: pathsKey]
         var newPaths: [DrawingPath] = []
         var indexMap: [Int: Int] = [:]
+        var trimmed = false
         let limit = fadeDuration / 4
         newPaths.reserveCapacity(paths.count)
         for (oldIndex, var path) in paths.enumerated() {
@@ -1409,12 +1481,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             if remaining.count != path.points.count {
                 path.points = remaining
                 rebuildPathGeometry(&path)
+                trimmed = true
             }
             indexMap[oldIndex] = newPaths.count
             newPaths.append(path)
         }
         let countChanged = newPaths.count != paths.count
-        paths = newPaths
+        guard countChanged || trimmed else { return }
+        document[keyPath: pathsKey] = newPaths
         if countChanged {
             remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
         }
@@ -1788,7 +1862,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     func clearArrows() {
         arrows.removeAll()
         currentArrow = nil
-        needsDisplay = true
     }
 
     private func makeBezierPath(points: [TimedPoint]) -> NSBezierPath {
@@ -1892,10 +1965,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         endTextResize()
         cancelTextBoxDrag()
 
-        currentPath = nil
-        currentHighlight = nil
-        currentPathBezier = nil
-        currentHighlightBezier = nil
+        _ = endFreehandStroke(tool: .pen)
+        _ = endFreehandStroke(tool: .highlighter)
 
         // Only register undo if there's something to clear
         let hasContent =
@@ -1945,7 +2016,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         failedSampleKeys.removeAll()
 
-        needsDisplay = true
         return hasContent
     }
 
@@ -2005,7 +2075,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
             // Eraser doesn't create items, so nothing to delete
             break
         }
-        needsDisplay = true
     }
     
     func deleteSelectedObjects() {
@@ -2025,7 +2094,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         selectedObjects.removeAll()
-        needsDisplay = true
     }
     
     private func deleteObject(_ object: SelectedObject) {
@@ -2281,7 +2349,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         currentTool = .select
 
         startFadeLoopIfNeeded()
-        needsDisplay = true
         if fadeMode {
             (window as? OverlayWindow)?.startFadeLoop()
         }
@@ -2395,8 +2462,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 selectedObjects.insert(factory(i))
             }
         }
-
-        needsDisplay = true
     }
 
     /// Opens the text field for `currentTextAnnotation` with its text's left edge at
@@ -2518,7 +2583,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func cancelTextAnnotation() {
         cleanupActiveTextField()
-        needsDisplay = true
     }
 
     /// Commits the field, then honors the opt-in switch to Select so the label the user
@@ -2559,7 +2623,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         selectedObjects = [.text(index: committedIndex)]
-        needsDisplay = true
     }
 
     @objc func finalizeTextAnnotation(_ sender: NSTextField) {
@@ -2575,7 +2638,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         guard let currentText = currentTextAnnotation else {
             editingTextAnnotationIndex = nil
-            needsDisplay = true
             return
         }
 
@@ -2623,7 +2685,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         currentTextAnnotation = nil
-        needsDisplay = true
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector)
@@ -2745,6 +2806,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let top = textField.frame.maxY
 
         textField.frame = NSRect(x: newX, y: top - box.height, width: newWidth, height: box.height)
+    }
+
+    /// Restyles the open text field, if any, at `size` and records it for the label it commits.
+    func setActiveTextFontSize(_ size: CGFloat) {
+        guard let textField = activeTextField else { return }
+        textField.font = NSFont.systemFont(ofSize: size)
+        currentTextAnnotation?.fontSize = size
+        resizeActiveTextField(textField)
+        textField.needsDisplay = true
     }
 
     func isAnythingFading() -> Bool {
@@ -3496,18 +3566,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             
         case .path(let index):
             guard index < paths.count else { return }
-            for i in 0..<paths[index].points.count {
-                paths[index].points[i].point.x += delta.x
-                paths[index].points[i].point.y += delta.y
-            }
+            Self.translate(&paths[index], by: delta)
             rebuildPathGeometry(&paths[index])
             
         case .highlight(let index):
             guard index < highlightPaths.count else { return }
-            for i in 0..<highlightPaths[index].points.count {
-                highlightPaths[index].points[i].point.x += delta.x
-                highlightPaths[index].points[i].point.y += delta.y
-            }
+            Self.translate(&highlightPaths[index], by: delta)
             rebuildPathGeometry(&highlightPaths[index])
             
         case .text(let index):

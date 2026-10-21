@@ -18,6 +18,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Redraw site ratchet
+        run: scripts/ci/check-redraw-sites.sh
+
       - name: Check the settings access guard against fixtures
         run: ./scripts/ci/check_settings_access_test.sh
 

@@ -37,7 +37,6 @@ class OverlayWindow: NSPanel {
     private var pickerCommitInFlight = false
     /// True when the picker consumed this mouse-down, so the matching up must not commit geometry.
     private var pickerConsumedMouseDown = false
-    private var lastLiveShapeRect: NSRect?
     private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
@@ -55,10 +54,7 @@ class OverlayWindow: NSPanel {
 
     var currentColor: NSColor {
         get { overlayView.currentColor }
-        set {
-            overlayView.currentColor = newValue
-            overlayView.needsDisplay = true
-        }
+        set { overlayView.currentColor = newValue }
     }
 
     override init(
@@ -358,8 +354,7 @@ class OverlayWindow: NSPanel {
     }
 
     @objc func updateFade() {
-        overlayView.compactExpiredAnnotations()
-        overlayView.needsDisplay = true
+        overlayView.advanceFade()
 
         // Stop the loop if nothing is actively fading
         if !overlayView.isAnythingFading() {
@@ -859,7 +854,6 @@ class OverlayWindow: NSPanel {
         if commitLiveDrawing(timestamp: event.timestamp), overlayView.fadeMode {
             startFadeLoop()
         }
-        lastLiveShapeRect = nil
         // A box drag or side handle resize whose mouse-up never arrived must not carry into
         // this gesture.
         overlayView.endTextResize()
@@ -922,8 +916,6 @@ class OverlayWindow: NSPanel {
                         }
                     }
                 }
-                
-                overlayView.needsDisplay = true
                 return
             }
             
@@ -959,8 +951,6 @@ class OverlayWindow: NSPanel {
                         overlayView.selectionOriginalData[obj] = pos
                     }
                 }
-                
-                overlayView.needsDisplay = true
                 return
             } else {
                 // Clicked on empty space
@@ -973,7 +963,6 @@ class OverlayWindow: NSPanel {
                 overlayView.selectionRectStart = startPoint
                 overlayView.selectionRectEnd = startPoint
                 overlayView.selectionDragOffset = nil  // Not dragging
-                overlayView.needsDisplay = true
                 return
             }
         }
@@ -990,7 +979,6 @@ class OverlayWindow: NSPanel {
             overlayView.registerUndo(action: .addCounter(counterAnnotation))
             overlayView.counterAnnotations.append(counterAnnotation)
             overlayView.nextCounterNumber += 1
-            overlayView.needsDisplay = true
 
             if overlayView.fadeMode {
                 startFadeLoop()
@@ -1090,7 +1078,6 @@ class OverlayWindow: NSPanel {
         case .eraser:
             overlayView.eraseAtPoint(startPoint)
         }
-        overlayView.needsDisplay = true
     }
 
     /// Slop added to a label that draws without a background. Clicking and double-clicking
@@ -1128,7 +1115,6 @@ class OverlayWindow: NSPanel {
         overlayView.textBoxDraftRect = NSRect(
             x: min(start.x, point.x), y: min(start.y, point.y),
             width: abs(point.x - start.x), height: abs(point.y - start.y))
-        overlayView.needsDisplay = true
     }
 
     /// Opens a fixed-width box where a Text-tool drag was released: the outline's width,
@@ -1148,7 +1134,6 @@ class OverlayWindow: NSPanel {
                 TextAnnotation.minimumWrapWidth,
                 rect.width - OverlayView.textFieldHorizontalChrome))
         overlayView.createTextField(at: NSPoint(x: textLeft, y: rect.maxY), topEdge: rect.maxY)
-        overlayView.needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1180,7 +1165,6 @@ class OverlayWindow: NSPanel {
         // Handle rectangle selection drawing
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
             overlayView.selectionRectEnd = currentPoint
-            overlayView.needsDisplay = true
             return
         }
         
@@ -1209,7 +1193,6 @@ class OverlayWindow: NSPanel {
             }
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1234,14 +1217,12 @@ class OverlayWindow: NSPanel {
                 y: currentPoint.y - dragOffset.y
             )
             overlayView.textAnnotations[draggedIndex].position = newPosition
-            overlayView.needsDisplay = true
             return
         }
 
         // Drawing tools latch at mouseDown above, so only the eraser acts on currentTool here.
         if overlayView.currentTool == .eraser {
             overlayView.eraseAtPoint(currentPoint)
-            overlayView.needsDisplay = true
         }
     }
 
@@ -1251,28 +1232,10 @@ class OverlayWindow: NSPanel {
             overlayView.currentArrow?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-            if let arrow = overlayView.currentArrow {
-                invalidateLiveShape(
-                    rectSpanning(
-                        arrow.startPoint,
-                        arrow.endPoint,
-                        padding: max(arrow.lineWidth * 4, 30)
-                    )
-                )
-            }
         case .line:
             overlayView.currentLine?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-            if let line = overlayView.currentLine {
-                invalidateLiveShape(
-                    rectSpanning(
-                        line.startPoint,
-                        line.endPoint,
-                        padding: line.lineWidth / 2 + 6
-                    )
-                )
-            }
         case .rectangle, .redact:
             var newStart = anchorPoint
             var newEnd = currentPoint
@@ -1295,13 +1258,6 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentRectangle?.startPoint = newStart
             overlayView.currentRectangle?.endPoint = newEnd
-            invalidateLiveShape(
-                rectSpanning(
-                    newStart,
-                    newEnd,
-                    padding: overlayView.currentLineWidth / 2 + 6
-                )
-            )
         case .circle:
             var newStart = anchorPoint
             var newEnd = currentPoint
@@ -1324,27 +1280,12 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentCircle?.startPoint = newStart
             overlayView.currentCircle?.endPoint = newEnd
-            invalidateLiveShape(
-                rectSpanning(
-                    newStart,
-                    newEnd,
-                    padding: overlayView.currentLineWidth / 2 + 6
-                )
-            )
         default:
             break
         }
     }
 
     private func continueFreehandStroke(_ tool: ToolType, to point: NSPoint, timestamp: TimeInterval) {
-        // Read through, rather than binding the stroke: a live copy of the struct
-        // would keep a second reference to the points buffer and turn the append
-        // below into a full array copy on every event.
-        let previousPoint =
-            (tool == .pen
-                ? overlayView.currentPath?.points.last?.point
-                : overlayView.currentHighlight?.points.last?.point) ?? point
-
         if isShiftConstraintActive {
             if tool == .pen {
                 updatePathWithShiftConstraint(
@@ -1360,13 +1301,11 @@ class OverlayWindow: NSPanel {
                 )
             }
             overlayView.rebuildCurrentFreehandStroke(tool: tool)
-            overlayView.needsDisplay = true
         } else {
             overlayView.appendFreehandPoint(
                 TimedPoint(point: point, timestamp: timestamp),
                 tool: tool
             )
-            invalidateLiveSegment(from: previousPoint, to: point, tool: tool)
         }
     }
 
@@ -1436,7 +1375,6 @@ class OverlayWindow: NSPanel {
         guard let tool = activeFreehandTool else { return }
         _ = overlayView.endFreehandStroke(tool: tool)
         activeFreehandTool = nil
-        overlayView.needsDisplay = true
     }
 
     /// Commits the live freehand stroke or shape on the tool its drag started with, and ends
@@ -1471,33 +1409,12 @@ class OverlayWindow: NSPanel {
         overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
         overlayView.cancelTextBoxDrag()
-        lastLiveShapeRect = nil
-        overlayView.needsDisplay = true
     }
 
     func prepareForAlwaysOnMode() {
         cancelQuickPicker()
         restoreMouseCoalescing()
         cancelFreehandStroke()
-    }
-
-    private func rectSpanning(_ first: NSPoint, _ second: NSPoint, padding: CGFloat) -> NSRect {
-        NSRect(
-            x: min(first.x, second.x),
-            y: min(first.y, second.y),
-            width: abs(first.x - second.x),
-            height: abs(first.y - second.y)
-        ).insetBy(dx: -padding, dy: -padding)
-    }
-
-    private func invalidateLiveSegment(from: NSPoint, to: NSPoint, tool: ToolType) {
-        let padding = overlayView.currentLineWidth * tool.strokeWidthMultiplier / 2 + 6
-        overlayView.setNeedsDisplay(rectSpanning(from, to, padding: padding))
-    }
-
-    private func invalidateLiveShape(_ rect: NSRect) {
-        overlayView.setNeedsDisplay(lastLiveShapeRect.map { $0.union(rect) } ?? rect)
-        lastLiveShapeRect = rect
     }
 
     private func beginUncoalescedFreehandInput() {
@@ -1541,8 +1458,6 @@ class OverlayWindow: NSPanel {
             NotificationCenter.default.post(name: .cursorHighlightNeedsUpdate, object: nil)
         }
 
-        overlayView.needsDisplay = true
-
         // Handle rectangle selection end
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
             if let start = overlayView.selectionRectStart, let end = overlayView.selectionRectEnd {
@@ -1570,7 +1485,6 @@ class OverlayWindow: NSPanel {
             overlayView.isDrawingSelectionRect = false
             overlayView.selectionRectStart = nil
             overlayView.selectionRectEnd = nil
-            overlayView.needsDisplay = true
             return
         }
         
@@ -1578,7 +1492,6 @@ class OverlayWindow: NSPanel {
         // register a move undo for a selection that never moved.
         if overlayView.resizeHandle != nil {
             overlayView.endTextResize()
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1599,7 +1512,6 @@ class OverlayWindow: NSPanel {
             }
             overlayView.selectionDragOffset = nil
             overlayView.selectionOriginalData.removeAll()
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1623,7 +1535,6 @@ class OverlayWindow: NSPanel {
             overlayView.dragOffset = nil
         }
 
-        overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false
         isCenterModeActive = false
         wasShiftPressedOnMouseDown = false
@@ -1912,15 +1823,7 @@ class OverlayWindow: NSPanel {
         else { return }
         pickerSettings[.textFontSize] = size
 
-        runtimeOverlayWindows.forEach { window in
-            if let textField = window.overlayView.activeTextField {
-                textField.font = NSFont.systemFont(ofSize: size)
-                window.overlayView.currentTextAnnotation?.fontSize = size
-                window.overlayView.resizeActiveTextField(textField)
-                textField.needsDisplay = true
-            }
-            window.overlayView.needsDisplay = true
-        }
+        runtimeOverlayWindows.forEach { $0.overlayView.setActiveTextFontSize(size) }
 
         if showsFeedback {
             showFontSizeFeedback(size)
@@ -1944,10 +1847,7 @@ class OverlayWindow: NSPanel {
             ?? pickerSettings[.textBackground])
         pickerSettings[.textBackground] = enabled
 
-        runtimeOverlayWindows.forEach { window in
-            window.overlayView.currentTextAnnotation?.hasBackground = enabled
-            window.overlayView.needsDisplay = true
-        }
+        runtimeOverlayWindows.forEach { $0.overlayView.currentTextAnnotation?.hasBackground = enabled }
 
         showFeedback(enabled ? "Label background on" : "Label background off")
     }
@@ -1970,7 +1870,6 @@ class OverlayWindow: NSPanel {
     func applyCounterFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
         guard size != pickerSettings[.counterFontSize] else { return }
         pickerSettings[.counterFontSize] = size
-        runtimeOverlayWindows.forEach { $0.overlayView.needsDisplay = true }
         if showsFeedback {
             showCounterSizeFeedback(size)
         }
