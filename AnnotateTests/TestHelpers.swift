@@ -43,6 +43,28 @@ enum TestUserDefaults {
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
         UserDefaults.standard.synchronize()
     }
+
+    /// A suite separate from `create()`'s, for tests that must read back through a second
+    /// `UserDefaults` rather than the writer's in-memory cache. The caller removes it with
+    /// `removePersistentDomain(forName:)`.
+    static func suite(named name: String) -> UserDefaults {
+        UserDefaults(suiteName: name)!
+    }
+}
+
+extension UserDefaults {
+    /// Reads and writes this suite through the app's typed keys.
+    var settings: SettingsStore { SettingsStore(defaults: self) }
+
+    /// Stores a value bypassing the key's encoding: a legacy format, or one the key rejects.
+    func setRawValue<Value>(_ value: Any, for key: SettingKey<Value>) {
+        set(value, forKey: key.name)
+    }
+
+    /// The stored value as the key's encoding wrote it.
+    func rawValue<Value>(for key: SettingKey<Value>) -> Any? {
+        object(forKey: key.name)
+    }
 }
 
 // MARK: - Test Factory Methods

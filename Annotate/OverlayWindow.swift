@@ -163,10 +163,7 @@ class OverlayWindow: NSPanel {
     func updateToolbarVisibility() {
         guard let panel = toolbarPanel else { return }
         let oldFeedbackPadding = feedbackBottomPadding
-        let defaults = AppDelegate.shared?.userDefaults ?? .standard
-        let persisted =
-            defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
-            ?? UserDefaults.toolbarVisibleDefault
+        let persisted = pickerSettings[.toolbarVisible]
         // Always-On is a read-only, click-through overlay, so it carries no toolbar. Hiding is
         // a detach rather than a hidden view: a parent that ignores mouse events does not make
         // its children click-through, so the bar has to leave the window group entirely.
@@ -508,7 +505,7 @@ class OverlayWindow: NSPanel {
         discardLiveDrawing()
 
         let mode = contextualPickerMode(for: requestedMode)
-        let defaults = pickerUserDefaults
+        let settings = pickerSettings
         let anchor =
             requestedAnchor
             ?? overlayView.convert(mouseLocationOutsideOfEventStream, from: nil)
@@ -522,8 +519,8 @@ class OverlayWindow: NSPanel {
             within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
-            currentFontSize: selectedLabelFontSize ?? defaults.textToolFontSize,
-            currentCounterSize: defaults.counterToolFontSize,
+            currentFontSize: selectedLabelFontSize ?? settings[.textFontSize],
+            currentCounterSize: settings[.counterFontSize],
             previewTool: overlayView.currentTool)
 
         overlayView.addSubview(picker)
@@ -611,8 +608,8 @@ class OverlayWindow: NSPanel {
     }
 
     /// Resolves like the overlay view's, so its test hook covers the window too.
-    private var pickerUserDefaults: UserDefaults {
-        overlayView?.pickerUserDefaults ?? AppDelegate.shared?.userDefaults ?? .standard
+    private var pickerSettings: SettingsStore {
+        overlayView?.pickerSettings ?? AppDelegate.shared?.settings ?? .standard
     }
 
     private var runtimeOverlayWindows: [OverlayWindow] {
@@ -804,11 +801,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func applyColor(_ color: NSColor) {
-        if let colorData = try? NSKeyedArchiver.archivedData(
-            withRootObject: color, requiringSecureCoding: false)
-        {
-            pickerUserDefaults.set(colorData, forKey: "SelectedColor")
-        }
+        pickerSettings[.selectedColor] = color
 
         let appDelegate = AppDelegate.shared
         appDelegate?.currentColor = color
@@ -990,7 +983,7 @@ class OverlayWindow: NSPanel {
                 number: overlayView.nextCounterNumber,
                 position: startPoint,
                 color: currentColor,
-                fontSize: UserDefaults.standard.counterToolFontSize,
+                fontSize: pickerSettings[.counterFontSize],
                 creationTime: CACurrentMediaTime()
             )
 
@@ -1080,7 +1073,7 @@ class OverlayWindow: NSPanel {
             overlayView.currentRectangle = Rectangle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
                 lineWidth: overlayView.currentLineWidth, creationTime: nil,
-                style: overlayView.currentTool == .redact ? overlayView.pickerUserDefaults.redactionStyle : .outline)
+                style: overlayView.currentTool == .redact ? overlayView.pickerSettings[.redactionStyle] : .outline)
             if overlayView.currentRectangle?.needsSample == true {
                 overlayView.beginRedactionDrag()
             }
@@ -1114,8 +1107,8 @@ class OverlayWindow: NSPanel {
             text: "",
             position: point,
             color: currentColor,
-            fontSize: pickerUserDefaults.textToolFontSize,
-            hasBackground: pickerUserDefaults.textBackgroundEnabled,
+            fontSize: pickerSettings[.textFontSize],
+            hasBackground: pickerSettings[.textBackground],
             wrapWidth: wrapWidth
         )
     }
@@ -1875,7 +1868,7 @@ class OverlayWindow: NSPanel {
 
     func applyLineWidth(_ width: CGFloat, showsFeedback: Bool = true) {
         guard width != overlayView.currentLineWidth else { return }
-        pickerUserDefaults.set(Double(width), forKey: UserDefaults.lineWidthKey)
+        pickerSettings[.lineWidth] = width
         runtimeOverlayWindows.forEach { $0.overlayView.currentLineWidth = width }
         if showsFeedback {
             showLineWidthFeedback(width)
@@ -1892,7 +1885,7 @@ class OverlayWindow: NSPanel {
         guard scrollDelta != 0 else { return }
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
-        let base = selectedLabelFontSize ?? pickerUserDefaults.textToolFontSize
+        let base = selectedLabelFontSize ?? pickerSettings[.textFontSize]
         let size = (base + increment).clamped(to: textAnnotationFontSizeRange)
         applyTextFontSize(size)
     }
@@ -1911,13 +1904,13 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        guard size != pickerUserDefaults.textToolFontSize
+        guard size != pickerSettings[.textFontSize]
             || runtimeOverlayWindows.contains(where: {
                 $0.overlayView.activeTextField != nil
                     && $0.overlayView.currentTextAnnotation?.fontSize != size
             })
         else { return }
-        pickerUserDefaults.textToolFontSize = size
+        pickerSettings[.textFontSize] = size
 
         runtimeOverlayWindows.forEach { window in
             if let textField = window.overlayView.activeTextField {
@@ -1938,7 +1931,7 @@ class OverlayWindow: NSPanel {
         let currentSize =
             overlayView.currentTextAnnotation?.fontSize
             ?? selectedLabelFontSize
-            ?? pickerUserDefaults.textToolFontSize
+            ?? pickerSettings[.textFontSize]
         applyTextFontSize(
             QuickPickerView.steppedValue(
                 in: QuickPickerView.fontSizeOptions,
@@ -1948,8 +1941,8 @@ class OverlayWindow: NSPanel {
 
     func toggleTextBackground() {
         let enabled = !(overlayView.currentTextAnnotation?.hasBackground
-            ?? pickerUserDefaults.textBackgroundEnabled)
-        pickerUserDefaults.textBackgroundEnabled = enabled
+            ?? pickerSettings[.textBackground])
+        pickerSettings[.textBackground] = enabled
 
         runtimeOverlayWindows.forEach { window in
             window.overlayView.currentTextAnnotation?.hasBackground = enabled
@@ -1969,14 +1962,14 @@ class OverlayWindow: NSPanel {
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
         let size =
-            (pickerUserDefaults.counterToolFontSize + increment)
+            (pickerSettings[.counterFontSize] + increment)
             .clamped(to: counterFontSizeRange)
         applyCounterFontSize(size)
     }
 
     func applyCounterFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
-        guard size != pickerUserDefaults.counterToolFontSize else { return }
-        pickerUserDefaults.counterToolFontSize = size
+        guard size != pickerSettings[.counterFontSize] else { return }
+        pickerSettings[.counterFontSize] = size
         runtimeOverlayWindows.forEach { $0.overlayView.needsDisplay = true }
         if showsFeedback {
             showCounterSizeFeedback(size)
@@ -1997,7 +1990,7 @@ class OverlayWindow: NSPanel {
             applyCounterFontSize(
                 QuickPickerView.steppedValue(
                     in: QuickPickerView.counterSizeOptions,
-                    current: pickerUserDefaults.counterToolFontSize,
+                    current: pickerSettings[.counterFontSize],
                     direction: direction))
             return
         }
@@ -2020,14 +2013,14 @@ class OverlayWindow: NSPanel {
     }
 
     func showToggleFeedback(_ text: String, icon: String) {
-        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
         showFeedback("\(icon) \(text)")
     }
 
     func showToolFeedback(_ tool: ToolType) {
         // Check if tool feedback is hidden in settings (default: false, meaning show feedback)
-        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
 
         let toolName: String

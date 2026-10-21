@@ -206,7 +206,7 @@ final class AnnotationTextEditorContrastTests: XCTestCase, Sendable {
         let originalText = field.textColor
 
         overlayView.currentTextAnnotation?.hasBackground = true
-        overlayView.pickerUserDefaults.textBackgroundEnabled = true
+        overlayView.pickerSettings[.textBackground] = true
 
         XCTAssertTrue(field.textColor?.isClose(to: originalText ?? .clear) ?? false)
         XCTAssertTrue(field.backgroundColor?.isClose(to: originalBackground ?? .clear) ?? false)

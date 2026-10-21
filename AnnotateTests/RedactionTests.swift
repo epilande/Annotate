@@ -260,16 +260,16 @@ final class RedactionTests: XCTestCase, Sendable {
 
     func testRedactionStyleSettingDefaultsToSolidAndNeverOutline() {
         let defaults = TestUserDefaults.create()
-        XCTAssertEqual(defaults.redactionStyle, .solid)
+        XCTAssertEqual(defaults.settings[.redactionStyle], .solid)
 
-        defaults.redactionStyle = .blur
-        XCTAssertEqual(defaults.redactionStyle, .blur)
+        defaults.settings[.redactionStyle] = .blur
+        XCTAssertEqual(defaults.settings[.redactionStyle], .blur)
 
-        defaults.set("outline", forKey: UserDefaults.redactionStyleKey)
-        XCTAssertEqual(defaults.redactionStyle, .solid, "A redaction must always hide")
+        defaults.setRawValue("outline", for: .redactionStyle)
+        XCTAssertEqual(defaults.settings[.redactionStyle], .solid, "A redaction must always hide")
 
-        defaults.set("mosaic", forKey: UserDefaults.redactionStyleKey)
-        XCTAssertEqual(defaults.redactionStyle, .solid)
+        defaults.setRawValue("mosaic", for: .redactionStyle)
+        XCTAssertEqual(defaults.settings[.redactionStyle], .solid)
     }
 
     // MARK: - Tool wiring
@@ -294,7 +294,7 @@ final class RedactionTests: XCTestCase, Sendable {
             styleMask: .borderless, backing: .buffered, defer: false)
         defer { window.close() }
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .pixelate
+        defaults.settings[.redactionStyle] = .pixelate
         window.overlayView.pickerUserDefaultsOverride = defaults
         window.overlayView.redactionSampler = sampler
         window.overlayView.fadeMode = false
@@ -876,7 +876,7 @@ final class RedactionTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .pixelate
+        defaults.settings[.redactionStyle] = .pixelate
         view.pickerUserDefaultsOverride = defaults
         view.redactionSampler = sampler
         view.fadeMode = false
@@ -934,7 +934,7 @@ final class RedactionTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .blur
+        defaults.settings[.redactionStyle] = .blur
         view.pickerUserDefaultsOverride = defaults
         view.redactionSampler = sampler
         view.fadeMode = false
@@ -979,7 +979,7 @@ final class RedactionTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .blur
+        defaults.settings[.redactionStyle] = .blur
         view.pickerUserDefaultsOverride = defaults
         view.redactionSampler = sampler
         view.fadeMode = false
@@ -1056,7 +1056,7 @@ final class RedactionTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .solid
+        defaults.settings[.redactionStyle] = .solid
         view.pickerUserDefaultsOverride = defaults
         view.redactionSampler = sampler
         view.fadeMode = false
@@ -1102,7 +1102,7 @@ final class RedactionTests: XCTestCase, Sendable {
         defer { window.close() }
         let view: OverlayView = window.overlayView
         let defaults = TestUserDefaults.create()
-        defaults.redactionStyle = .pixelate
+        defaults.settings[.redactionStyle] = .pixelate
         view.pickerUserDefaultsOverride = defaults
         view.redactionSampler = sampler
         view.fadeMode = false

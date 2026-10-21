@@ -40,7 +40,7 @@ final class BoardManagerTests: XCTestCase {
         BoardManager.shared.opacity = testOpacity
         XCTAssertEqual(BoardManager.shared.opacity, testOpacity, "Opacity should be updated to 0.5")
 
-        let persistedOpacity = testDefaults.double(forKey: UserDefaults.boardOpacityKey)
+        let persistedOpacity = testDefaults.settings[.boardOpacity]
         XCTAssertEqual(persistedOpacity, testOpacity, "Opacity should be persisted to UserDefaults")
     }
 

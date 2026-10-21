@@ -33,7 +33,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.cursorHighlightEnabled = true
 
         XCTAssertTrue(manager.cursorHighlightEnabled, "cursorHighlightEnabled should be true after setting")
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey)
+        let persistedValue = testDefaults.settings[.cursorHighlightEnabled]
         XCTAssertTrue(persistedValue, "cursorHighlightEnabled should be persisted to UserDefaults")
     }
 
@@ -42,7 +42,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.cursorHighlightEnabled = false
 
         XCTAssertFalse(manager.cursorHighlightEnabled, "cursorHighlightEnabled should be false after setting")
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey)
+        let persistedValue = testDefaults.settings[.cursorHighlightEnabled]
         XCTAssertFalse(persistedValue, "cursorHighlightEnabled should be persisted to UserDefaults as false")
     }
 
@@ -102,7 +102,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.spotlightDimmingOpacity = 0.7
 
         XCTAssertEqual(manager.spotlightDimmingOpacity, 0.7)
-        XCTAssertEqual(testDefaults.double(forKey: UserDefaults.spotlightDimmingOpacityKey), 0.7)
+        XCTAssertEqual(testDefaults.settings[.spotlightDimmingOpacity], 0.7)
     }
 
     /// Dimming never shows without the spotlight enabled.
@@ -230,7 +230,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.spotlightRequiresOverlay = true
 
         XCTAssertTrue(manager.spotlightRequiresOverlay, "spotlightRequiresOverlay should be true after setting")
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey)
+        let persistedValue = testDefaults.settings[.spotlightRequiresOverlay]
         XCTAssertTrue(persistedValue, "spotlightRequiresOverlay should be persisted to UserDefaults")
     }
 
@@ -312,7 +312,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.clickEffectsEnabled = true
 
         XCTAssertTrue(manager.clickEffectsEnabled, "clickEffectsEnabled should be true after setting")
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.clickRippleEnabledKey)
+        let persistedValue = testDefaults.settings[.clickRippleEnabled]
         XCTAssertTrue(persistedValue, "clickEffectsEnabled should be persisted to UserDefaults")
     }
 
@@ -321,7 +321,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.clickEffectsEnabled = false
 
         XCTAssertFalse(manager.clickEffectsEnabled, "clickEffectsEnabled should be false after setting")
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.clickRippleEnabledKey)
+        let persistedValue = testDefaults.settings[.clickRippleEnabled]
         XCTAssertFalse(persistedValue, "clickEffectsEnabled should be persisted to UserDefaults as false")
     }
 
@@ -405,7 +405,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.effectSize = 120.0
 
         XCTAssertEqual(manager.effectSize, 120.0, "effectSize should be updated")
-        let persistedValue = testDefaults.double(forKey: UserDefaults.clickRippleSizeKey)
+        let persistedValue = testDefaults.settings[.clickRippleSize]
         XCTAssertEqual(persistedValue, 120.0, "effectSize should be persisted to UserDefaults")
     }
 
@@ -419,7 +419,7 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.spotlightSize = 150.0
 
         XCTAssertEqual(manager.spotlightSize, 150.0, "spotlightSize should be updated")
-        let persistedValue = testDefaults.double(forKey: UserDefaults.spotlightSizeKey)
+        let persistedValue = testDefaults.settings[.spotlightSize]
         XCTAssertEqual(persistedValue, 150.0, "spotlightSize should be persisted to UserDefaults")
     }
 
@@ -774,8 +774,8 @@ final class CursorHighlightManagerTests: XCTestCase {
         manager.activeCursorStyle = .outline
 
         XCTAssertEqual(manager.activeCursorStyle, .outline, "activeCursorStyle should be updated")
-        let persistedValue = testDefaults.string(forKey: UserDefaults.activeCursorStyleKey)
-        XCTAssertEqual(persistedValue, "outline", "activeCursorStyle should be persisted to UserDefaults")
+        let persistedValue = testDefaults.settings[.activeCursorStyle]
+        XCTAssertEqual(persistedValue, .outline, "activeCursorStyle should be persisted to UserDefaults")
     }
 
     // MARK: - Per-Screen Active Cursor Tests
@@ -832,14 +832,14 @@ final class CursorHighlightManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.excludedAppBundleIDs, testList)
         XCTAssertEqual(
-            testDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey),
+            testDefaults.settings[.hideCursorEffectsInApps],
             testList
         )
 
         manager.excludedAppBundleIDs = []
         XCTAssertTrue(manager.excludedAppBundleIDs.isEmpty)
         XCTAssertEqual(
-            testDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey),
+            testDefaults.settings[.hideCursorEffectsInApps],
             []
         )
     }

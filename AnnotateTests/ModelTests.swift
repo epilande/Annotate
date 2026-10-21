@@ -226,9 +226,9 @@ final class ModelTests: XCTestCase {
 
     func testCounterToolFontSizeDefaultsAndPersists() {
         let defaults = TestUserDefaults.create()
-        XCTAssertEqual(defaults.counterToolFontSize, defaultCounterFontSize)
-        defaults.counterToolFontSize = 42
-        XCTAssertEqual(defaults.counterToolFontSize, 42)
+        XCTAssertEqual(defaults.settings[.counterFontSize], defaultCounterFontSize)
+        defaults.settings[.counterFontSize] = 42
+        XCTAssertEqual(defaults.settings[.counterFontSize], 42)
     }
 
     func testToolType() {
@@ -261,21 +261,21 @@ final class ModelTests: XCTestCase {
 
     func testLastUsedToolDefaultsAndPersists() {
         let defaults = TestUserDefaults.create()
-        XCTAssertEqual(defaults.lastUsedTool, .pen, "Should fall back to .pen when nothing is saved")
+        XCTAssertEqual(defaults.settings[.lastUsedTool], .pen, "Should fall back to .pen when nothing is saved")
 
-        defaults.lastUsedTool = .highlighter
-        XCTAssertEqual(defaults.lastUsedTool, .highlighter)
+        defaults.settings[.lastUsedTool] = .highlighter
+        XCTAssertEqual(defaults.settings[.lastUsedTool], .highlighter)
     }
 
     func testDefaultToolOptionDefaultsAndPersists() {
         let defaults = TestUserDefaults.create()
-        XCTAssertEqual(defaults.defaultToolOption, .lastUsed, "Should default to .lastUsed when nothing is saved")
+        XCTAssertEqual(defaults.settings[.defaultTool], .lastUsed, "Should default to .lastUsed when nothing is saved")
 
-        defaults.defaultToolOption = .tool(.counter)
-        XCTAssertEqual(defaults.defaultToolOption, .tool(.counter))
+        defaults.settings[.defaultTool] = .tool(.counter)
+        XCTAssertEqual(defaults.settings[.defaultTool], .tool(.counter))
 
-        defaults.defaultToolOption = .lastUsed
-        XCTAssertEqual(defaults.defaultToolOption, .lastUsed)
+        defaults.settings[.defaultTool] = .lastUsed
+        XCTAssertEqual(defaults.settings[.defaultTool], .lastUsed)
     }
 
     func testLineWithLineWidth() {

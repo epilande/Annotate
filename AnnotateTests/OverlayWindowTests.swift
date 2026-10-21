@@ -756,51 +756,51 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     func testScrollWheelAdjustsCounterSizeWhenCounterToolActive() {
         window.overlayView.currentTool = .counter
-        let original = UserDefaults.standard.counterToolFontSize
-        defer { UserDefaults.standard.counterToolFontSize = original }
+        let original = SettingsStore.standard[.counterFontSize]
+        defer { SettingsStore.standard[.counterFontSize] = original }
 
-        UserDefaults.standard.counterToolFontSize = 20
+        SettingsStore.standard[.counterFontSize] = 20
 
         if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
             window.scrollWheel(with: scrollUp)
         }
         XCTAssertEqual(
-            UserDefaults.standard.counterToolFontSize, 21,
+            SettingsStore.standard[.counterFontSize], 21,
             "Cmd+Scroll up should grow the counter size")
 
         if let scrollDown = TestEvents.createScrollEvent(deltaY: -1.0, modifierFlags: .command) {
             window.scrollWheel(with: scrollDown)
         }
         XCTAssertEqual(
-            UserDefaults.standard.counterToolFontSize, 20,
+            SettingsStore.standard[.counterFontSize], 20,
             "Cmd+Scroll down should shrink the counter size")
     }
 
     func testScrollWheelClampsCounterSizeToUpperBound() {
         window.overlayView.currentTool = .counter
-        let original = UserDefaults.standard.counterToolFontSize
-        defer { UserDefaults.standard.counterToolFontSize = original }
+        let original = SettingsStore.standard[.counterFontSize]
+        defer { SettingsStore.standard[.counterFontSize] = original }
 
-        UserDefaults.standard.counterToolFontSize = counterFontSizeRange.upperBound
+        SettingsStore.standard[.counterFontSize] = counterFontSizeRange.upperBound
         if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
             window.scrollWheel(with: scrollUp)
         }
         XCTAssertEqual(
-            UserDefaults.standard.counterToolFontSize, counterFontSizeRange.upperBound,
+            SettingsStore.standard[.counterFontSize], counterFontSizeRange.upperBound,
             "Counter size must not exceed its range")
     }
 
     func testScrollWheelForNonCounterToolLeavesCounterSizeUntouched() {
         window.overlayView.currentTool = .pen
-        let original = UserDefaults.standard.counterToolFontSize
-        defer { UserDefaults.standard.counterToolFontSize = original }
+        let original = SettingsStore.standard[.counterFontSize]
+        defer { SettingsStore.standard[.counterFontSize] = original }
 
-        UserDefaults.standard.counterToolFontSize = 25
+        SettingsStore.standard[.counterFontSize] = 25
         if let scrollUp = TestEvents.createScrollEvent(deltaY: 1.0, modifierFlags: .command) {
             window.scrollWheel(with: scrollUp)
         }
         XCTAssertEqual(
-            UserDefaults.standard.counterToolFontSize, 25,
+            SettingsStore.standard[.counterFontSize], 25,
             "A non-counter tool must route Cmd+Scroll elsewhere and leave counter size alone")
     }
     
@@ -1417,15 +1417,15 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     func testSendEventBracketsTypeWhileEditingText() {
         guard let field = startEditingAnnotationText() else { return }
-        let originalFontSize = UserDefaults.standard.textToolFontSize
+        let originalFontSize = SettingsStore.standard[.textFontSize]
         let originalWidth = window.overlayView.currentLineWidth
-        defer { UserDefaults.standard.textToolFontSize = originalFontSize }
+        defer { SettingsStore.standard[.textFontSize] = originalFontSize }
 
         sendKey("[", keyCode: 33)
         sendKey("]", keyCode: 30)
 
         XCTAssertFalse(window.isQuickPickerOpen)
-        XCTAssertEqual(UserDefaults.standard.textToolFontSize, originalFontSize, "[ ] must not step size while editing")
+        XCTAssertEqual(SettingsStore.standard[.textFontSize], originalFontSize, "[ ] must not step size while editing")
         XCTAssertEqual(window.overlayView.currentLineWidth, originalWidth)
         let typedBrackets =
             field.stringValue.contains("[")
@@ -1630,8 +1630,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testTextSizeSteppingUsesQuickPickerLadderAndResizesActiveField() throws {
-        UserDefaults.standard.textToolFontSize = 18
-        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey) }
+        SettingsStore.standard[.textFontSize] = 18
+        defer { SettingsStore.standard.removeValue(for: .textFontSize) }
 
         window.overlayView.currentTextAnnotation = TextAnnotation(
             text: "", position: NSPoint(x: 100, y: 100), color: .red, fontSize: 44)
@@ -1641,33 +1641,33 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         window.stepTextFontSize(1)
 
-        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 60)
+        XCTAssertEqual(SettingsStore.standard[.textFontSize], 60)
         XCTAssertEqual(window.overlayView.currentTextAnnotation?.fontSize, 60)
         XCTAssertEqual(textField.font?.pointSize, 60)
         XCTAssertGreaterThan(textField.frame.height, initialSize.height)
 
         window.stepTextFontSize(-1)
-        XCTAssertEqual(UserDefaults.standard.textToolFontSize, 44)
+        XCTAssertEqual(SettingsStore.standard[.textFontSize], 44)
     }
 
     func testToggleTextBackgroundUpdatesCurrentAnnotationAndPersistedDefault() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
-        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        SettingsStore.standard.removeValue(for: .textBackground)
+        defer { SettingsStore.standard.removeValue(for: .textBackground) }
         window.overlayView.currentTextAnnotation = TextAnnotation(
             text: "", position: .zero, color: .red, fontSize: 18)
 
         window.toggleTextBackground()
         XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, true)
-        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+        XCTAssertTrue(SettingsStore.standard[.textBackground])
 
         window.toggleTextBackground()
         XCTAssertEqual(window.overlayView.currentTextAnnotation?.hasBackground, false)
-        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+        XCTAssertFalse(SettingsStore.standard[.textBackground])
     }
 
     func testCommandBTogglesLabelBackgroundWithTextToolAndNoActiveField() throws {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
-        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        SettingsStore.standard.removeValue(for: .textBackground)
+        defer { SettingsStore.standard.removeValue(for: .textBackground) }
         window.overlayView.currentTool = .text
         XCTAssertNil(window.overlayView.activeTextField)
 
@@ -1676,15 +1676,15 @@ final class OverlayWindowTests: XCTestCase, Sendable {
                 type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
 
         XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
-        XCTAssertTrue(UserDefaults.standard.textBackgroundEnabled)
+        XCTAssertTrue(SettingsStore.standard[.textBackground])
 
         XCTAssertTrue(window.performKeyEquivalent(with: cmdB))
-        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+        XCTAssertFalse(SettingsStore.standard[.textBackground])
     }
 
     func testCommandBIsIgnoredWhenTheTextToolIsNotActive() throws {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
-        defer { UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey) }
+        SettingsStore.standard.removeValue(for: .textBackground)
+        defer { SettingsStore.standard.removeValue(for: .textBackground) }
         window.overlayView.currentTool = .pen
 
         let cmdB = try XCTUnwrap(
@@ -1692,7 +1692,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
                 type: .keyDown, keyCode: 11, modifierFlags: .command, characters: "b"))
 
         XCTAssertFalse(window.performKeyEquivalent(with: cmdB))
-        XCTAssertFalse(UserDefaults.standard.textBackgroundEnabled)
+        XCTAssertFalse(SettingsStore.standard[.textBackground])
     }
 
     // MARK: - Committing a label by clicking away
@@ -1758,7 +1758,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     @discardableResult
     private func seedLabelInProgress(text: String, selectAfterPlacing: Bool) throws -> NSTextField {
         let defaults = TestUserDefaults.create()
-        defaults.selectAfterPlacingText = selectAfterPlacing
+        defaults.settings[.selectAfterPlacingText] = selectAfterPlacing
         window.overlayView.pickerUserDefaultsOverride = defaults
 
         let point = NSPoint(x: 100, y: 100)
@@ -1775,7 +1775,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
     func testSizingASelectedLabelLeavesTheTextToolDefaultAlone() {
         let defaults = TestUserDefaults.create()
-        defaults.textToolFontSize = 18
+        defaults.settings[.textFontSize] = 18
         window.overlayView.pickerUserDefaultsOverride = defaults
 
         window.overlayView.currentTool = .select
@@ -1790,23 +1790,23 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.applyTextFontSize(44, showsFeedback: false)
         XCTAssertEqual(window.overlayView.textAnnotations[0].fontSize, 44)
         XCTAssertEqual(window.overlayView.textAnnotations[1].fontSize, 24)
-        XCTAssertEqual(defaults.textToolFontSize, 18, "The next label keeps the Text tool size")
+        XCTAssertEqual(defaults.settings[.textFontSize], 18, "The next label keeps the Text tool size")
 
         // The ladder steps from the selected label's own size, not the stored default.
         window.stepTextFontSize(1)
         XCTAssertGreaterThan(window.overlayView.textAnnotations[0].fontSize, 44)
-        XCTAssertEqual(defaults.textToolFontSize, 18)
+        XCTAssertEqual(defaults.settings[.textFontSize], 18)
     }
 
     func testSizingWithTheTextToolStillSetsTheDefault() {
         let defaults = TestUserDefaults.create()
-        defaults.textToolFontSize = 18
+        defaults.settings[.textFontSize] = 18
         window.overlayView.pickerUserDefaultsOverride = defaults
         window.overlayView.currentTool = .text
 
         window.applyTextFontSize(30, showsFeedback: false)
 
-        XCTAssertEqual(defaults.textToolFontSize, 30)
+        XCTAssertEqual(defaults.settings[.textFontSize], 30)
     }
 }
 

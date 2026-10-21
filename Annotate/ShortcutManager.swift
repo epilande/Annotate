@@ -163,41 +163,30 @@ enum ShortcutKey: String, CaseIterable {
 class ShortcutManager: @unchecked Sendable {
     static var shared = ShortcutManager()
 
-    private let defaults: UserDefaults
-    private let shortcutPrefix = "shortcut."
+    private let settings: SettingsStore
     private let globalShortcutProvider: @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut?
     private static let globalActions: [(name: KeyboardShortcuts.Name, label: String)] = [
         (.toggleOverlay, "Activation Shortcut"),
         (.toggleAlwaysOnMode, "Always-On Mode")
     ]
 
-    init(userDefaults: UserDefaults = .standard,
+    init(userDefaults: UserDefaults = SettingsStore.standard.defaults,
          globalShortcutProvider: @escaping @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut) {
-        self.defaults = userDefaults
+        self.settings = SettingsStore(defaults: userDefaults)
         self.globalShortcutProvider = globalShortcutProvider
         // Existing assignments win over newly introduced defaults. Persist the unbound state
         // so clearing the old assignment later does not silently enable a second action.
         // Every other action counts, including other newly editable ones a user already customized.
-        for action in ShortcutKey.newlyEditable where defaults.object(forKey: shortcutPrefix + action.rawValue) == nil {
+        for action in ShortcutKey.newlyEditable where !settings.hasValue(for: .shortcut(action)) {
             if ShortcutKey.allCases.contains(where: { $0 != action && binding(for: $0) == action.defaultBinding })
                 || globalShortcutConflict(for: action.defaultBinding) != nil {
-                defaults.set("", forKey: shortcutPrefix + action.rawValue)
+                settings[.shortcut(action)] = .unassigned
             }
         }
     }
 
     func binding(for tool: ShortcutKey) -> ShortcutBinding {
-        let storageKey = shortcutPrefix + tool.rawValue
-        if let legacyKey = defaults.string(forKey: storageKey) {
-            return ShortcutBinding(legacyKey)
-        }
-        if let value = defaults.dictionary(forKey: storageKey),
-            let key = value["key"] as? String,
-            let modifiers = (value["modifiers"] as? NSNumber)?.uintValue
-        {
-            return ShortcutBinding(key, modifiers: NSEvent.ModifierFlags(rawValue: modifiers))
-        }
-        return tool.defaultBinding
+        settings[.shortcut(tool)]
     }
 
     /// The logical key, for callers that do not need modifiers (such as picker release tracking).
@@ -211,8 +200,7 @@ class ShortcutManager: @unchecked Sendable {
     @discardableResult
     func setShortcut(_ binding: ShortcutBinding, for tool: ShortcutKey) -> Bool {
         guard !binding.isReserved, !isShortcutTaken(binding, excluding: tool) else { return false }
-        defaults.set(["key": binding.key, "modifiers": binding.modifiers.rawValue],
-                     forKey: shortcutPrefix + tool.rawValue)
+        settings[.shortcut(tool)] = binding
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
         return true
     }
@@ -236,16 +224,16 @@ class ShortcutManager: @unchecked Sendable {
     @discardableResult
     func resetToDefault(tool: ShortcutKey) -> Bool {
         guard !isShortcutTaken(tool.defaultBinding, excluding: tool) else { return false }
-        defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
+        settings.removeValue(for: .shortcut(tool))
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
         return true
     }
 
     func resetAllToDefault() {
         ShortcutKey.allCases.forEach { tool in
-            defaults.removeObject(forKey: shortcutPrefix + tool.rawValue)
+            settings.removeValue(for: .shortcut(tool))
             if globalShortcutConflict(for: tool.defaultBinding) != nil {
-                defaults.set("", forKey: shortcutPrefix + tool.rawValue)
+                settings[.shortcut(tool)] = .unassigned
             }
         }
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
