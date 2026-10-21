@@ -583,6 +583,35 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(trackingView.invalidatedRects.last, expectedRect)
     }
 
+    func testHighlighterDragPadsWithStrokeWidthAfterLineWidthChanges() {
+        let trackingView = installTrackingOverlayView()
+        trackingView.currentTool = .highlighter
+        trackingView.currentLineWidth = 20
+        let start = NSPoint(x: 100, y: 100)
+        let end = NSPoint(x: 120, y: 110)
+
+        window.mouseDown(with: TestEvents.createMouseEvent(
+            type: .leftMouseDown,
+            location: start
+        )!)
+        trackingView.currentLineWidth = 2
+        trackingView.invalidatedRects.removeAll()
+        window.mouseDragged(with: TestEvents.createMouseEvent(
+            type: .leftMouseDragged,
+            location: end
+        )!)
+
+        XCTAssertEqual(trackingView.currentHighlight?.lineWidth, 20)
+        let padding = 20 * ToolType.highlighter.strokeWidthMultiplier / 2 + 6
+        let expectedRect = NSRect(
+            x: start.x,
+            y: start.y,
+            width: end.x - start.x,
+            height: end.y - start.y
+        ).insetBy(dx: -padding, dy: -padding)
+        XCTAssertEqual(trackingView.invalidatedRects.last, expectedRect)
+    }
+
     func testLiveShapeInvalidatesUnionOfPreviousAndCurrentBounds() {
         let trackingView = installTrackingOverlayView()
         trackingView.currentTool = .line

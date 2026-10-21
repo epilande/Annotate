@@ -746,15 +746,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
     // Drops the point when the stroke was already cancelled mid-drag.
     func appendFreehandPoint(_ point: TimedPoint, tool: ToolType) {
         let previous: TimedPoint?
+        let lineWidth: CGFloat
         switch tool {
         case .pen:
-            guard currentPath != nil, currentPathBezier != nil else { return }
+            guard let width = currentPath?.lineWidth, currentPathBezier != nil else { return }
+            lineWidth = width
             previous = currentPath?.points.last
             currentPath?.points.append(point)
             currentPath?.expandCachedBounds(with: point.point)
             currentPathBezier?.line(to: point.point)
         case .highlighter:
-            guard currentHighlight != nil, currentHighlightBezier != nil else { return }
+            guard let width = currentHighlight?.lineWidth, currentHighlightBezier != nil else { return }
+            lineWidth = width
             previous = currentHighlight?.points.last
             currentHighlight?.points.append(point)
             currentHighlight?.expandCachedBounds(with: point.point)
@@ -762,7 +765,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
         }
-        let padding = currentLineWidth * tool.strokeWidthMultiplier / 2 + 6
+        // Pad with the stroke's own width. The picker width can change mid-drag.
+        let padding = lineWidth * tool.strokeWidthMultiplier / 2 + 6
         invalidateLivePreview(nil, boundsForLine(previous?.point ?? point.point, point.point, padding: padding))
     }
 
