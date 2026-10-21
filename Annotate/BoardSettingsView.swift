@@ -2,8 +2,8 @@ import Combine
 import SwiftUI
 
 struct BoardSettingsView: View {
-    @AppStorage(UserDefaults.enableBoardKey)
-    private var enableBoard = false
+    @AppStorage(.enableBoard)
+    private var enableBoard: Bool
     @State private var boardOpacity: Double = BoardManager.shared.opacity
 
     var body: some View {

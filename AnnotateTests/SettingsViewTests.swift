@@ -9,24 +9,24 @@ final class SettingsViewTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
-        testDefaults = UserDefaults.standard
-        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey)
+        SettingsStore.standard.removeValue(for: .clearDrawingsOnStart)
+        SettingsStore.standard.removeValue(for: .hideDockIcon)
+        testDefaults = SettingsStore.standard.defaults
+        SettingsStore.standard.removeValue(for: .textBackground)
+        SettingsStore.standard.removeValue(for: .textFontSize)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: UserDefaults.clearDrawingsOnStartKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.hideDockIconKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.textBackgroundKey)
-        UserDefaults.standard.removeObject(forKey: UserDefaults.defaultTextFontSizeKey)
+        SettingsStore.standard.removeValue(for: .clearDrawingsOnStart)
+        SettingsStore.standard.removeValue(for: .hideDockIcon)
+        SettingsStore.standard.removeValue(for: .textBackground)
+        SettingsStore.standard.removeValue(for: .textFontSize)
         super.tearDown()
     }
 
     func testSettingsViewInitialState() {
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
+        XCTAssertFalse(testDefaults.settings[.clearDrawingsOnStart])
+        XCTAssertFalse(testDefaults.settings[.hideDockIcon])
     }
 
     // MARK: - View Structure Tests
@@ -129,10 +129,10 @@ final class SettingsViewTests: XCTestCase {
     // MARK: - Dock Icon Tests
 
     func testHideDockIconToggle() {
-        UserDefaults.standard.set(false, forKey: UserDefaults.hideDockIconKey)
+        SettingsStore.standard[.hideDockIcon] = false
 
         class ViewModel: ObservableObject {
-            @AppStorage(UserDefaults.hideDockIconKey) var hideDockIcon = false
+            @AppStorage(.hideDockIcon) var hideDockIcon: Bool
         }
 
         let viewModel = ViewModel()
@@ -142,13 +142,13 @@ final class SettingsViewTests: XCTestCase {
         viewModel.hideDockIcon = true
 
         // Verify the toggle updated the UserDefaults
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        XCTAssertTrue(SettingsStore.standard[.hideDockIcon])
 
         // Toggle back
         viewModel.hideDockIcon = false
 
         // Verify the toggle updated the UserDefaults
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: UserDefaults.hideDockIconKey))
+        XCTAssertFalse(SettingsStore.standard[.hideDockIcon])
     }
 
     func testToggleCallsUpdateDockIconVisibility() {
@@ -156,7 +156,7 @@ final class SettingsViewTests: XCTestCase {
         AppDelegate.shared = appDelegateSpy
 
         class ViewModel: ObservableObject {
-            @AppStorage(UserDefaults.hideDockIconKey) var hideDockIcon = false
+            @AppStorage(.hideDockIcon) var hideDockIcon: Bool
 
             @MainActor
             func toggleHideDockIcon() {
@@ -175,11 +175,11 @@ final class SettingsViewTests: XCTestCase {
     }
 
     func testTextToolDefaultsKeepSizeAtEighteenAndPersistBackgroundChoice() {
-        XCTAssertEqual(testDefaults.textToolFontSize, 18)
-        XCTAssertFalse(testDefaults.textBackgroundEnabled)
+        XCTAssertEqual(testDefaults.settings[.textFontSize], 18)
+        XCTAssertFalse(testDefaults.settings[.textBackground])
 
-        testDefaults.textBackgroundEnabled = true
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.textBackgroundKey))
+        testDefaults.settings[.textBackground] = true
+        XCTAssertTrue(testDefaults.settings[.textBackground])
     }
 }
 

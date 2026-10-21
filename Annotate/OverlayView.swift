@@ -28,20 +28,21 @@ class AnnotationTextField: NSTextField {
             }
             // Shift is allowed because Command-Shift-equals is how "+" is typed on a US
             // layout, but Option and Control belong to other key equivalents.
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifiers.isDisjoint(with: [.option, .control]) {
-                switch event.charactersIgnoringModifiers?.lowercased() {
-                case "=", "+":
+            if let chord = KeyChord(event: event) {
+                func matches(_ keys: String...) -> Bool {
+                    keys.contains { ShortcutBinding($0, modifiers: .command).matches(chord, ignoring: .shift) }
+                }
+                if matches("=", "+") {
                     onFontSizeStep?(1)
                     return true
-                case "-", "_":
+                }
+                if matches("-", "_") {
                     onFontSizeStep?(-1)
                     return true
-                case "b":
+                }
+                if matches("b") {
                     onToggleBackground?()
                     return true
-                default:
-                    break
                 }
             }
         }
@@ -283,10 +284,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
 
-    /// Mirrors `OverlayWindow.pickerUserDefaults` so the view and the window resolve tool
+    /// Mirrors `OverlayWindow.pickerSettings` so the view and the window resolve tool
     /// defaults through the same store.
-    var pickerUserDefaults: UserDefaults {
-        pickerUserDefaultsOverride ?? AppDelegate.shared?.userDefaults ?? .standard
+    var pickerSettings: SettingsStore {
+        pickerUserDefaultsOverride.map(SettingsStore.init(defaults:)) ?? AppDelegate.shared?.settings ?? .standard
     }
     var isReadOnlyMode: Bool = false
 
@@ -2470,7 +2471,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         let isEditing = !existingText.isEmpty
-        let fontSize = currentTextAnnotation?.fontSize ?? pickerUserDefaults.textToolFontSize
+        let fontSize = currentTextAnnotation?.fontSize ?? pickerSettings[.textFontSize]
         let font = NSFont.systemFont(ofSize: fontSize)
         let fieldX = point.x - Self.textFieldInsets.left
         // Measured before the width cap below can change, so this is the label as drawn.
@@ -2598,7 +2599,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     @objc func commitTextField(_ textField: NSTextField) {
         finalizeTextAnnotation(textField)
 
-        guard pickerUserDefaults.selectAfterPlacingText,
+        guard pickerSettings[.selectAfterPlacingText],
               let committedIndex = lastCommittedTextIndex else { return }
 
         // Only broadcast to the live overlay set when this view is one of those
@@ -2784,7 +2785,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func resizeActiveTextField(_ textField: NSTextField) {
-        let font = textField.font ?? NSFont.systemFont(ofSize: pickerUserDefaults.textToolFontSize)
+        let font = textField.font ?? NSFont.systemFont(ofSize: pickerSettings[.textFontSize])
         let box = textFieldBoxSize(forText: textField.stringValue, font: font)
 
         let margin = Self.textFieldScreenMargin

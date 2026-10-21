@@ -24,27 +24,27 @@ final class ShortcutBindingTests: XCTestCase {
     }
 
     func testCustomStoredXLeavesRedactUnbound() {
-        defaults.set("x", forKey: "shortcut.p")
+        defaults.setRawValue("x", for: .shortcut(.pen))
         let migrated = ShortcutManager(userDefaults: defaults)
         XCTAssertEqual(migrated.binding(for: .pen), ShortcutBinding("x"))
         XCTAssertEqual(migrated.binding(for: .redact), .unassigned)
-        XCTAssertEqual(defaults.string(forKey: "shortcut.x"), "")
+        XCTAssertEqual(defaults.rawValue(for: .shortcut(.redact)) as? String, "")
     }
 
     func testCustomXOnANewlyEditableActionLeavesRedactUnbound() {
-        defaults.removeObject(forKey: "shortcut.x")
-        defaults.set("x", forKey: "shortcut.toggleFade")
+        defaults.settings.removeValue(for: .shortcut(.redact))
+        defaults.setRawValue("x", for: .shortcut(.toggleFade))
         let migrated = ShortcutManager(userDefaults: defaults) { _ in nil }
         XCTAssertEqual(migrated.binding(for: .toggleFade), ShortcutBinding("x"))
         XCTAssertEqual(migrated.binding(for: .redact), .unassigned)
-        XCTAssertEqual(defaults.string(forKey: "shortcut.x"), "")
+        XCTAssertEqual(defaults.rawValue(for: .shortcut(.redact)) as? String, "")
     }
 
     func testLegacyBindingsAndClearedValuesSurviveReload() {
-        defaults.set("j", forKey: "shortcut.p")
-        defaults.set("", forKey: "shortcut.a")
-        defaults.set("]", forKey: "shortcut.e")
-        defaults.set(" ", forKey: "shortcut.k")
+        defaults.setRawValue("j", for: .shortcut(.pen))
+        defaults.setRawValue("", for: .shortcut(.arrow))
+        defaults.setRawValue("]", for: .shortcut(.eraser))
+        defaults.setRawValue(" ", for: .shortcut(.toggleClickEffects))
         let migrated = ShortcutManager(userDefaults: defaults)
         XCTAssertEqual(migrated.binding(for: .pen), ShortcutBinding("j"))
         XCTAssertEqual(migrated.binding(for: .arrow), .unassigned)
@@ -73,7 +73,7 @@ final class ShortcutBindingTests: XCTestCase {
         let readSuite = "com.annotate.tests.modifiers-read.\(UUID().uuidString)"
         let chord = ShortcutBinding("j", modifiers: [.option, .command])
 
-        let writer = UserDefaults(suiteName: writeSuite)!
+        let writer = TestUserDefaults.suite(named: writeSuite)
         defer {
             writer.removePersistentDomain(forName: writeSuite)
             writer.synchronize()
@@ -84,19 +84,19 @@ final class ShortcutBindingTests: XCTestCase {
         // Persist through the plist format UserDefaults uses on disk, then
         // load the result in a *new* suite so we are not reading the writer's
         // in-memory cache. Decode the same way production does: NSNumber.
-        let stored = try XCTUnwrap(writer.dictionary(forKey: "shortcut.toggleFade"))
+        let stored = try XCTUnwrap(writer.rawValue(for: .shortcut(.toggleFade)) as? [String: Any])
         let data = try PropertyListSerialization.data(fromPropertyList: stored, format: .xml, options: 0)
         let roundTripped = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any])
         XCTAssertEqual(
             (roundTripped["modifiers"] as? NSNumber)?.uintValue, chord.modifiers.rawValue)
 
-        let reader = UserDefaults(suiteName: readSuite)!
+        let reader = TestUserDefaults.suite(named: readSuite)
         defer {
             reader.removePersistentDomain(forName: readSuite)
             reader.synchronize()
         }
-        reader.set(roundTripped, forKey: "shortcut.toggleFade")
+        reader.setRawValue(roundTripped, for: .shortcut(.toggleFade))
         XCTAssertEqual(ShortcutManager(userDefaults: reader).binding(for: .toggleFade), chord)
     }
 
@@ -118,12 +118,13 @@ final class ShortcutBindingTests: XCTestCase {
     func testEventNormalizationUsesLogicalKeyAndExactModifiers() throws {
         let chord = try event("†", keyCode: 17, modifiers: [.option, .command, .capsLock], ignoring: "T")
         XCTAssertEqual(ShortcutBinding(event: chord), ShortcutKey.toggleToolbar.defaultBinding)
-        XCTAssertEqual(manager.action(for: chord), .toggleToolbar)
-        XCTAssertNil(manager.action(for: try event("t", keyCode: 17, modifiers: [.option, .command, .shift])))
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 49)), .toggleFade)
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 51, modifiers: .option)), .clearAll)
-        XCTAssertEqual(manager.action(for: try event("", keyCode: 117, modifiers: [.option, .function])), .clearAll)
-        XCTAssertNil(manager.action(for: try event("", keyCode: 0)))
+        XCTAssertEqual(manager.action(for: try keyChord(chord)), .toggleToolbar)
+        XCTAssertNil(manager.action(for: try keyChord(event("t", keyCode: 17, modifiers: [.option, .command, .shift]))))
+        XCTAssertEqual(manager.action(for: try keyChord(event("", keyCode: 49))), .toggleFade)
+        XCTAssertEqual(manager.action(for: try keyChord(event("", keyCode: 51, modifiers: .option))), .clearAll)
+        XCTAssertEqual(
+            manager.action(for: try keyChord(event("", keyCode: 117, modifiers: [.option, .function]))), .clearAll)
+        XCTAssertNil(manager.action(for: try keyChord(event("", keyCode: 0))))
         XCTAssertFalse(manager.matches("", tool: .toggleBackgroundDimming))
     }
 
@@ -288,5 +289,9 @@ final class ShortcutBindingTests: XCTestCase {
                        ignoring: String? = nil) throws -> NSEvent {
         try XCTUnwrap(TestEvents.createKeyEvent(type: .keyDown, keyCode: keyCode,
             modifierFlags: modifiers, characters: characters, charactersIgnoringModifiers: ignoring))
+    }
+
+    private func keyChord(_ event: NSEvent) throws -> KeyChord {
+        try XCTUnwrap(KeyChord(event: event))
     }
 }

@@ -10,6 +10,7 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestWindows.recordOpenWindows()
         let defaults = TestUserDefaults.create()
         originalCursorManager = CursorHighlightManager.shared
         originalShortcutManager = ShortcutManager.shared
@@ -22,12 +23,12 @@ final class BackgroundDimmingShortcutTests: XCTestCase {
     }
 
     override func tearDown() {
-        window.stopFadeLoop()
-        window.orderOut(nil)
+        window.close()
         window = nil
         CursorHighlightManager.shared = originalCursorManager
         ShortcutManager.shared = originalShortcutManager
         TestUserDefaults.removeSuite()
+        assertNoLeakedWindows()
         super.tearDown()
     }
 

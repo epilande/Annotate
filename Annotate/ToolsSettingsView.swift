@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct ToolsSettingsView: View {
-    @AppStorage(UserDefaults.defaultTextFontSizeKey)
-    private var defaultTextSize: Double = Double(defaultTextAnnotationFontSize)
-    @AppStorage(UserDefaults.textBackgroundKey)
-    private var textBackgroundEnabled = false
-    @AppStorage(UserDefaults.defaultCounterFontSizeKey)
-    private var defaultCounterSize: Double = Double(defaultCounterFontSize)
-    @AppStorage(UserDefaults.redactionStyleKey)
-    private var redactionStyle: RectangleStyle = UserDefaults.redactionStyleDefault
+    @AppStorage(.textFontSize)
+    private var defaultTextSize: Double
+    @AppStorage(.textBackground)
+    private var textBackgroundEnabled: Bool
+    @AppStorage(.counterFontSize)
+    private var defaultCounterSize: Double
+    @AppStorage(.redactionStyle)
+    private var redactionStyle: RectangleStyle
     @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
 
     /// The Redact tool's fills. `.outline` is the plain Rectangle tool, not a redaction.
