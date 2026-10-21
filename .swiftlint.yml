@@ -1,0 +1,177 @@
+# SwiftLint Configuration
+# Aligned with Swift 6.0 and SwiftUI patterns
+
+included:
+  - Annotate/
+  - AnnotateTests/
+
+excluded:
+  - .build/
+  - DerivedData/
+  - Package.swift
+  - .swiftpm/
+  - build/
+
+# Analyzer rules (require compilation)
+analyzer_rules:
+  - explicit_self
+  - unused_import
+  - unused_declaration
+
+# Enabled rules
+opt_in_rules:
+  - array_init
+  - closure_end_indentation
+  - closure_spacing
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - discouraged_object_literal
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - enum_case_associated_values_count
+  - explicit_init
+  - fallthrough
+  - fatal_error_message
+  - first_where
+  - flatmap_over_map_reduce
+  - identical_operands
+  - joined_default_parameter
+  - last_where
+  - legacy_random
+  - literal_expression_end_indentation
+  - lower_acl_than_parent
+  - modifier_order
+  - multiline_arguments
+  - multiline_function_chains
+  - multiline_literal_brackets
+  - operator_usage_whitespace
+  - overridden_super_call
+  - pattern_matching_keywords
+  - prefer_self_type_over_type_of_self
+  - prefer_zero_over_explicit_init
+  - redundant_nil_coalescing
+  - single_test_class
+  - sorted_first_last
+  - static_operator
+  - toggle_bool
+  - trailing_closure
+  - unneeded_parentheses_in_closure_argument
+  - yoda_condition
+
+# Disabled rules
+disabled_rules:
+  - todo
+  - line_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - large_tuple
+  - redundant_type_annotation
+  - redundant_string_enum_value
+  - file_header
+  - trailing_whitespace
+  - trailing_newline
+  - implicit_return
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+  - attributes
+  - trailing_comma
+  - file_length
+  - for_where
+  - statement_position
+  - multiline_parameters
+  - multiline_parameters_brackets
+  - collection_alignment
+  - vertical_parameter_alignment_on_call
+  - extension_access_modifier
+  # Disabled due to conflicts with swift-format
+  - opening_brace
+  - closure_parameter_position
+
+# Rule configurations
+identifier_name:
+  min_length: 1
+  max_length: 50
+  excluded:
+    - x
+    - y
+    - id
+    - i
+    - j
+    - c
+
+type_name:
+  min_length: 3
+  max_length: 50
+  excluded:
+    - ID
+
+nesting:
+  type_level: 2
+  function_level: 2
+
+function_parameter_count:
+  warning: 6
+  error: 8
+
+vertical_whitespace:
+  max_empty_lines: 2
+
+unused_import:
+  require_explicit_imports: true
+
+strict: true
+
+# Violations that predate SwiftLint adoption. Only violations not recorded here fail CI.
+# Regenerate after intentionally fixing or moving baselined code:
+#   swift package plugin --allow-writing-to-package-directory swiftlint lint --write-baseline .swiftlint-baseline.json
+baseline: .swiftlint-baseline.json
+
+# Custom rules
+custom_rules:
+  # Triggers: `final class Model: ObservableObject {`, `class Model<T>: NSObject, ObservableObject {`.
+  # Does not trigger: `@Observable final class Model {`, `class var model: ObservableObject`,
+  # or a conformance list that wraps onto a later line (the match stays on the `class` line).
+  # Fixture + check: scripts/ci/check_swiftlint_custom_rules.sh
+  observable_over_observable_object:
+    name: "Class conforming to ObservableObject"
+    regex: '\bclass[ \t]+(?!(?:var|let|func|subscript)\b)\w+[^{\n]*:[^{\n]*\bObservableObject\b'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - string
+    message: "Prefer the @Observable macro over ObservableObject for new Swift 6 code"
+    severity: warning
+
+  # Triggers: `sublayers?.first`, `sublayers!.first?.opacity`, `subviews[0]`.
+  # Does not trigger: `sublayers?.first(where:)`, `sublayers?.first { $0.name == ... }`.
+  # Fixture: same script as above.
+  positional_layer_lookup:
+    name: "Positional layer/view lookup in tests"
+    included: 'AnnotateTests/.*\.swift'
+    regex: '\.sublayers[?!]?\.first\b(?!\s*[({])|\.subviews\['
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - string
+    message: 'Look the layer/view up by name (e.g. `sublayers.first { $0.name == "spotlight" }`), not by position; a positional lookup can grab the wrong layer and pass for the wrong reason (#92)'
+    severity: error
+
+  # Triggers: `controller.startUpdater()`, with or without `try`.
+  # Does not trigger: `SPUStandardUpdaterController(startingUpdater: false, ...)`.
+  # Fixture: same script as above.
+  real_updater_in_tests:
+    name: "Real Sparkle updater started in tests"
+    included: 'AnnotateTests/.*\.swift'
+    regex: '\.startUpdater\s*\(\s*\)'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - string
+    message: "Never start a real Sparkle updater under xctest; it hung CI for 6 hours (#79). Assert on an unstarted controller instead"
+    severity: error
+
+reporter: "xcode"

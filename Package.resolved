@@ -1,5 +1,5 @@
 {
-  "originHash" : "3357e1c67437b03524a91a49c5673d98b55269ae2022d2224c73f0faaa3464f3",
+  "originHash" : "ec750c5ca3735ecebe97cb248a367c4d87ecca8e0f8d312abad6abd704b05547",
   "pins" : [
     {
       "identity" : "keyboardshortcuts",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "9a1d2a19d3595fcf8d9c447173f9a1687b3dcadb",
         "version" : "2.8.0"
+      }
+    },
+    {
+      "identity" : "swiftlintplugins",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SimplyDanny/SwiftLintPlugins",
+      "state" : {
+        "revision" : "ef7d692fc6706e8f5628e26bcafaefa445c58a97",
+        "version" : "0.65.1"
       }
     }
   ],
