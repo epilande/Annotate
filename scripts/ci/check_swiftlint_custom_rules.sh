@@ -8,7 +8,7 @@
 set -euo pipefail
 
 FIXTURE="scripts/ci/swiftlint-fixtures/AnnotateTests/CustomRulesFixture.swift"
-RULES=(positional_layer_lookup real_updater_in_tests)
+RULES=(observable_over_observable_object positional_layer_lookup real_updater_in_tests)
 
 SWIFTLINT="${SWIFTLINT:-$(find .build/artifacts -path '*/macos/swiftlint' -type f 2>/dev/null | head -n 1)}"
 if [ -z "$SWIFTLINT" ]; then

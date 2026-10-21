@@ -132,15 +132,23 @@ baseline: .swiftlint-baseline.json
 
 # Custom rules
 custom_rules:
+  # Triggers: `final class Model: ObservableObject {`, `class Model<T>: NSObject, ObservableObject {`.
+  # Does not trigger: `@Observable final class Model {`, `class var model: ObservableObject`,
+  # or a conformance list that wraps onto a later line (the match stays on the `class` line).
+  # Fixture + check: scripts/ci/check_swiftlint_custom_rules.sh
   observable_over_observable_object:
-    name: "Prefer @Observable over @ObservableObject"
-    regex: "class.*ObservableObject"
-    message: "Consider using @Observable for new Swift 6.0 code"
+    name: "Class conforming to ObservableObject"
+    regex: '\bclass[ \t]+(?!(?:var|let|func|subscript)\b)\w+[^{\n]*:[^{\n]*\bObservableObject\b'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - string
+    message: "Prefer the @Observable macro over ObservableObject for new Swift 6 code"
     severity: warning
 
   # Triggers: `sublayers?.first`, `sublayers!.first?.opacity`, `subviews[0]`.
   # Does not trigger: `sublayers?.first(where:)`, `sublayers?.first { $0.name == ... }`.
-  # Fixture + check: scripts/ci/check_swiftlint_custom_rules.sh
+  # Fixture: same script as above.
   positional_layer_lookup:
     name: "Positional layer/view lookup in tests"
     included: 'AnnotateTests/.*\.swift'

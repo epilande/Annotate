@@ -41,3 +41,27 @@ final class RealUpdaterFixture: XCTestCase {
         XCTAssertFalse(controller.updater.sessionInProgress)
     }
 }
+
+final class ObservableModelFixture: ObservableObject { // expect: observable_over_observable_object
+    @Published var count = 0
+}
+
+class GenericObservableModelFixture<Value>: NSObject, ObservableObject where Value: Equatable { // expect: observable_over_observable_object
+    @Published var value: Value?
+}
+
+@Observable
+final class ObservationModelFixture {
+    var count = 0
+}
+
+final class PublisherHolderFixture: NSObject {
+    let publisher = ObservableObjectPublisher()
+    class var shared: any ObservableObject { ObservableModelFixture() }
+    // class CommentedModel: ObservableObject is fine.
+    let text = "class StringModel: ObservableObject"
+}
+
+// The match stays on one line, so a conformance list that wraps is a known miss.
+final class WrappedConformanceFixture: NSObject,
+    ObservableObject {}
