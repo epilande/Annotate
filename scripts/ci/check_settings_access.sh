@@ -5,7 +5,10 @@
 #
 # Every persisted setting is declared once, as a SettingKey in Annotate/SettingsStore.swift,
 # with its key string, default, and encoding. Raw UserDefaults access anywhere else lets a key
-# string or default drift from that declaration.
+# string or default drift from that declaration. That includes SwiftUI's @AppStorage and
+# @SceneStorage with a string key: only the typed @AppStorage(.key) form is allowed.
+#
+# scripts/ci/check_settings_access_test.sh checks this script against fixtures.
 
 set -euo pipefail
 
@@ -23,6 +26,9 @@ PATTERNS=(
 	'UserDefaults\(suiteName'
 	'forKey: "'
 	'\.(object|bool|string|double|float|integer|data|array|stringArray|dictionary|url|set|removeObject)\(.*forKey:'
+	# @AppStorage("Key"), @SceneStorage("Key"), and AppStorage(wrappedValue: x, "Key").
+	# The typed form, @AppStorage(.key), has no string literal after the paren.
+	'(AppStorage|SceneStorage)\((wrappedValue:[^"]*,[[:space:]]*)?"'
 )
 
 pattern=$(
@@ -38,11 +44,12 @@ violations=$(
 )
 
 if [ -n "$violations" ]; then
-	echo "❌ UserDefaults accessed outside $STORE:" >&2
+	echo "❌ UserDefaults or a string-keyed property wrapper used outside $STORE:" >&2
 	echo "$violations" >&2
 	echo "" >&2
 	echo "Declare the setting as a SettingKey in $STORE and read or write it through" >&2
-	echo "SettingsStore (settings[.key]). Use @AppStorage(.key) in SwiftUI views." >&2
+	echo "SettingsStore (settings[.key]). Use @AppStorage(.key) in SwiftUI views, never" >&2
+	echo "@AppStorage(\"Key\") or @SceneStorage(\"Key\")." >&2
 	exit 1
 fi
 
