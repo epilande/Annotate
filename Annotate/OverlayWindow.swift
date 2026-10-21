@@ -37,7 +37,6 @@ class OverlayWindow: NSPanel {
     private var pickerCommitInFlight = false
     /// True when the picker consumed this mouse-down, so the matching up must not commit geometry.
     private var pickerConsumedMouseDown = false
-    private var lastLiveShapeRect: NSRect?
     private var mouseCoalescingSnapshot: Bool?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
@@ -55,10 +54,7 @@ class OverlayWindow: NSPanel {
 
     var currentColor: NSColor {
         get { overlayView.currentColor }
-        set {
-            overlayView.currentColor = newValue
-            overlayView.needsDisplay = true
-        }
+        set { overlayView.currentColor = newValue }
     }
 
     override init(
@@ -163,10 +159,7 @@ class OverlayWindow: NSPanel {
     func updateToolbarVisibility() {
         guard let panel = toolbarPanel else { return }
         let oldFeedbackPadding = feedbackBottomPadding
-        let defaults = AppDelegate.shared?.userDefaults ?? .standard
-        let persisted =
-            defaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
-            ?? UserDefaults.toolbarVisibleDefault
+        let persisted = pickerSettings[.toolbarVisible]
         // Always-On is a read-only, click-through overlay, so it carries no toolbar. Hiding is
         // a detach rather than a hidden view: a parent that ignores mouse events does not make
         // its children click-through, so the bar has to leave the window group entirely.
@@ -316,6 +309,10 @@ class OverlayWindow: NSPanel {
     }
 
     override func close() {
+        // The fade timer retains the window, and the observer would keep re-measuring a toolbar
+        // nobody sees, so a closed overlay has to drop both or it lives for the rest of the process.
+        stopFadeLoop()
+        NotificationCenter.default.removeObserver(self, name: .shortcutsDidChange, object: nil)
         toolbarPanel?.tearDown()
         toolbarPanel = nil
         super.close()
@@ -357,8 +354,7 @@ class OverlayWindow: NSPanel {
     }
 
     @objc func updateFade() {
-        overlayView.compactExpiredAnnotations()
-        overlayView.needsDisplay = true
+        overlayView.advanceFade()
 
         // Stop the loop if nothing is actively fading
         if !overlayView.isAnythingFading() {
@@ -377,28 +373,28 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        switch event.type {
-        case .keyDown:
+        switch (event.type, KeyChord(event: event)) {
+        case (.keyDown, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyDown(event)
+                _ = handleQuickPickerKeyDown(chord)
                 return
             }
-            if handleOverlayShortcut(event) {
+            if handleOverlayShortcut(chord) {
                 return
             }
-            if isEditingAnnotationText, deliverKeyToAnnotationField(event) {
+            if isEditingAnnotationText, deliverKeyToAnnotationField(chord) {
                 return
             }
-        case .keyUp:
+        case (.keyUp, let chord?):
             if quickPicker != nil {
-                _ = handleQuickPickerKeyUp(event)
+                _ = handleQuickPickerKeyUp(chord)
                 return
             }
             if isEditingAnnotationText {
                 super.sendEvent(event)
                 return
             }
-            if handleQuickPickerKeyUp(event) {
+            if handleQuickPickerKeyUp(chord) {
                 return
             }
         default:
@@ -504,7 +500,7 @@ class OverlayWindow: NSPanel {
         discardLiveDrawing()
 
         let mode = contextualPickerMode(for: requestedMode)
-        let defaults = pickerUserDefaults
+        let settings = pickerSettings
         let anchor =
             requestedAnchor
             ?? overlayView.convert(mouseLocationOutsideOfEventStream, from: nil)
@@ -518,8 +514,8 @@ class OverlayWindow: NSPanel {
             within: placementBounds,
             currentColor: overlayView.currentColor,
             currentWidth: overlayView.currentLineWidth,
-            currentFontSize: selectedLabelFontSize ?? defaults.textToolFontSize,
-            currentCounterSize: defaults.counterToolFontSize,
+            currentFontSize: selectedLabelFontSize ?? settings[.textFontSize],
+            currentCounterSize: settings[.counterFontSize],
             previewTool: overlayView.currentTool)
 
         overlayView.addSubview(picker)
@@ -600,15 +596,15 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyUp(with event: NSEvent) {
-        if handleQuickPickerKeyUp(event) {
+        if let chord = KeyChord(event: event), handleQuickPickerKeyUp(chord) {
             return
         }
         super.keyUp(with: event)
     }
 
     /// Resolves like the overlay view's, so its test hook covers the window too.
-    private var pickerUserDefaults: UserDefaults {
-        overlayView?.pickerUserDefaults ?? AppDelegate.shared?.userDefaults ?? .standard
+    private var pickerSettings: SettingsStore {
+        overlayView?.pickerSettings ?? AppDelegate.shared?.settings ?? .standard
     }
 
     private var runtimeOverlayWindows: [OverlayWindow] {
@@ -703,17 +699,13 @@ class OverlayWindow: NSPanel {
     /// stolen. Other keys, including Shift+Return, Cmd shortcuts, and Delete, take
     /// the normal sendEvent path and are never appended via stringValue.
     @discardableResult
-    private func deliverKeyToAnnotationField(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-        else { return false }
-        let chars = event.characters ?? ""
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        guard key == "c" || key == "[" || key == "]" else { return false }
-        guard !chars.isEmpty else { return false }
+    private func deliverKeyToAnnotationField(_ chord: KeyChord) -> Bool {
+        guard ["c", "[", "]"].contains(where: { ShortcutBinding($0).matches(chord) }) else { return false }
+        guard !chord.characters.isEmpty else { return false }
         guard let editor = overlayView.activeTextField?.currentEditor() ?? (firstResponder as? NSText)
         else { return false }
 
-        editor.insertText(chars)
+        editor.insertText(chord.characters)
         if let field = overlayView.activeTextField {
             overlayView.controlTextDidChange(
                 Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -721,27 +713,25 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyDown(_ event: NSEvent) -> Bool {
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-
+    private func handleQuickPickerKeyDown(_ chord: KeyChord) -> Bool {
         if let picker = quickPicker {
             if pickerCommitInFlight {
                 return true
             }
-            if event.isARepeat {
+            if chord.isRepeat {
                 return true
             }
-            if event.keyCode == 53 {
+            if chord.keyCode == 53 {
                 cancelQuickPicker()
                 return true
             }
-            if let digit = Int(key), (1...picker.optionCount).contains(digit) {
+            if let digit = Int(chord.key), (1...picker.optionCount).contains(digit) {
                 picker.select(index: digit - 1)
                 commitQuickPicker()
                 return true
             }
             let action: ShortcutKey = picker.mode == .color ? .colorPicker : .lineWidthPicker
-            if ShortcutManager.shared.matches(event, tool: action) {
+            if ShortcutManager.shared.matches(chord, tool: action) {
                 cancelQuickPicker()
             }
             return true
@@ -752,9 +742,9 @@ class OverlayWindow: NSPanel {
 
     /// All editable overlay actions share exact key/modifier matching and the same focus guards.
     @discardableResult
-    private func handleOverlayShortcut(_ event: NSEvent) -> Bool {
+    private func handleOverlayShortcut(_ chord: KeyChord) -> Bool {
         guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
-            let action = ShortcutManager.shared.action(for: event)
+            let action = ShortcutManager.shared.action(for: chord)
         else { return false }
 
         switch action {
@@ -770,17 +760,17 @@ class OverlayWindow: NSPanel {
         case .select: AppDelegate.shared?.enableSelectMode(NSMenuItem())
         case .eraser: AppDelegate.shared?.enableEraserMode(NSMenuItem())
         case .colorPicker, .lineWidthPicker:
-            if !event.isARepeat {
+            if !chord.isRepeat {
                 beginQuickPicker(action == .colorPicker ? .color : .width,
                     activationKey: ShortcutManager.shared.getShortcut(for: action),
-                    activationKeyCode: event.keyCode)
+                    activationKeyCode: chord.keyCode)
             }
         case .toggleBoard: AppDelegate.shared?.toggleBoardVisibility(nil)
         case .toggleClickEffects: AppDelegate.shared?.toggleClickEffects(nil)
-        case .toggleBackgroundDimming: toggleBackgroundDimming(with: event)
+        case .toggleBackgroundDimming: toggleBackgroundDimming(with: chord)
         case .toggleFade: AppDelegate.shared?.toggleFadeMode(nil)
         case .toggleToolbar:
-            if !event.isARepeat { AppDelegate.shared?.toggleToolbar() }
+            if !chord.isRepeat { AppDelegate.shared?.toggleToolbar() }
         case .decreaseSize: stepActiveLadder(-1)
         case .increaseSize: stepActiveLadder(1)
         case .clearAll: performClearAll()
@@ -788,12 +778,11 @@ class OverlayWindow: NSPanel {
         return true
     }
 
-    private func handleQuickPickerKeyUp(_ event: NSEvent) -> Bool {
+    private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {
         guard quickPicker != nil, let interaction = quickPickerInteraction,
             case .waitingForRelease(let key, let openedAt, let moved, let holdActive) =
                 interaction,
-            quickPickerActivationKeyCode.map({ event.keyCode == $0 })
-                ?? (event.charactersIgnoringModifiers?.lowercased() == key)
+            quickPickerActivationKeyCode.map({ chord.keyCode == $0 }) ?? (chord.key == key)
         else { return false }
 
         quickPickerHoldTask?.cancel()
@@ -807,11 +796,7 @@ class OverlayWindow: NSPanel {
     }
 
     private func applyColor(_ color: NSColor) {
-        if let colorData = try? NSKeyedArchiver.archivedData(
-            withRootObject: color, requiringSecureCoding: false)
-        {
-            pickerUserDefaults.set(colorData, forKey: "SelectedColor")
-        }
+        pickerSettings[.selectedColor] = color
 
         let appDelegate = AppDelegate.shared
         appDelegate?.currentColor = color
@@ -869,7 +854,6 @@ class OverlayWindow: NSPanel {
         if commitLiveDrawing(timestamp: event.timestamp), overlayView.fadeMode {
             startFadeLoop()
         }
-        lastLiveShapeRect = nil
         // A box drag or side handle resize whose mouse-up never arrived must not carry into
         // this gesture.
         overlayView.endTextResize()
@@ -932,8 +916,6 @@ class OverlayWindow: NSPanel {
                         }
                     }
                 }
-                
-                overlayView.needsDisplay = true
                 return
             }
             
@@ -969,8 +951,6 @@ class OverlayWindow: NSPanel {
                         overlayView.selectionOriginalData[obj] = pos
                     }
                 }
-                
-                overlayView.needsDisplay = true
                 return
             } else {
                 // Clicked on empty space
@@ -983,7 +963,6 @@ class OverlayWindow: NSPanel {
                 overlayView.selectionRectStart = startPoint
                 overlayView.selectionRectEnd = startPoint
                 overlayView.selectionDragOffset = nil  // Not dragging
-                overlayView.needsDisplay = true
                 return
             }
         }
@@ -993,14 +972,13 @@ class OverlayWindow: NSPanel {
                 number: overlayView.nextCounterNumber,
                 position: startPoint,
                 color: currentColor,
-                fontSize: UserDefaults.standard.counterToolFontSize,
+                fontSize: pickerSettings[.counterFontSize],
                 creationTime: CACurrentMediaTime()
             )
 
             overlayView.registerUndo(action: .addCounter(counterAnnotation))
             overlayView.counterAnnotations.append(counterAnnotation)
             overlayView.nextCounterNumber += 1
-            overlayView.needsDisplay = true
 
             if overlayView.fadeMode {
                 startFadeLoop()
@@ -1083,7 +1061,7 @@ class OverlayWindow: NSPanel {
             overlayView.currentRectangle = Rectangle(
                 startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
                 lineWidth: overlayView.currentLineWidth, creationTime: nil,
-                style: overlayView.currentTool == .redact ? overlayView.pickerUserDefaults.redactionStyle : .outline)
+                style: overlayView.currentTool == .redact ? overlayView.pickerSettings[.redactionStyle] : .outline)
             if overlayView.currentRectangle?.needsSample == true {
                 overlayView.beginRedactionDrag()
             }
@@ -1100,7 +1078,6 @@ class OverlayWindow: NSPanel {
         case .eraser:
             overlayView.eraseAtPoint(startPoint)
         }
-        overlayView.needsDisplay = true
     }
 
     /// Slop added to a label that draws without a background. Clicking and double-clicking
@@ -1117,8 +1094,8 @@ class OverlayWindow: NSPanel {
             text: "",
             position: point,
             color: currentColor,
-            fontSize: pickerUserDefaults.textToolFontSize,
-            hasBackground: pickerUserDefaults.textBackgroundEnabled,
+            fontSize: pickerSettings[.textFontSize],
+            hasBackground: pickerSettings[.textBackground],
             wrapWidth: wrapWidth
         )
     }
@@ -1138,7 +1115,6 @@ class OverlayWindow: NSPanel {
         overlayView.textBoxDraftRect = NSRect(
             x: min(start.x, point.x), y: min(start.y, point.y),
             width: abs(point.x - start.x), height: abs(point.y - start.y))
-        overlayView.needsDisplay = true
     }
 
     /// Opens a fixed-width box where a Text-tool drag was released: the outline's width,
@@ -1158,7 +1134,6 @@ class OverlayWindow: NSPanel {
                 TextAnnotation.minimumWrapWidth,
                 rect.width - OverlayView.textFieldHorizontalChrome))
         overlayView.createTextField(at: NSPoint(x: textLeft, y: rect.maxY), topEdge: rect.maxY)
-        overlayView.needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1190,7 +1165,6 @@ class OverlayWindow: NSPanel {
         // Handle rectangle selection drawing
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
             overlayView.selectionRectEnd = currentPoint
-            overlayView.needsDisplay = true
             return
         }
         
@@ -1219,7 +1193,6 @@ class OverlayWindow: NSPanel {
             }
             overlayView.moveSelectedObjects(by: delta)
             overlayView.selectionDragOffset = currentPoint
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1244,14 +1217,12 @@ class OverlayWindow: NSPanel {
                 y: currentPoint.y - dragOffset.y
             )
             overlayView.textAnnotations[draggedIndex].position = newPosition
-            overlayView.needsDisplay = true
             return
         }
 
         // Drawing tools latch at mouseDown above, so only the eraser acts on currentTool here.
         if overlayView.currentTool == .eraser {
             overlayView.eraseAtPoint(currentPoint)
-            overlayView.needsDisplay = true
         }
     }
 
@@ -1261,28 +1232,10 @@ class OverlayWindow: NSPanel {
             overlayView.currentArrow?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-            if let arrow = overlayView.currentArrow {
-                invalidateLiveShape(
-                    rectSpanning(
-                        arrow.startPoint,
-                        arrow.endPoint,
-                        padding: max(arrow.lineWidth * 4, 30)
-                    )
-                )
-            }
         case .line:
             overlayView.currentLine?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-            if let line = overlayView.currentLine {
-                invalidateLiveShape(
-                    rectSpanning(
-                        line.startPoint,
-                        line.endPoint,
-                        padding: line.lineWidth / 2 + 6
-                    )
-                )
-            }
         case .rectangle, .redact:
             var newStart = anchorPoint
             var newEnd = currentPoint
@@ -1305,13 +1258,6 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentRectangle?.startPoint = newStart
             overlayView.currentRectangle?.endPoint = newEnd
-            invalidateLiveShape(
-                rectSpanning(
-                    newStart,
-                    newEnd,
-                    padding: overlayView.currentLineWidth / 2 + 6
-                )
-            )
         case .circle:
             var newStart = anchorPoint
             var newEnd = currentPoint
@@ -1334,27 +1280,12 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentCircle?.startPoint = newStart
             overlayView.currentCircle?.endPoint = newEnd
-            invalidateLiveShape(
-                rectSpanning(
-                    newStart,
-                    newEnd,
-                    padding: overlayView.currentLineWidth / 2 + 6
-                )
-            )
         default:
             break
         }
     }
 
     private func continueFreehandStroke(_ tool: ToolType, to point: NSPoint, timestamp: TimeInterval) {
-        // Read through, rather than binding the stroke: a live copy of the struct
-        // would keep a second reference to the points buffer and turn the append
-        // below into a full array copy on every event.
-        let previousPoint =
-            (tool == .pen
-                ? overlayView.currentPath?.points.last?.point
-                : overlayView.currentHighlight?.points.last?.point) ?? point
-
         if isShiftConstraintActive {
             if tool == .pen {
                 updatePathWithShiftConstraint(
@@ -1370,13 +1301,11 @@ class OverlayWindow: NSPanel {
                 )
             }
             overlayView.rebuildCurrentFreehandStroke(tool: tool)
-            overlayView.needsDisplay = true
         } else {
             overlayView.appendFreehandPoint(
                 TimedPoint(point: point, timestamp: timestamp),
                 tool: tool
             )
-            invalidateLiveSegment(from: previousPoint, to: point, tool: tool)
         }
     }
 
@@ -1446,7 +1375,6 @@ class OverlayWindow: NSPanel {
         guard let tool = activeFreehandTool else { return }
         _ = overlayView.endFreehandStroke(tool: tool)
         activeFreehandTool = nil
-        overlayView.needsDisplay = true
     }
 
     /// Commits the live freehand stroke or shape on the tool its drag started with, and ends
@@ -1481,33 +1409,12 @@ class OverlayWindow: NSPanel {
         overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
         overlayView.cancelTextBoxDrag()
-        lastLiveShapeRect = nil
-        overlayView.needsDisplay = true
     }
 
     func prepareForAlwaysOnMode() {
         cancelQuickPicker()
         restoreMouseCoalescing()
         cancelFreehandStroke()
-    }
-
-    private func rectSpanning(_ first: NSPoint, _ second: NSPoint, padding: CGFloat) -> NSRect {
-        NSRect(
-            x: min(first.x, second.x),
-            y: min(first.y, second.y),
-            width: abs(first.x - second.x),
-            height: abs(first.y - second.y)
-        ).insetBy(dx: -padding, dy: -padding)
-    }
-
-    private func invalidateLiveSegment(from: NSPoint, to: NSPoint, tool: ToolType) {
-        let padding = overlayView.currentLineWidth * tool.strokeWidthMultiplier / 2 + 6
-        overlayView.setNeedsDisplay(rectSpanning(from, to, padding: padding))
-    }
-
-    private func invalidateLiveShape(_ rect: NSRect) {
-        overlayView.setNeedsDisplay(lastLiveShapeRect.map { $0.union(rect) } ?? rect)
-        lastLiveShapeRect = rect
     }
 
     private func beginUncoalescedFreehandInput() {
@@ -1551,8 +1458,6 @@ class OverlayWindow: NSPanel {
             NotificationCenter.default.post(name: .cursorHighlightNeedsUpdate, object: nil)
         }
 
-        overlayView.needsDisplay = true
-
         // Handle rectangle selection end
         if overlayView.currentTool == .select && overlayView.isDrawingSelectionRect {
             if let start = overlayView.selectionRectStart, let end = overlayView.selectionRectEnd {
@@ -1580,7 +1485,6 @@ class OverlayWindow: NSPanel {
             overlayView.isDrawingSelectionRect = false
             overlayView.selectionRectStart = nil
             overlayView.selectionRectEnd = nil
-            overlayView.needsDisplay = true
             return
         }
         
@@ -1588,7 +1492,6 @@ class OverlayWindow: NSPanel {
         // register a move undo for a selection that never moved.
         if overlayView.resizeHandle != nil {
             overlayView.endTextResize()
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1609,7 +1512,6 @@ class OverlayWindow: NSPanel {
             }
             overlayView.selectionDragOffset = nil
             overlayView.selectionOriginalData.removeAll()
-            overlayView.needsDisplay = true
             return
         }
 
@@ -1633,7 +1535,6 @@ class OverlayWindow: NSPanel {
             overlayView.dragOffset = nil
         }
 
-        overlayView.needsDisplay = true
         wasOptionPressedOnMouseDown = false
         isCenterModeActive = false
         wasShiftPressedOnMouseDown = false
@@ -1641,48 +1542,48 @@ class OverlayWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
-        if handleQuickPickerKeyDown(event) {
+        guard let chord = KeyChord(event: event) else {
+            super.keyDown(with: event)
+            return
+        }
+        if handleQuickPickerKeyDown(chord) {
             return
         }
 
-        if handleOverlayShortcut(event) { return }
+        if handleOverlayShortcut(chord) { return }
         // The field editor already handles typing before it reaches the window.
         // Do not let an unhandled editing key reach another window's shortcuts.
         guard !isEditingAnnotationText else { return }
-        let cmdPressed = event.modifierFlags.contains(.command)
-        let key = event.characters?.lowercased() ?? ""
         if event.keyCode == 53 {
             restoreMouseCoalescing()
             cancelFreehandStroke()
         }
 
-        // Letter shortcuts follow the active keyboard layout, not QWERTY key positions.
-        // Match on `characters` only. With Command held, `characters` carries the layout's
-        // Command layer (QWERTY letters on Dvorak - QWERTY ⌘, Latin letters on Russian, Greek
-        // and Hebrew) and falls back to the base letter on layouts with no Command layer, so it
-        // is correct everywhere. `charactersIgnoringModifiers` reports the base layer instead:
-        // it misses those layouts and aliases unrelated chords, for example on Dvorak - QWERTY ⌘
-        // the base letter behind Cmd+, is "w", so Cmd+, would close the overlay.
-        if cmdPressed {
-            if key == "w" {
-                AppDelegate.shared?.closeOverlay()
-                return
-            }
-            if key == "z" {
-                if event.modifierFlags.contains(.shift) {
-                    overlayView.redo()
-                } else {
-                    overlayView.undo()
-                }
-                return
-            }
-            if key == "r", !event.modifierFlags.contains(.shift),
-                !event.modifierFlags.contains(.option), overlayView.currentTool == .counter
-            {
-                overlayView.resetCounter()
-                showToggleFeedback("Counter Reset", icon: "🔄")
-                return
-            }
+        // These follow the layout's Command layer, not QWERTY key positions (see `KeyChord`).
+        if ShortcutBinding("w", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.shift, .option, .control])
+        {
+            AppDelegate.shared?.closeOverlay()
+            return
+        }
+        if ShortcutBinding("z", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.undo()
+            return
+        }
+        if ShortcutBinding("z", modifiers: [.command, .shift])
+            .matches(chord, on: .command, ignoring: [.option, .control])
+        {
+            overlayView.redo()
+            return
+        }
+        if ShortcutBinding("r", modifiers: .command).matches(chord, on: .command, ignoring: .control),
+            overlayView.currentTool == .counter
+        {
+            overlayView.resetCounter()
+            showToggleFeedback("Counter Reset", icon: "🔄")
+            return
         }
 
         switch event.keyCode {
@@ -1878,7 +1779,7 @@ class OverlayWindow: NSPanel {
 
     func applyLineWidth(_ width: CGFloat, showsFeedback: Bool = true) {
         guard width != overlayView.currentLineWidth else { return }
-        pickerUserDefaults.set(Double(width), forKey: UserDefaults.lineWidthKey)
+        pickerSettings[.lineWidth] = width
         runtimeOverlayWindows.forEach { $0.overlayView.currentLineWidth = width }
         if showsFeedback {
             showLineWidthFeedback(width)
@@ -1895,7 +1796,7 @@ class OverlayWindow: NSPanel {
         guard scrollDelta != 0 else { return }
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
-        let base = selectedLabelFontSize ?? pickerUserDefaults.textToolFontSize
+        let base = selectedLabelFontSize ?? pickerSettings[.textFontSize]
         let size = (base + increment).clamped(to: textAnnotationFontSizeRange)
         applyTextFontSize(size)
     }
@@ -1914,23 +1815,15 @@ class OverlayWindow: NSPanel {
             return
         }
 
-        guard size != pickerUserDefaults.textToolFontSize
+        guard size != pickerSettings[.textFontSize]
             || runtimeOverlayWindows.contains(where: {
                 $0.overlayView.activeTextField != nil
                     && $0.overlayView.currentTextAnnotation?.fontSize != size
             })
         else { return }
-        pickerUserDefaults.textToolFontSize = size
+        pickerSettings[.textFontSize] = size
 
-        runtimeOverlayWindows.forEach { window in
-            if let textField = window.overlayView.activeTextField {
-                textField.font = NSFont.systemFont(ofSize: size)
-                window.overlayView.currentTextAnnotation?.fontSize = size
-                window.overlayView.resizeActiveTextField(textField)
-                textField.needsDisplay = true
-            }
-            window.overlayView.needsDisplay = true
-        }
+        runtimeOverlayWindows.forEach { $0.overlayView.setActiveTextFontSize(size) }
 
         if showsFeedback {
             showFontSizeFeedback(size)
@@ -1941,7 +1834,7 @@ class OverlayWindow: NSPanel {
         let currentSize =
             overlayView.currentTextAnnotation?.fontSize
             ?? selectedLabelFontSize
-            ?? pickerUserDefaults.textToolFontSize
+            ?? pickerSettings[.textFontSize]
         applyTextFontSize(
             QuickPickerView.steppedValue(
                 in: QuickPickerView.fontSizeOptions,
@@ -1951,13 +1844,10 @@ class OverlayWindow: NSPanel {
 
     func toggleTextBackground() {
         let enabled = !(overlayView.currentTextAnnotation?.hasBackground
-            ?? pickerUserDefaults.textBackgroundEnabled)
-        pickerUserDefaults.textBackgroundEnabled = enabled
+            ?? pickerSettings[.textBackground])
+        pickerSettings[.textBackground] = enabled
 
-        runtimeOverlayWindows.forEach { window in
-            window.overlayView.currentTextAnnotation?.hasBackground = enabled
-            window.overlayView.needsDisplay = true
-        }
+        runtimeOverlayWindows.forEach { $0.overlayView.currentTextAnnotation?.hasBackground = enabled }
 
         showFeedback(enabled ? "Label background on" : "Label background off")
     }
@@ -1972,15 +1862,14 @@ class OverlayWindow: NSPanel {
 
         let increment: CGFloat = scrollDelta > 0 ? 1 : -1
         let size =
-            (pickerUserDefaults.counterToolFontSize + increment)
+            (pickerSettings[.counterFontSize] + increment)
             .clamped(to: counterFontSizeRange)
         applyCounterFontSize(size)
     }
 
     func applyCounterFontSize(_ size: CGFloat, showsFeedback: Bool = true) {
-        guard size != pickerUserDefaults.counterToolFontSize else { return }
-        pickerUserDefaults.counterToolFontSize = size
-        runtimeOverlayWindows.forEach { $0.overlayView.needsDisplay = true }
+        guard size != pickerSettings[.counterFontSize] else { return }
+        pickerSettings[.counterFontSize] = size
         if showsFeedback {
             showCounterSizeFeedback(size)
         }
@@ -2000,7 +1889,7 @@ class OverlayWindow: NSPanel {
             applyCounterFontSize(
                 QuickPickerView.steppedValue(
                     in: QuickPickerView.counterSizeOptions,
-                    current: pickerUserDefaults.counterToolFontSize,
+                    current: pickerSettings[.counterFontSize],
                     direction: direction))
             return
         }
@@ -2012,8 +1901,8 @@ class OverlayWindow: NSPanel {
                 direction: direction))
     }
     
-    private func toggleBackgroundDimming(with event: NSEvent) {
-        guard !event.isARepeat else { return }
+    private func toggleBackgroundDimming(with chord: KeyChord) {
+        guard !chord.isRepeat else { return }
         let manager = CursorHighlightManager.shared
         manager.toggleSpotlightDimming()
         showToggleFeedback(
@@ -2023,14 +1912,14 @@ class OverlayWindow: NSPanel {
     }
 
     func showToggleFeedback(_ text: String, icon: String) {
-        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
         showFeedback("\(icon) \(text)")
     }
 
     func showToolFeedback(_ tool: ToolType) {
         // Check if tool feedback is hidden in settings (default: false, meaning show feedback)
-        let hideToolFeedback = UserDefaults.standard.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
 
         let toolName: String
@@ -2297,13 +2186,18 @@ class OverlayWindow: NSPanel {
     // MARK: - Keyboard Commands for Copy/Paste/Cut/Duplicate
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if handleQuickPickerKeyDown(event) || handleOverlayShortcut(event) { return true }
-        // Check for Command key combinations
-        guard event.modifierFlags.contains(.command) else {
+        guard let chord = KeyChord(event: event) else {
             return super.performKeyEquivalent(with: event)
         }
+        if handleQuickPickerKeyDown(chord) || handleOverlayShortcut(chord) { return true }
 
-        switch event.charactersIgnoringModifiers?.lowercased() {
+        // Selection commands accept any extra modifiers. Command-B accepts only Shift.
+        let selectionCommand = ["a", "c", "x", "v", "d"].first {
+            ShortcutBinding($0, modifiers: .command).matches(chord, ignoring: [.shift, .option, .control])
+        }
+        let isTextBackgroundCommand = ShortcutBinding("b", modifiers: .command).matches(chord, ignoring: .shift)
+
+        switch selectionCommand ?? (isTextBackgroundCommand ? "b" : nil) {
         case "a":
             // Defer to text field when editing text
             if overlayView.activeTextField != nil {
@@ -2356,10 +2250,7 @@ class OverlayWindow: NSPanel {
             // Command-B toggles the label background whenever the text tool is in play,
             // with or without an active field. Bare "b" stays Toggle Board; that path runs
             // in keyDown and only fires when no modifier is held.
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard modifiers.isDisjoint(with: [.option, .control]),
-                overlayView.currentTool == .text || overlayView.activeTextField != nil
-            else {
+            guard overlayView.currentTool == .text || overlayView.activeTextField != nil else {
                 return super.performKeyEquivalent(with: event)
             }
             toggleTextBackground()

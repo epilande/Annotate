@@ -22,80 +22,80 @@ final class GeneralSettingsViewTests: XCTestCase {
     // MARK: - UserDefaults Binding Tests
 
     func testClearDrawingsOnStartBinding() {
-        let initialValue = testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey)
+        let initialValue = testDefaults.settings[.clearDrawingsOnStart]
         XCTAssertFalse(initialValue, "clearDrawingsOnStart should default to false")
 
-        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
-        let updatedValue = testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        let updatedValue = testDefaults.settings[.clearDrawingsOnStart]
         XCTAssertTrue(updatedValue, "clearDrawingsOnStart should be true after setting")
 
-        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
-        let finalValue = testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = false
+        let finalValue = testDefaults.settings[.clearDrawingsOnStart]
         XCTAssertFalse(finalValue, "clearDrawingsOnStart should be false after resetting")
     }
 
     func testHideDockIconBinding() {
-        let initialValue = testDefaults.bool(forKey: UserDefaults.hideDockIconKey)
+        let initialValue = testDefaults.settings[.hideDockIcon]
         XCTAssertFalse(initialValue, "hideDockIcon should default to false")
 
-        testDefaults.set(true, forKey: UserDefaults.hideDockIconKey)
-        let updatedValue = testDefaults.bool(forKey: UserDefaults.hideDockIconKey)
+        testDefaults.settings[.hideDockIcon] = true
+        let updatedValue = testDefaults.settings[.hideDockIcon]
         XCTAssertTrue(updatedValue, "hideDockIcon should be true after setting")
     }
 
     func testHideToolFeedbackBinding() {
-        let initialValue = testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        let initialValue = testDefaults.settings[.hideToolFeedback]
         XCTAssertFalse(initialValue, "hideToolFeedback should default to false")
 
-        testDefaults.set(true, forKey: UserDefaults.hideToolFeedbackKey)
-        let updatedValue = testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        testDefaults.settings[.hideToolFeedback] = true
+        let updatedValue = testDefaults.settings[.hideToolFeedback]
         XCTAssertTrue(updatedValue, "hideToolFeedback should be true after setting")
 
-        testDefaults.set(false, forKey: UserDefaults.hideToolFeedbackKey)
-        let finalValue = testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey)
+        testDefaults.settings[.hideToolFeedback] = false
+        let finalValue = testDefaults.settings[.hideToolFeedback]
         XCTAssertFalse(finalValue, "hideToolFeedback should be false after resetting")
     }
 
     func testSoundsEnabledDefaultsToFalseWhenAbsent() {
-        testDefaults.removeObject(forKey: UserDefaults.soundsEnabledKey)
+        testDefaults.settings.removeValue(for: .soundsEnabled)
 
-        XCTAssertFalse(testDefaults.soundsEnabled)
+        XCTAssertFalse(testDefaults.settings[.soundsEnabled])
     }
 
     func testSoundsEnabledPersistsExplicitValue() {
-        testDefaults.soundsEnabled = false
-        XCTAssertFalse(testDefaults.soundsEnabled)
+        testDefaults.settings[.soundsEnabled] = false
+        XCTAssertFalse(testDefaults.settings[.soundsEnabled])
 
-        testDefaults.soundsEnabled = true
-        XCTAssertTrue(testDefaults.soundsEnabled)
+        testDefaults.settings[.soundsEnabled] = true
+        XCTAssertTrue(testDefaults.settings[.soundsEnabled])
     }
 
     func testSoundThemeDefaultsToChalkWhenAbsent() {
-        testDefaults.removeObject(forKey: UserDefaults.soundThemeKey)
+        testDefaults.settings.removeValue(for: .soundTheme)
 
-        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+        XCTAssertEqual(testDefaults.settings[.soundTheme], .chalk)
     }
 
     func testSoundThemePersistsExplicitValue() {
-        testDefaults.soundTheme = .paper
-        XCTAssertEqual(testDefaults.soundTheme, .paper)
+        testDefaults.settings[.soundTheme] = .paper
+        XCTAssertEqual(testDefaults.settings[.soundTheme], .paper)
 
-        testDefaults.soundTheme = .chalk
-        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+        testDefaults.settings[.soundTheme] = .chalk
+        XCTAssertEqual(testDefaults.settings[.soundTheme], .chalk)
     }
 
     func testSoundThemeFallsBackToChalkForUnknownValue() {
-        testDefaults.set("granite", forKey: UserDefaults.soundThemeKey)
+        testDefaults.setRawValue("granite", for: .soundTheme)
 
-        XCTAssertEqual(testDefaults.soundTheme, .chalk)
+        XCTAssertEqual(testDefaults.settings[.soundTheme], .chalk)
     }
 
     func testEnableBoardBinding() {
-        let initialValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let initialValue = testDefaults.settings[.enableBoard]
         XCTAssertFalse(initialValue, "enableBoard should default to false")
 
-        testDefaults.set(true, forKey: UserDefaults.enableBoardKey)
-        let updatedValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        testDefaults.settings[.enableBoard] = true
+        let updatedValue = testDefaults.settings[.enableBoard]
         XCTAssertTrue(updatedValue, "enableBoard should be true after setting")
     }
 
@@ -110,7 +110,7 @@ final class GeneralSettingsViewTests: XCTestCase {
         BoardManager.shared.opacity = newOpacity
         XCTAssertEqual(BoardManager.shared.opacity, newOpacity, "BoardManager opacity should be updated")
 
-        let persistedOpacity = testDefaults.double(forKey: UserDefaults.boardOpacityKey)
+        let persistedOpacity = testDefaults.settings[.boardOpacity]
         XCTAssertEqual(persistedOpacity, newOpacity, "Opacity should be persisted to UserDefaults")
     }
 
@@ -120,7 +120,7 @@ final class GeneralSettingsViewTests: XCTestCase {
         BoardManager.shared.isEnabled = true
         XCTAssertTrue(BoardManager.shared.isEnabled, "BoardManager should be enabled")
 
-        let persistedValue = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let persistedValue = testDefaults.settings[.enableBoard]
         XCTAssertTrue(persistedValue, "Board state should be persisted to UserDefaults")
 
         BoardManager.shared.isEnabled = false
@@ -159,7 +159,7 @@ final class GeneralSettingsViewTests: XCTestCase {
         let appDelegateSpy = AppDelegateSettingsSpy(userDefaults: testDefaults)
         AppDelegate.shared = appDelegateSpy
 
-        testDefaults.set(true, forKey: UserDefaults.hideDockIconKey)
+        testDefaults.settings[.hideDockIcon] = true
         appDelegateSpy.updateDockIconVisibility()
 
         XCTAssertTrue(appDelegateSpy.updateDockIconVisibilityCalled)
@@ -169,12 +169,12 @@ final class GeneralSettingsViewTests: XCTestCase {
 
     func testShowInDockToggleInverted() {
         // GeneralSettingsView uses inverted binding: Show in Dock = !hideDockIcon
-        testDefaults.set(false, forKey: UserDefaults.hideDockIconKey)
-        let showInDock1 = !testDefaults.bool(forKey: UserDefaults.hideDockIconKey)
+        testDefaults.settings[.hideDockIcon] = false
+        let showInDock1 = !testDefaults.settings[.hideDockIcon]
         XCTAssertTrue(showInDock1, "Show in Dock should be true when hideDockIcon is false")
 
-        testDefaults.set(true, forKey: UserDefaults.hideDockIconKey)
-        let showInDock2 = !testDefaults.bool(forKey: UserDefaults.hideDockIconKey)
+        testDefaults.settings[.hideDockIcon] = true
+        let showInDock2 = !testDefaults.settings[.hideDockIcon]
         XCTAssertFalse(showInDock2, "Show in Dock should be false when hideDockIcon is true")
     }
 
@@ -182,20 +182,20 @@ final class GeneralSettingsViewTests: XCTestCase {
 
     func testBoardManagerAndUserDefaultsStaySynchronized() {
         BoardManager.shared.opacity = 0.7
-        let userDefaultsValue = testDefaults.double(forKey: UserDefaults.boardOpacityKey)
+        let userDefaultsValue = testDefaults.settings[.boardOpacity]
         XCTAssertEqual(userDefaultsValue, 0.7, "UserDefaults should match BoardManager")
 
-        testDefaults.set(0.8, forKey: UserDefaults.boardOpacityKey)
+        testDefaults.settings[.boardOpacity] = 0.8
         let boardManagerValue = BoardManager.shared.opacity
         XCTAssertEqual(boardManagerValue, 0.8, "BoardManager should reflect UserDefaults change")
     }
 
     func testEnableBoardSynchronization() {
         BoardManager.shared.isEnabled = true
-        let userDefaultsEnabled = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let userDefaultsEnabled = testDefaults.settings[.enableBoard]
         XCTAssertTrue(userDefaultsEnabled, "UserDefaults should match BoardManager enabled state")
 
-        testDefaults.set(false, forKey: UserDefaults.enableBoardKey)
+        testDefaults.settings[.enableBoard] = false
         let boardManagerEnabled = BoardManager.shared.isEnabled
         XCTAssertFalse(boardManagerEnabled, "BoardManager should reflect UserDefaults change")
     }
@@ -203,20 +203,20 @@ final class GeneralSettingsViewTests: XCTestCase {
     // MARK: - Multiple Setting Changes Tests
 
     func testMultipleSettingsCanBeChangedIndependently() {
-        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
-        testDefaults.set(true, forKey: UserDefaults.hideToolFeedbackKey)
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        testDefaults.settings[.hideToolFeedback] = true
         BoardManager.shared.isEnabled = true
         BoardManager.shared.opacity = 0.5
 
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey))
+        XCTAssertTrue(testDefaults.settings[.clearDrawingsOnStart])
+        XCTAssertTrue(testDefaults.settings[.hideToolFeedback])
         XCTAssertTrue(BoardManager.shared.isEnabled)
         XCTAssertEqual(BoardManager.shared.opacity, 0.5)
 
-        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = false
 
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey))
+        XCTAssertFalse(testDefaults.settings[.clearDrawingsOnStart])
+        XCTAssertTrue(testDefaults.settings[.hideToolFeedback])
         XCTAssertTrue(BoardManager.shared.isEnabled)
     }
 
@@ -224,19 +224,19 @@ final class GeneralSettingsViewTests: XCTestCase {
 
     func testAllSettingsHaveCorrectDefaults() {
         XCTAssertFalse(
-            testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey),
+            testDefaults.settings[.clearDrawingsOnStart],
             "clearDrawingsOnStart should default to false"
         )
         XCTAssertFalse(
-            testDefaults.bool(forKey: UserDefaults.hideDockIconKey),
+            testDefaults.settings[.hideDockIcon],
             "hideDockIcon should default to false"
         )
         XCTAssertFalse(
-            testDefaults.bool(forKey: UserDefaults.hideToolFeedbackKey),
+            testDefaults.settings[.hideToolFeedback],
             "hideToolFeedback should default to false"
         )
         XCTAssertFalse(
-            testDefaults.bool(forKey: UserDefaults.enableBoardKey),
+            testDefaults.settings[.enableBoard],
             "enableBoard should default to false"
         )
         XCTAssertEqual(
@@ -248,17 +248,17 @@ final class GeneralSettingsViewTests: XCTestCase {
     // MARK: - Select After Placing Text Toggle Tests
 
     func testSelectAfterPlacingTextDefaultsToFalse() {
-        testDefaults.removeObject(forKey: UserDefaults.selectAfterPlacingTextKey)
+        testDefaults.settings.removeValue(for: .selectAfterPlacingText)
 
-        XCTAssertFalse(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should default to false")
+        XCTAssertFalse(testDefaults.settings[.selectAfterPlacingText], "selectAfterPlacingText should default to false")
     }
 
     func testSelectAfterPlacingTextPersistsValue() {
-        testDefaults.selectAfterPlacingText = true
-        XCTAssertTrue(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should be true after setting to true")
+        testDefaults.settings[.selectAfterPlacingText] = true
+        XCTAssertTrue(testDefaults.settings[.selectAfterPlacingText], "selectAfterPlacingText should be true after setting to true")
 
-        testDefaults.selectAfterPlacingText = false
-        XCTAssertFalse(testDefaults.selectAfterPlacingText, "selectAfterPlacingText should be false after setting to false")
+        testDefaults.settings[.selectAfterPlacingText] = false
+        XCTAssertFalse(testDefaults.settings[.selectAfterPlacingText], "selectAfterPlacingText should be false after setting to false")
     }
 
     // MARK: - Edge Cases
@@ -314,11 +314,11 @@ final class GeneralSettingsViewTests: XCTestCase {
     // MARK: - Persistence Tests
 
     func testSettingsPersistAcrossViewLifecycle() {
-        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = true
         BoardManager.shared.opacity = 0.65
         BoardManager.shared.isEnabled = true
 
-        let clearedDrawings = testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey)
+        let clearedDrawings = testDefaults.settings[.clearDrawingsOnStart]
         let opacity = BoardManager.shared.opacity
         let enabled = BoardManager.shared.isEnabled
 

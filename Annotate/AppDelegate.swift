@@ -14,7 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var alwaysOnMode: Bool = false
     var aboutWindow: NSWindow?
     var updaterController: SPUStandardUpdaterController!
-    let userDefaults: UserDefaults
+    let settings: SettingsStore
 
     // Cursor Highlight
     var cursorHighlightWindows: [NSScreen: CursorHighlightWindow] = [:]
@@ -27,12 +27,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var localFlagsChangedMonitor: Any?
 
     override init() {
-        self.userDefaults = .standard
+        self.settings = .standard
         super.init()
     }
 
     init(userDefaults: UserDefaults) {
-        self.userDefaults = userDefaults
+        self.settings = SettingsStore(defaults: userDefaults)
         super.init()
     }
 
@@ -41,12 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         SoundPlayer.preload()
         updateDockIconVisibility()
 
-        if let colorData = userDefaults.data(forKey: "SelectedColor"),
-            let unarchivedColor = try? NSKeyedUnarchiver.unarchivedObject(
-                ofClass: NSColor.self, from: colorData)
-        {
-            currentColor = unarchivedColor
-        }
+        currentColor = settings[.selectedColor]
 
         // Sync annotation color to cursor highlight manager
         CursorHighlightManager.shared.annotationColor = currentColor
@@ -54,25 +49,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         setupStatusBarItem()
         setupOverlayWindows()
 
-        let persistedFadeMode =
-            userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+        let persistedFadeMode = settings[.fadeMode]
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
 
-        let shouldStartInAlwaysOnMode = userDefaults.bool(forKey: UserDefaults.alwaysOnModeKey)
+        let shouldStartInAlwaysOnMode = settings[.alwaysOnMode]
         if shouldStartInAlwaysOnMode {
             DispatchQueue.main.async {
                 self.toggleAlwaysOnMode()
             }
         }
 
-        let persistedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
-        overlayWindows.values.forEach { $0.overlayView.currentLineWidth = CGFloat(persistedLineWidth) }
+        let persistedLineWidth = settings[.lineWidth]
+        overlayWindows.values.forEach { $0.overlayView.currentLineWidth = persistedLineWidth }
 
-        let persistedTool = userDefaults.lastUsedTool
+        let persistedTool = settings[.lastUsedTool]
         overlayWindows.values.forEach { $0.overlayView.currentTool = persistedTool }
         updateCurrentToolMenuItem(to: persistedTool.displayName)
 
-        let enableBoard = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let enableBoard = settings[.enableBoard]
         overlayWindows.values.forEach {
             $0.boardView.isHidden = !enableBoard
             $0.overlayView.updateAdaptColors(boardEnabled: enableBoard)
@@ -124,7 +118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     func updateDockIconVisibility() {
         guard NSApplication.shared.delegate != nil else { return }
 
-        if userDefaults.bool(forKey: UserDefaults.hideDockIconKey) {
+        if settings[.hideDockIcon] {
             NSApplication.shared.setActivationPolicy(.accessory)
         } else {
             NSApplication.shared.setActivationPolicy(.regular)
@@ -255,7 +249,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             let isDarkMode =
                 NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let boardType = isDarkMode ? "Blackboard" : "Whiteboard"
-            let boardEnabled = userDefaults.bool(forKey: UserDefaults.enableBoardKey)
+            let boardEnabled = settings[.enableBoard]
             let toggleBoardItem = NSMenuItem(
                 title: boardEnabled ? "Hide \(boardType)" : "Show \(boardType)",
                 action: #selector(toggleBoardVisibility(_:)),
@@ -273,8 +267,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
             menu.addItem(NSMenuItem.separator())
 
-            let persistedFadeMode =
-                userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+            let persistedFadeMode = settings[.fadeMode]
             let currentDrawingModeItem = NSMenuItem(
                 title: persistedFadeMode ? "Drawing Mode: Fade" : "Drawing Mode: Persist",
                 action: nil,
@@ -391,9 +384,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 )
                 overlayWindow.currentColor = currentColor
 
-                let savedLineWidth = userDefaults.object(forKey: UserDefaults.lineWidthKey) as? Double ?? 3.0
-                overlayWindow.overlayView.currentLineWidth = CGFloat(savedLineWidth)
-                overlayWindow.overlayView.currentTool = userDefaults.lastUsedTool
+                overlayWindow.overlayView.currentLineWidth = settings[.lineWidth]
+                overlayWindow.overlayView.currentTool = settings[.lastUsedTool]
 
                 overlayWindows[screen] = overlayWindow
             }
@@ -498,7 +490,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         } else {
             configureWindowForNormalMode(overlayWindow)
 
-            if userDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey) {
+            if settings[.clearDrawingsOnStart] {
                 overlayWindow.overlayView.clearAll()
             }
 
@@ -534,7 +526,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             : .gray
         updateStatusBarIcon(with: iconColor)
 
-        userDefaults.set(alwaysOnMode, forKey: UserDefaults.alwaysOnModeKey)
+        settings[.alwaysOnMode] = alwaysOnMode
         updateAlwaysOnMenuItems()
     }
 
@@ -581,13 +573,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         }
 
         if persist {
-            userDefaults.lastUsedTool = tool
+            settings[.lastUsedTool] = tool
         }
 
         overlayWindows.values.forEach { window in
             if window.overlayView.currentTool == .select && tool != .select {
                 window.overlayView.selectedObjects.removeAll()
-                window.overlayView.needsDisplay = true
             }
             window.overlayView.currentTool = tool
             window.showToolFeedback(tool)
@@ -604,7 +595,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// every activation). Applying the default is not an explicit tool selection, so it does
     /// not overwrite the persisted last-used tool.
     func applyConfiguredDefaultTool() {
-        guard case .tool(let tool) = userDefaults.defaultToolOption else { return }
+        guard case .tool(let tool) = settings[.defaultTool] else { return }
         guard overlayWindows.values.contains(where: { $0.overlayView.currentTool != tool }) else { return }
         switchTool(to: tool, persist: false)
     }
@@ -724,8 +715,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.overlayView.isReadOnlyMode = false
         overlayWindow.updateToolbarVisibility()
 
-        let persistedFadeMode = userDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
-        overlayWindow.overlayView.fadeMode = persistedFadeMode
+        overlayWindow.overlayView.fadeMode = settings[.fadeMode]
         overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
 
@@ -890,7 +880,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             }
         }
 
-        userDefaults.set(!isCurrentlyFadeMode, forKey: UserDefaults.fadeModeKey)
+        settings[.fadeMode] = !isCurrentlyFadeMode
 
         updateFadeModeMenuItems(isCurrentlyFadeMode: isCurrentlyFadeMode)
 
@@ -902,8 +892,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     var toolbarVisible: Bool {
-        userDefaults.object(forKey: UserDefaults.toolbarVisibleKey) as? Bool
-            ?? UserDefaults.toolbarVisibleDefault
+        settings[.toolbarVisible]
     }
 
     @objc func toggleToolbar() {
@@ -911,7 +900,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     func setToolbarVisible(_ visible: Bool) {
-        userDefaults.set(visible, forKey: UserDefaults.toolbarVisibleKey)
+        settings[.toolbarVisible] = visible
         overlayWindows.values.forEach { $0.updateToolbarVisibility() }
         if let item = statusItem?.menu?.items.first(where: { $0.action == #selector(toggleToolbar) }) {
             item.title = visible ? "Hide Toolbar" : "Show Toolbar"

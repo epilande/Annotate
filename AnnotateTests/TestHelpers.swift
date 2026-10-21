@@ -43,6 +43,28 @@ enum TestUserDefaults {
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
         UserDefaults.standard.synchronize()
     }
+
+    /// A suite separate from `create()`'s, for tests that must read back through a second
+    /// `UserDefaults` rather than the writer's in-memory cache. The caller removes it with
+    /// `removePersistentDomain(forName:)`.
+    static func suite(named name: String) -> UserDefaults {
+        UserDefaults(suiteName: name)!
+    }
+}
+
+extension UserDefaults {
+    /// Reads and writes this suite through the app's typed keys.
+    var settings: SettingsStore { SettingsStore(defaults: self) }
+
+    /// Stores a value bypassing the key's encoding: a legacy format, or one the key rejects.
+    func setRawValue<Value>(_ value: Any, for key: SettingKey<Value>) {
+        set(value, forKey: key.name)
+    }
+
+    /// The stored value as the key's encoding wrote it.
+    func rawValue<Value>(for key: SettingKey<Value>) -> Any? {
+        object(forKey: key.name)
+    }
 }
 
 // MARK: - Test Factory Methods
@@ -247,5 +269,89 @@ extension XCTestCase {
     func assertPoint(_ point1: NSPoint, isCloseTo point2: NSPoint, tolerance: CGFloat = 0.01) {
         XCTAssertEqual(point1.x, point2.x, accuracy: tolerance)
         XCTAssertEqual(point1.y, point2.y, accuracy: tolerance)
+    }
+}
+
+// MARK: - Window Lifecycle
+@MainActor
+enum TestWindows {
+    /// Windows that existed when the current test started. Under `xcodebuild test` the tests run
+    /// inside Annotate.app, whose own overlays and cursor windows stay open the whole time and
+    /// react to the notifications tests post. Held weakly so a closed window can still go away.
+    private static var presentAtSetUp = NSHashTable<NSWindow>.weakObjects()
+
+    /// Annotate windows that were never closed. A test that drops its last reference to an
+    /// overlay without calling `close()` leaves it alive for the rest of the run, where every
+    /// `.shortcutsDidChange` post makes it re-measure its toolbar. Two dozen of those once made
+    /// the shortcut suites spend most of CI's test time on windows nobody could see.
+    ///
+    /// AppKit keeps a closed window in `NSApp.windows` until it is deallocated, which can be
+    /// after tearDown, so membership alone is not a leak. What `close()` leaves behind is: an
+    /// overlay without its toolbar or fade timer, and a cursor window without its display link.
+    static var unclosed: [NSWindow] {
+        NSApp.windows.filter { window in
+            switch window {
+            case let overlay as OverlayWindow:
+                return overlay.toolbarPanel != nil || overlay.fadeTimer != nil
+            case let cursor as CursorHighlightWindow:
+                return cursor.animationDisplayLink != nil
+            default:
+                return false
+            }
+        }
+    }
+
+    /// Call at the start of `setUp` in any suite that calls `assertNoLeakedWindows()`.
+    static func recordOpenWindows() {
+        presentAtSetUp.removeAllObjects()
+        NSApp.windows.forEach { presentAtSetUp.add($0) }
+    }
+
+    /// Windows the current test created and did not close.
+    static var leaked: [NSWindow] {
+        unclosed.filter { !presentAtSetUp.contains($0) }
+    }
+}
+
+extension XCTestCase {
+    /// Call at the end of `tearDown` in any suite that creates an overlay or cursor highlight
+    /// window, after the suite has closed its own, with `TestWindows.recordOpenWindows()` at the
+    /// start of `setUp`.
+    @MainActor
+    func assertNoLeakedWindows(file: StaticString = #filePath, line: UInt = #line) {
+        let leaked = TestWindows.leaked
+        guard !leaked.isEmpty else { return }
+        let names = leaked.map { String(describing: type(of: $0)) }.joined(separator: ", ")
+        XCTFail("\(name) left \(leaked.count) window(s) open: \(names). Close them in tearDown.",
+                file: file, line: line)
+        // Close them anyway so one leaky test does not slow down or fail every test after it.
+        leaked.forEach { window in
+            (window as? CursorHighlightWindow)?.stopAnimationLoop()
+            window.close()
+        }
+    }
+}
+
+extension AppDelegate {
+    /// Undoes `applicationDidFinishLaunching` for a delegate a test launched: closes its overlay
+    /// and cursor highlight windows, removes its status item and event monitors, and stops
+    /// observing, so nothing it created outlives the test.
+    func tearDownAfterLaunch() {
+        overlayWindows.values.forEach { $0.close() }
+        overlayWindows.removeAll()
+        cursorHighlightWindows.values.forEach {
+            $0.stopAnimationLoop()
+            $0.close()
+        }
+        cursorHighlightWindows.removeAll()
+        aboutWindow?.close()
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+        }
+        applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+        NotificationCenter.default.removeObserver(self)
+        if AppDelegate.shared === self {
+            AppDelegate.shared = nil
+        }
     }
 }

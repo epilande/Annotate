@@ -18,6 +18,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Redraw site ratchet
+        run: scripts/ci/check-redraw-sites.sh
+
+      - name: Check the settings access guard against fixtures
+        run: ./scripts/ci/check_settings_access_test.sh
+
+      - name: Check settings access goes through SettingsStore
+        run: ./scripts/ci/check_settings_access.sh
+
       - name: Setup Xcode 26.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -42,9 +51,6 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty --no-document
 
-      - name: Swift Package Manager - Build
-        run: swift build
-
       - name: Swift Package Manager - Test
         run: swift test
 
@@ -55,7 +61,7 @@ jobs:
             -scheme Annotate \
             -configuration Debug \
             -destination "platform=macOS" \
-            clean build | xcpretty && exit ${PIPESTATUS[0]}
+            build | xcpretty && exit ${PIPESTATUS[0]}
 
       - name: Xcode - Test
         run: |

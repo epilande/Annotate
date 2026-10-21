@@ -39,7 +39,7 @@ struct ReleaseAnimation {
 class CursorHighlightManager: @unchecked Sendable {
     static var shared = CursorHighlightManager()
 
-    private let userDefaults: UserDefaults
+    private let settings: SettingsStore
 
     var cursorPosition: NSPoint = .zero
     var isMouseDown: Bool = false
@@ -69,11 +69,10 @@ class CursorHighlightManager: @unchecked Sendable {
         annotationColorCG = color.cgColor
     }
 
-    init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+    init(userDefaults: UserDefaults = SettingsStore.standard.defaults) {
+        self.settings = SettingsStore(defaults: userDefaults)
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let excluded = userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? []
-        self.isExcludedAppActive = Self.isExcluded(bundleID: frontmost, in: excluded)
+        self.isExcludedAppActive = Self.isExcluded(bundleID: frontmost, in: settings[.hideCursorEffectsInApps])
         // Initialize color caches from stored values
         updateEffectColorCache(effectColor)
         updateAnnotationColorCache(annotationColor)
@@ -87,40 +86,26 @@ class CursorHighlightManager: @unchecked Sendable {
     // MARK: - Click Effects Settings
 
     var clickEffectsEnabled: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.clickRippleEnabledKey) }
+        get { settings[.clickRippleEnabled] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.clickRippleEnabledKey)
+            settings[.clickRippleEnabled] = newValue
             notifyStateChanged()
         }
     }
 
     var effectColor: NSColor {
-        get {
-            if let data = userDefaults.data(forKey: UserDefaults.clickRippleColorKey),
-               let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data)
-            {
-                return color
-            }
-            return NSColor.systemYellow
-        }
+        get { settings[.clickRippleColor] }
         set {
-            if let data = try? NSKeyedArchiver.archivedData(
-                withRootObject: newValue, requiringSecureCoding: true)
-            {
-                userDefaults.set(data, forKey: UserDefaults.clickRippleColorKey)
-            }
+            settings[.clickRippleColor] = newValue
             updateEffectColorCache(newValue)
             notifyStateChanged()
         }
     }
 
     var effectSize: CGFloat {
-        get {
-            let stored = userDefaults.double(forKey: UserDefaults.clickRippleSizeKey)
-            return stored > 0 ? CGFloat(stored) : 70.0
-        }
+        get { settings[.clickRippleSize] }
         set {
-            userDefaults.set(Double(newValue), forKey: UserDefaults.clickRippleSizeKey)
+            settings[.clickRippleSize] = newValue
             notifyStateChanged()
         }
     }
@@ -128,30 +113,30 @@ class CursorHighlightManager: @unchecked Sendable {
     /// Whether the cursor spotlight is on. Turning it on resets background dimming
     /// to the `spotlightAutoDimEnabled` preference so dimming never surprises the user.
     var cursorHighlightEnabled: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.cursorHighlightEnabledKey) }
+        get { settings[.cursorHighlightEnabled] }
         set {
             let turningOn = newValue && !cursorHighlightEnabled
-            userDefaults.set(newValue, forKey: UserDefaults.cursorHighlightEnabledKey)
+            settings[.cursorHighlightEnabled] = newValue
             if turningOn {
-                userDefaults.set(spotlightAutoDimEnabled, forKey: UserDefaults.spotlightDimmingEnabledKey)
+                settings[.spotlightDimmingEnabled] = spotlightAutoDimEnabled
             }
             notifyStateChanged()
         }
     }
 
     var spotlightRequiresOverlay: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.spotlightRequiresOverlayKey) }
+        get { settings[.spotlightRequiresOverlay] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.spotlightRequiresOverlayKey)
+            settings[.spotlightRequiresOverlay] = newValue
             notifyStateChanged()
         }
     }
 
     /// List of application bundle identifiers where cursor effects should be suppressed.
     var excludedAppBundleIDs: [String] {
-        get { userDefaults.stringArray(forKey: UserDefaults.hideCursorEffectsInAppsKey) ?? [] }
+        get { settings[.hideCursorEffectsInApps] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.hideCursorEffectsInAppsKey)
+            settings[.hideCursorEffectsInApps] = newValue
             updateExcludedAppState()
             notifyStateChanged()
         }
@@ -174,12 +159,9 @@ class CursorHighlightManager: @unchecked Sendable {
     }
 
     var spotlightSize: CGFloat {
-        get {
-            let stored = userDefaults.double(forKey: UserDefaults.spotlightSizeKey)
-            return stored > 0 ? CGFloat(stored) : 50.0
-        }
+        get { settings[.spotlightSize] }
         set {
-            userDefaults.set(Double(newValue), forKey: UserDefaults.spotlightSizeKey)
+            settings[.spotlightSize] = newValue
             notifyStateChanged()
         }
     }
@@ -198,9 +180,9 @@ class CursorHighlightManager: @unchecked Sendable {
 
     /// Whether the screen darkens around the spotlight, leaving a clear area at the cursor.
     var spotlightDimmingEnabled: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.spotlightDimmingEnabledKey) }
+        get { settings[.spotlightDimmingEnabled] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.spotlightDimmingEnabledKey)
+            settings[.spotlightDimmingEnabled] = newValue
             notifyStateChanged()
         }
     }
@@ -208,21 +190,18 @@ class CursorHighlightManager: @unchecked Sendable {
     /// When on, enabling the cursor spotlight also turns on background dimming.
     /// Dimming otherwise starts off each time the spotlight is enabled.
     var spotlightAutoDimEnabled: Bool {
-        get { userDefaults.bool(forKey: UserDefaults.spotlightAutoDimKey) }
+        get { settings[.spotlightAutoDim] }
         set {
-            userDefaults.set(newValue, forKey: UserDefaults.spotlightAutoDimKey)
+            settings[.spotlightAutoDim] = newValue
             notifyStateChanged()
         }
     }
 
     /// How dark the dimmed background gets, 0-1. Defaults to 0.5.
     var spotlightDimmingOpacity: CGFloat {
-        get {
-            let stored = userDefaults.double(forKey: UserDefaults.spotlightDimmingOpacityKey)
-            return stored > 0 ? CGFloat(stored) : 0.5
-        }
+        get { settings[.spotlightDimmingOpacity] }
         set {
-            userDefaults.set(Double(newValue), forKey: UserDefaults.spotlightDimmingOpacityKey)
+            settings[.spotlightDimmingOpacity] = newValue
             notifyStateChanged()
         }
     }
@@ -230,32 +209,24 @@ class CursorHighlightManager: @unchecked Sendable {
     // MARK: - Active Cursor Settings
 
     var activeCursorStyle: ActiveCursorStyle {
-        get {
-            let stored = userDefaults.string(forKey: UserDefaults.activeCursorStyleKey) ?? "none"
-            return ActiveCursorStyle(rawValue: stored) ?? .none
-        }
+        get { settings[.activeCursorStyle] }
         set {
-            userDefaults.set(newValue.rawValue, forKey: UserDefaults.activeCursorStyleKey)
+            settings[.activeCursorStyle] = newValue
             notifyStateChanged()
         }
     }
 
     var activeCursorSize: CGFloat {
-        get {
-            let stored = userDefaults.double(forKey: UserDefaults.activeCursorSizeKey)
-            return stored > 0 ? CGFloat(stored) : 14.0
-        }
+        get { settings[.activeCursorSize] }
         set {
-            userDefaults.set(Double(newValue), forKey: UserDefaults.activeCursorSizeKey)
+            settings[.activeCursorSize] = newValue
             notifyStateChanged()
         }
     }
 
     /// System cursor scale from Accessibility settings (1.0 = default, up to 4.0 = max)
     var systemCursorScale: CGFloat {
-        let accessibilityDefaults = UserDefaults(suiteName: "com.apple.universalaccess")
-        let scale = accessibilityDefaults?.float(forKey: "mouseDriverCursorSize") ?? 0
-        return scale > 0 ? CGFloat(scale) : 1.0
+        SettingsStore.universalAccess?[.systemCursorScale] ?? SettingKey.systemCursorScale.defaultValue
     }
 
     /// Current annotation color (synced from AppDelegate)

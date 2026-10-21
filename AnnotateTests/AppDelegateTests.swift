@@ -7,18 +7,18 @@ import XCTest
 final class AppDelegateTests: XCTestCase, Sendable {
     var appDelegate: AppDelegate!
     var testDefaults: UserDefaults!
+    private var launchedDelegates: [AppDelegate] = []
 
     nonisolated override func setUp() {
         super.setUp()
 
         MainActor.assumeIsolated {
+            TestWindows.recordOpenWindows()
             testDefaults = TestUserDefaults.create()
             BoardManager.shared = BoardManager(userDefaults: testDefaults)
             ShortcutManager.shared = ShortcutManager(userDefaults: testDefaults)
 
-            appDelegate = AppDelegate(userDefaults: testDefaults)
-            appDelegate.applicationDidFinishLaunching(
-                Notification(name: NSApplication.didFinishLaunchingNotification))
+            appDelegate = launchAppDelegate()
         }
     }
 
@@ -26,10 +26,24 @@ final class AppDelegateTests: XCTestCase, Sendable {
         MainActor.assumeIsolated {
             SettingsWindowManager.shared.settingsWindow?.close()
             appDelegate.overlayKeyWindowOverride = nil
+            launchedDelegates.forEach { $0.tearDownAfterLaunch() }
+            launchedDelegates = []
             appDelegate = nil
+            assertNoLeakedWindows()
         }
         TestUserDefaults.removeSuite()
         super.tearDown()
+    }
+
+    /// Every delegate a test launches goes through here so tearDown can dismantle it. Launching
+    /// opens an overlay and a cursor highlight window per screen, a status item and seven event
+    /// monitors, none of which go away on their own.
+    private func launchAppDelegate() -> AppDelegate {
+        let delegate = AppDelegate(userDefaults: testDefaults)
+        launchedDelegates.append(delegate)
+        delegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification))
+        return delegate
     }
 
     func testInitialization() {
@@ -151,10 +165,10 @@ final class AppDelegateTests: XCTestCase, Sendable {
     // MARK: - Clear Drawings Tests
 
     func testToggleOverlayClearsDrawingsWhenEnabled() {
-        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = true
         appDelegate.alwaysOnMode = false
 
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        XCTAssertTrue(testDefaults.settings[.clearDrawingsOnStart])
 
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window available")
@@ -182,7 +196,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
         // Simulate the show behavior from toggleOverlay - clear if setting is enabled
-        if testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey) {
+        if testDefaults.settings[.clearDrawingsOnStart] {
             overlayWindow.overlayView.clearAll()
         }
         overlayWindow.makeKeyAndOrderFront(nil)
@@ -193,7 +207,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testToggleOverlayPreservesDrawingsWhenDisabled() {
-        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
+        testDefaults.settings[.clearDrawingsOnStart] = false
         appDelegate.alwaysOnMode = false
 
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
@@ -222,7 +236,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.lines.count, 1)
 
         // Simulate the show behavior from toggleOverlay - clear if setting is enabled
-        if testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey) {
+        if testDefaults.settings[.clearDrawingsOnStart] {
             overlayWindow.overlayView.clearAll()
         }
         overlayWindow.makeKeyAndOrderFront(nil)
@@ -233,43 +247,40 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testClearDrawingsSettingPersistence() {
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        XCTAssertFalse(testDefaults.settings[.clearDrawingsOnStart])
 
-        testDefaults.set(true, forKey: UserDefaults.clearDrawingsOnStartKey)
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        XCTAssertTrue(testDefaults.settings[.clearDrawingsOnStart])
 
-        testDefaults.set(false, forKey: UserDefaults.clearDrawingsOnStartKey)
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.clearDrawingsOnStartKey))
+        testDefaults.settings[.clearDrawingsOnStart] = false
+        XCTAssertFalse(testDefaults.settings[.clearDrawingsOnStart])
     }
 
     // MARK: - Dock Icon Tests
 
     func testHideDockIconDefaultValue() {
-        testDefaults.removeObject(forKey: UserDefaults.hideDockIconKey)
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.settings.removeValue(for: .hideDockIcon)
+        XCTAssertFalse(testDefaults.settings[.hideDockIcon])
     }
 
     func testDockIconVisibilityPersistence() {
-        testDefaults.set(true, forKey: UserDefaults.hideDockIconKey)
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.settings[.hideDockIcon] = true
+        XCTAssertTrue(testDefaults.settings[.hideDockIcon])
 
-        testDefaults.set(false, forKey: UserDefaults.hideDockIconKey)
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaults.hideDockIconKey))
+        testDefaults.settings[.hideDockIcon] = false
+        XCTAssertFalse(testDefaults.settings[.hideDockIcon])
     }
 
     // MARK: - Persist Fade Mode Tests
 
     func testDefaultFadeModePersistence() {
-        testDefaults.removeObject(forKey: UserDefaults.fadeModeKey)
-        let persistedFadeMode =
-            testDefaults.object(forKey: UserDefaults.fadeModeKey) as? Bool ?? true
+        testDefaults.settings.removeValue(for: .fadeMode)
+        let persistedFadeMode = testDefaults.settings[.fadeMode]
         XCTAssertTrue(persistedFadeMode, "Default fade mode should be true (fade mode active).")
     }
 
     func testToggleFadeModeUpdatesPersistence() {
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window found")
@@ -285,7 +296,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             overlayWindow.overlayView.fadeMode, "Expected fade mode to be false after toggle.")
 
         // UserDefaults should reflect this change.
-        let persistedFadeMode = testDefaults.bool(forKey: UserDefaults.fadeModeKey)
+        let persistedFadeMode = testDefaults.settings[.fadeMode]
         XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
     }
 
@@ -410,11 +421,9 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testOverlayWindowsRestorePersistedFadeMode() {
-        testDefaults.set(false, forKey: UserDefaults.fadeModeKey)
+        testDefaults.settings[.fadeMode] = false
 
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         // All overlay windows should be initialized with fade mode set to false.
         for window in appDelegate.overlayWindows.values {
@@ -425,18 +434,18 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testToggleBoardVisibility() {
-        let initialState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let initialState = testDefaults.settings[.enableBoard]
 
         appDelegate.toggleBoardVisibility(nil)
 
-        let newState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let newState = testDefaults.settings[.enableBoard]
         XCTAssertNotEqual(initialState, newState, "Board visibility should be toggled")
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.adaptColorsToBoardType, newState)
         }
 
         appDelegate.toggleBoardVisibility(nil)
-        let finalState = testDefaults.bool(forKey: UserDefaults.enableBoardKey)
+        let finalState = testDefaults.settings[.enableBoard]
         XCTAssertEqual(
             initialState, finalState, "Board visibility should be toggled back to original state")
         for window in appDelegate.overlayWindows.values {
@@ -526,10 +535,10 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
     func testSwitchToolPersistsLastUsedTool() {
         appDelegate.enableRectangleMode(NSMenuItem())
-        XCTAssertEqual(testDefaults.lastUsedTool, .rectangle, "Explicitly switching tools should persist the choice as last used")
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .rectangle, "Explicitly switching tools should persist the choice as last used")
 
         appDelegate.enableHighlighterMode(NSMenuItem())
-        XCTAssertEqual(testDefaults.lastUsedTool, .highlighter)
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .highlighter)
     }
 
     func testApplyConfiguredDefaultToolAppliesSpecificTool() {
@@ -538,7 +547,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             return
         }
 
-        testDefaults.defaultToolOption = .tool(.rectangle)
+        testDefaults.settings[.defaultTool] = .tool(.rectangle)
         appDelegate.enableArrowMode(NSMenuItem())  // start on a different tool than the configured default
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
 
@@ -562,14 +571,14 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
 
         appDelegate.enableRectangleMode(NSMenuItem())
-        testDefaults.defaultToolOption = .tool(.rectangle)
-        testDefaults.lastUsedTool = .highlighter
+        testDefaults.settings[.defaultTool] = .tool(.rectangle)
+        testDefaults.settings[.lastUsedTool] = .highlighter
 
         appDelegate.applyConfiguredDefaultTool()
 
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .rectangle)
         XCTAssertEqual(
-            testDefaults.lastUsedTool, .highlighter,
+            testDefaults.settings[.lastUsedTool], .highlighter,
             "Applying a default tool that is already active should be a no-op (no switchTool, no tool feedback)")
     }
 
@@ -580,13 +589,13 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
 
         appDelegate.enableHighlighterMode(NSMenuItem())
-        testDefaults.defaultToolOption = .tool(.rectangle)
+        testDefaults.settings[.defaultTool] = .tool(.rectangle)
 
         appDelegate.applyConfiguredDefaultTool()
 
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .rectangle)
         XCTAssertEqual(
-            testDefaults.lastUsedTool, .highlighter,
+            testDefaults.settings[.lastUsedTool], .highlighter,
             "Applying the configured default is not an explicit selection and must not overwrite the persisted last-used tool")
     }
 
@@ -596,7 +605,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             return
         }
 
-        XCTAssertEqual(testDefaults.defaultToolOption, .lastUsed, "Default should be Last Used until the setting is touched")
+        XCTAssertEqual(testDefaults.settings[.defaultTool], .lastUsed, "Default should be Last Used until the setting is touched")
 
         appDelegate.enableArrowMode(NSMenuItem())
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow)
@@ -607,11 +616,9 @@ final class AppDelegateTests: XCTestCase, Sendable {
     }
 
     func testLaunchRestoresPersistedLastUsedTool() {
-        testDefaults.lastUsedTool = .highlighter
+        testDefaults.settings[.lastUsedTool] = .highlighter
 
-        let appDelegate = AppDelegate(userDefaults: testDefaults)
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification))
+        let appDelegate = launchAppDelegate()
 
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .highlighter, "Overlay windows should restore the persisted last-used tool on launch")
@@ -637,11 +644,11 @@ final class AppDelegateTests: XCTestCase, Sendable {
             return
         }
 
-        appDelegate.userDefaults.selectAfterPlacingText = true
+        appDelegate.settings[.selectAfterPlacingText] = true
 
         appDelegate.enablePenMode(NSMenuItem())
         appDelegate.enableTextMode(NSMenuItem())
-        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Explicitly switching to text should persist it as last used")
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .text, "Explicitly switching to text should persist it as last used")
 
         let overlayView: OverlayView = try XCTUnwrap(overlayWindow.overlayView)
         let point = NSPoint(x: 100, y: 100)
@@ -655,7 +662,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         overlayView.commitTextField(textField)
 
         XCTAssertEqual(overlayView.currentTool, .select, "Committing a label should switch to Select")
-        XCTAssertEqual(testDefaults.lastUsedTool, .text, "Internal tool switches should not overwrite the persisted last-used tool")
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .text, "Internal tool switches should not overwrite the persisted last-used tool")
     }
 }
 
