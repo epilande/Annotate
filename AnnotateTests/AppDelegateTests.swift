@@ -300,6 +300,79 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
     }
 
+    // MARK: - Fade Delay
+
+    private func fadeDelayPresetItems() throws -> [NSMenuItem] {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let fadeDelayItem = try XCTUnwrap(menu.items.first { $0.title == "Fade Delay" })
+        return try XCTUnwrap(fadeDelayItem.submenu).items
+    }
+
+    /// Runs menu validation, as AppKit does when the submenu opens, and returns the delays
+    /// whose items end up checked.
+    private func checkedFadeDelays(_ items: [NSMenuItem]) -> [Double] {
+        items.compactMap { item in
+            XCTAssertTrue(appDelegate.validateMenuItem(item))
+            return item.state == .on ? item.representedObject as? Double : nil
+        }
+    }
+
+    func testFadeDelayDefaultsToTheOriginalHold() throws {
+        XCTAssertEqual(testDefaults.settings[.fadeDelay], 0.625)
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.fadeDelay, 0.625)
+            XCTAssertEqual(window.overlayView.fadeDuration, 1.25)
+        }
+
+        let items = try fadeDelayPresetItems()
+        XCTAssertEqual(items.map(\.title), ["0.25s", "0.625s (Default)", "1s", "2s", "3s", "5s"])
+        XCTAssertEqual(checkedFadeDelays(items), [0.625])
+    }
+
+    func testFadeDelayPresetPersistsAndAppliesToEveryOverlay() throws {
+        let items = try fadeDelayPresetItems()
+        let twoSeconds = try XCTUnwrap(items.first { $0.representedObject as? Double == 2 })
+
+        appDelegate.setFadeDelay(twoSeconds)
+
+        XCTAssertEqual(testDefaults.settings[.fadeDelay], 2)
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.fadeDelay, 2)
+        }
+        XCTAssertEqual(checkedFadeDelays(items), [2])
+    }
+
+    func testFadeDelayFromSettingsMovesTheCheckmarkAndAppliesToOverlays() throws {
+        // What the Settings slider does: write through @AppStorage, then apply.
+        testDefaults.settings[.fadeDelay] = 1.5
+        appDelegate.applyFadeDelay()
+
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.fadeDelay, 1.5)
+        }
+        XCTAssertEqual(checkedFadeDelays(try fadeDelayPresetItems()), [], "1.5 s is not a preset")
+    }
+
+    func testPersistedFadeDelayIsRestoredOnLaunch() throws {
+        testDefaults.settings[.fadeDelay] = 3
+
+        let relaunched = launchAppDelegate()
+
+        let window = try XCTUnwrap(relaunched.overlayWindows.values.first)
+        XCTAssertEqual(window.overlayView.fadeDelay, 3)
+    }
+
+    func testOverlayPicksUpTheFadeDelayWhenShown() throws {
+        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows.values.first)
+        defer { appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) } }
+        testDefaults.settings[.fadeDelay] = 4
+
+        appDelegate.toggleAlwaysOnMode()
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertEqual(overlayWindow.overlayView.fadeDelay, 4)
+    }
+
     func testToggleFadeModeStartsFadeLoop() {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window found")

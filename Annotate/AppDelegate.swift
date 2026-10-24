@@ -51,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
         let persistedFadeMode = settings[.fadeMode]
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
+        applyFadeDelay()
 
         let shouldStartInAlwaysOnMode = settings[.alwaysOnMode]
         if shouldStartInAlwaysOnMode {
@@ -284,6 +285,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             toggleDrawingModeItem.keyEquivalentModifierMask = []
             menu.addItem(toggleDrawingModeItem)
 
+            let fadeDelayMenu = NSMenu()
+            for delay in Self.fadeDelayPresets {
+                let title = fadeDelayLabel(delay) + (delay == defaultFadeDelay ? " (Default)" : "")
+                let presetItem = NSMenuItem(title: title, action: #selector(setFadeDelay(_:)), keyEquivalent: "")
+                presetItem.representedObject = delay
+                fadeDelayMenu.addItem(presetItem)
+            }
+            let fadeDelayItem = NSMenuItem(title: "Fade Delay", action: nil, keyEquivalent: "")
+            fadeDelayItem.submenu = fadeDelayMenu
+            menu.addItem(fadeDelayItem)
+
             menu.addItem(NSMenuItem.separator())
             
             let currentOverlayModeItem = NSMenuItem(
@@ -434,6 +446,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             // Space / Option-Delete become menu equivalents and must not fire
             // while Settings (or any other window) is key.
             return isOverlayKeyWindow
+        case #selector(setFadeDelay(_:)):
+            // Validation runs each time the submenu opens, so the checkmark follows changes
+            // made from Settings too. A delay set off the presets leaves none checked.
+            let delay = menuItem.representedObject as? Double
+            menuItem.state = delay == settings[.fadeDelay] ? .on : .off
+            return true
         default:
             return true
         }
@@ -716,6 +734,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.updateToolbarVisibility()
 
         overlayWindow.overlayView.fadeMode = settings[.fadeMode]
+        overlayWindow.overlayView.fadeDelay = settings[.fadeDelay]
         overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
 
@@ -732,6 +751,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.stopFadeLoop()
     }
     
+    /// Fade Delay presets offered in the status menu, in seconds. Settings allows any value in
+    /// `fadeDelayRange` in 0.125 s steps.
+    static let fadeDelayPresets: [TimeInterval] = [0.25, defaultFadeDelay, 1, 2, 3, 5]
+
+    @objc func setFadeDelay(_ sender: NSMenuItem) {
+        guard let delay = sender.representedObject as? Double else { return }
+        settings[.fadeDelay] = delay
+        applyFadeDelay()
+    }
+
+    /// Pushes the stored Fade Delay to every overlay. Annotations already on screen follow the
+    /// new delay from the next fade tick.
+    func applyFadeDelay() {
+        let delay = settings[.fadeDelay]
+        overlayWindows.values.forEach { $0.overlayView.fadeDelay = delay }
+    }
+
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
         guard let menu = statusItem?.menu else { return }
         

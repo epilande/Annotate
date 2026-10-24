@@ -279,7 +279,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
     var fadeMode: Bool = true {
         didSet { notifyToolbarChanged() }
     }
-    let fadeDuration: CFTimeInterval = 1.25
+    /// Seconds an annotation holds at full opacity in Fade Mode. `AppDelegate` keeps it in step
+    /// with the Fade Delay setting.
+    var fadeDelay: CFTimeInterval = defaultFadeDelay
+    /// How long the fade-out after the hold takes. Not configurable.
+    let fadeOutDuration: CFTimeInterval = 0.625
+    /// Age at which an annotation is gone in Fade Mode.
+    var fadeDuration: CFTimeInterval { fadeDelay + fadeOutDuration }
 
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
@@ -1363,11 +1369,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return bounds.insetBy(dx: -padding, dy: -padding)
     }
 
+    /// Full opacity through the hold, then a linear fade that starts at `fadeOutDuration` alpha
+    /// rather than 1 and reaches 0 at `fadeDuration`. That step is how Fade Mode has always
+    /// looked, and with `fadeOutDuration` under 1 second the alpha never exceeds 1.
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
-        let fadeDelay = fadeDuration / 2
         if age <= fadeDelay { return 1.0 }
-        let fadeOut = fadeDelay - (age - fadeDelay)
-        return CGFloat(max(0, fadeOut))
+        return CGFloat(max(0, fadeDuration - age))
     }
 
     func compactExpiredAnnotations() {

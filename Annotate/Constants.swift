@@ -12,6 +12,16 @@ let colorPalette: [NSColor] = [
     .magenta, .white, .black,
 ]
 
+/// Seconds an annotation stays at full opacity in Fade Mode before it starts to fade out.
+/// The default is the hold Fade Mode has always used.
+let defaultFadeDelay: TimeInterval = 0.625
+let fadeDelayRange: ClosedRange<TimeInterval> = 0.25...5
+
+/// Formats a fade delay for the Settings slider and the status menu, e.g. "0.625s" or "2s".
+func fadeDelayLabel(_ seconds: TimeInterval) -> String {
+    String(format: "%gs", seconds)
+}
+
 let defaultTextAnnotationFontSize: CGFloat = 18
 let textAnnotationFontSizeRange: ClosedRange<CGFloat> = 12...120
 

@@ -76,6 +76,11 @@ extension SettingKey<Double> {
     static var boardOpacity: Self {
         .double("BoardOpacity", default: 0.9) { $0 == 0 ? nil : $0.clamped(to: 0.1...1.0) }
     }
+    /// Seconds annotations hold at full opacity in Fade Mode. A stored 0 or less reads as
+    /// unset, and anything else is clamped to the slider's range.
+    static var fadeDelay: Self {
+        .double("FadeDelay", default: defaultFadeDelay) { $0 > 0 ? $0.clamped(to: fadeDelayRange) : nil }
+    }
 }
 
 extension SettingKey<CGFloat> {
@@ -290,6 +295,10 @@ extension AppStorage where Value == Bool {
 }
 
 extension AppStorage where Value == Double {
+    init(_ key: SettingKey<Double>, store: UserDefaults? = nil) {
+        self.init(wrappedValue: key.defaultValue, key.name, store: store)
+    }
+
     init(_ key: SettingKey<CGFloat>, store: UserDefaults? = nil) {
         self.init(wrappedValue: Double(key.defaultValue), key.name, store: store)
     }
