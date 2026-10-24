@@ -18,6 +18,8 @@ struct GeneralSettingsView: View {
     private var selectAfterPlacingText: Bool
     @AppStorage(.defaultTool)
     private var defaultToolOption: DefaultToolOption
+    @AppStorage(.fadeDelay)
+    private var fadeDelay: Double
 
     /// Tools offered in the Default Tool picker, excluding Select and Eraser since neither
     /// is a sensible tool to land on when the overlay opens.
@@ -126,6 +128,27 @@ struct GeneralSettingsView: View {
                     color: .blue,
                     title: "Application",
                     subtitle: "Configure app launch and display options"
+                )
+            }
+
+            Section {
+                SettingsSliderRow(
+                    title: "Fade Delay",
+                    value: $fadeDelay,
+                    range: fadeDelayRange,
+                    step: 0.125,
+                    valueText: fadeDelayLabel,
+                    boundsText: fadeDelayLabel
+                )
+                .onChange(of: fadeDelay) { _, _ in
+                    AppDelegate.shared?.applyFadeDelay()
+                }
+            } header: {
+                SettingsHeader(
+                    icon: "timer",
+                    color: .purple,
+                    title: "Fade Mode",
+                    subtitle: "How long annotations stay at full opacity before fading out"
                 )
             }
         }

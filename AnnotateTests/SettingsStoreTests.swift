@@ -44,6 +44,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(settings[.spotlightAutoDim])
 
         XCTAssertEqual(settings[.boardOpacity], 0.9)
+        XCTAssertEqual(settings[.fadeDelay], 0.625)
         XCTAssertEqual(settings[.lineWidth], 3)
         XCTAssertEqual(settings[.textFontSize], defaultTextAnnotationFontSize)
         XCTAssertEqual(settings[.counterFontSize], defaultCounterFontSize)
@@ -84,6 +85,7 @@ final class SettingsStoreTests: XCTestCase {
     func testValuesRoundTrip() {
         settings[.toolbarVisible] = false
         settings[.boardOpacity] = 0.35
+        settings[.fadeDelay] = 2.5
         settings[.lineWidth] = 0.5
         settings[.textFontSize] = 44
         settings[.soundTheme] = .typewriter
@@ -99,6 +101,7 @@ final class SettingsStoreTests: XCTestCase {
 
         XCTAssertFalse(settings[.toolbarVisible])
         XCTAssertEqual(settings[.boardOpacity], 0.35)
+        XCTAssertEqual(settings[.fadeDelay], 2.5)
         XCTAssertEqual(settings[.lineWidth], 0.5)
         XCTAssertEqual(settings[.textFontSize], 44)
         XCTAssertEqual(settings[.soundTheme], .typewriter)
@@ -198,6 +201,30 @@ final class SettingsStoreTests: XCTestCase {
 
         defaults.set(5.0, forKey: "BoardOpacity")
         XCTAssertEqual(settings[.boardOpacity], 1.0)
+    }
+
+    func testFadeDelayTreatsZeroOrNegativeAsUnsetAndClampsTheRest() {
+        defaults.set(0.0, forKey: "FadeDelay")
+        XCTAssertEqual(settings[.fadeDelay], 0.625)
+
+        defaults.set(-1.0, forKey: "FadeDelay")
+        XCTAssertEqual(settings[.fadeDelay], 0.625)
+
+        defaults.set(0.1, forKey: "FadeDelay")
+        XCTAssertEqual(settings[.fadeDelay], 0.25)
+
+        defaults.set(10.0, forKey: "FadeDelay")
+        XCTAssertEqual(settings[.fadeDelay], 5)
+
+        defaults.set("1.5", forKey: "FadeDelay")
+        XCTAssertEqual(settings[.fadeDelay], 1.5, "`defaults write` without -float stores a string")
+    }
+
+    func testFadeDelayPersistsAsSecondsUnderFadeDelay() {
+        settings[.fadeDelay] = 3
+
+        XCTAssertEqual(defaults.object(forKey: "FadeDelay") as? Double, 3)
+        XCTAssertEqual(SettingsStore(defaults: defaults)[.fadeDelay], 3, "a fresh store reads it back")
     }
 
     func testUnknownRawValuesReadTheDefault() {
@@ -358,13 +385,16 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(AppStorage(.toolbarVisible, store: defaults).wrappedValue)
         XCTAssertEqual(AppStorage(.textFontSize, store: defaults).wrappedValue, Double(defaultTextAnnotationFontSize))
         XCTAssertEqual(AppStorage(.soundTheme, store: defaults).wrappedValue, .chalk)
+        XCTAssertEqual(AppStorage(.fadeDelay, store: defaults).wrappedValue, 0.625)
 
         settings[.toolbarVisible] = false
         settings[.textFontSize] = 40
         settings[.soundTheme] = .marker
+        settings[.fadeDelay] = 2
 
         XCTAssertFalse(AppStorage(.toolbarVisible, store: defaults).wrappedValue)
         XCTAssertEqual(AppStorage(.textFontSize, store: defaults).wrappedValue, 40)
         XCTAssertEqual(AppStorage(.soundTheme, store: defaults).wrappedValue, .marker)
+        XCTAssertEqual(AppStorage(.fadeDelay, store: defaults).wrappedValue, 2)
     }
 }

@@ -300,6 +300,46 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertFalse(persistedFadeMode, "UserDefaults should now store false for fade mode.")
     }
 
+    // MARK: - Fade Delay
+
+    func testFadeDelayDefaultsToTheOriginalHold() {
+        XCTAssertEqual(testDefaults.settings[.fadeDelay], 0.625)
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.fadeDelay, 0.625)
+            XCTAssertEqual(window.overlayView.fadeDuration, 1.25)
+        }
+    }
+
+    func testFadeDelayFromSettingsAppliesToEveryOverlay() {
+        // What the Settings slider does: write through @AppStorage, then apply.
+        testDefaults.settings[.fadeDelay] = 1.5
+        appDelegate.applyFadeDelay()
+
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.fadeDelay, 1.5)
+        }
+    }
+
+    func testPersistedFadeDelayIsRestoredOnLaunch() throws {
+        testDefaults.settings[.fadeDelay] = 3
+
+        let relaunched = launchAppDelegate()
+
+        let window = try XCTUnwrap(relaunched.overlayWindows.values.first)
+        XCTAssertEqual(window.overlayView.fadeDelay, 3)
+    }
+
+    func testOverlayPicksUpTheFadeDelayWhenShown() throws {
+        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows.values.first)
+        defer { appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) } }
+        testDefaults.settings[.fadeDelay] = 4
+
+        appDelegate.toggleAlwaysOnMode()
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertEqual(overlayWindow.overlayView.fadeDelay, 4)
+    }
+
     func testToggleFadeModeStartsFadeLoop() {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window found")

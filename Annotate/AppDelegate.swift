@@ -51,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
         let persistedFadeMode = settings[.fadeMode]
         overlayWindows.values.forEach { $0.overlayView.fadeMode = persistedFadeMode }
+        applyFadeDelay()
 
         let shouldStartInAlwaysOnMode = settings[.alwaysOnMode]
         if shouldStartInAlwaysOnMode {
@@ -716,6 +717,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.updateToolbarVisibility()
 
         overlayWindow.overlayView.fadeMode = settings[.fadeMode]
+        overlayWindow.overlayView.fadeDelay = settings[.fadeDelay]
         overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
 
@@ -732,6 +734,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.stopFadeLoop()
     }
     
+    /// Pushes the stored Fade Delay to every overlay. Annotations already on screen follow the
+    /// new delay from the next fade tick.
+    func applyFadeDelay() {
+        let delay = settings[.fadeDelay]
+        overlayWindows.values.forEach { $0.overlayView.fadeDelay = delay }
+    }
+
     private func updateFadeModeMenuItems(isCurrentlyFadeMode: Bool) {
         guard let menu = statusItem?.menu else { return }
         
