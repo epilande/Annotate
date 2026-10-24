@@ -30,6 +30,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.currentColor, .systemRed)
         XCTAssertEqual(overlayView.currentTool, .pen)
         XCTAssertTrue(overlayView.fadeMode)
+        XCTAssertEqual(overlayView.fadeDelay, 0.625)
         XCTAssertEqual(overlayView.fadeDuration, 1.25)
 
         // Test empty collections
@@ -938,6 +939,100 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.textAnnotations.count, 1, "draw must not compact expired text")
         overlayView.compactExpiredAnnotations()
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
+    }
+
+    // MARK: - Fade delay
+
+    /// A thick line created `age` seconds ago, the only annotation on the overlay.
+    private func seedFadingLine(age: CFTimeInterval) {
+        overlayView.fadeMode = true
+        overlayView.lines = [
+            Line(
+                startPoint: NSPoint(x: 100, y: 300),
+                endPoint: NSPoint(x: 700, y: 300),
+                color: .systemRed,
+                lineWidth: 20,
+                creationTime: CACurrentMediaTime() - age)
+        ]
+    }
+
+    /// The highest alpha in an offscreen render of the overlay, 0 when nothing draws.
+    private func renderedMaxAlpha(of view: NSView) -> CGFloat {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return -1 }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        var maxAlpha: CGFloat = 0
+        var y = 0
+        while y < rep.pixelsHigh {
+            var x = 0
+            while x < rep.pixelsWide {
+                if let color = rep.colorAt(x: x, y: y) { maxAlpha = max(maxAlpha, color.alphaComponent) }
+                x += 3
+            }
+            y += 3
+        }
+        return maxAlpha
+    }
+
+    /// Renders a line `age` seconds into its fade-out and checks it drew at `fadeDuration - age`
+    /// alpha. The bounds come from the clock around the render, so a slow CI pass can't fail it.
+    private func assertMidFadeAlpha(age: CFTimeInterval, file: StaticString = #filePath, line: UInt = #line) {
+        let before = CACurrentMediaTime()
+        seedFadingLine(age: age)
+        let creationTime = overlayView.lines[0].creationTime ?? before
+        let alpha = renderedMaxAlpha(of: overlayView)
+        let after = CACurrentMediaTime()
+
+        let pixelSlop = 0.01
+        let highest = overlayView.fadeDuration - (before - creationTime) + pixelSlop
+        let lowest = overlayView.fadeDuration - (after - creationTime) - pixelSlop
+        XCTAssertTrue(
+            (lowest...highest).contains(Double(alpha)),
+            "alpha \(alpha) outside \(lowest)...\(highest)",
+            file: file,
+            line: line)
+    }
+
+    func testDefaultFadeTimingIsUnchanged() {
+        // Holds at full opacity for 0.625 s, then fades from 0.625 alpha to nothing at 1.25 s.
+        seedFadingLine(age: 0.3)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.02)
+
+        assertMidFadeAlpha(age: 0.9)
+
+        seedFadingLine(age: 1.3)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 0, accuracy: 0.01)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertTrue(overlayView.lines.isEmpty)
+    }
+
+    func testFadeDelayHoldsAnnotationsForTheConfiguredTime() {
+        overlayView.fadeDelay = 3
+        XCTAssertEqual(overlayView.fadeDuration, 3.625)
+
+        // Two seconds in is long gone at the default delay but still in the hold here.
+        seedFadingLine(age: 2)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(overlayView.lines.count, 1)
+        XCTAssertTrue(overlayView.isAnythingFading())
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.02)
+
+        // The fade-out keeps its length and starts once the hold ends.
+        assertMidFadeAlpha(age: 3.3)
+
+        seedFadingLine(age: 3.7)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertTrue(overlayView.lines.isEmpty)
+    }
+
+    func testShortFadeDelayRemovesAnnotationsSooner() {
+        overlayView.fadeDelay = 0.25
+
+        seedFadingLine(age: 0.5)
+        XCTAssertLessThan(renderedMaxAlpha(of: overlayView), 0.5)
+
+        seedFadingLine(age: 0.9)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertTrue(overlayView.lines.isEmpty, "0.9 s outlasts a 0.25 s hold plus the fade-out")
     }
 
     // MARK: - Text compaction under an active edit or drag
