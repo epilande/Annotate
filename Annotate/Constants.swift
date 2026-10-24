@@ -17,7 +17,7 @@ let colorPalette: [NSColor] = [
 let defaultFadeDelay: TimeInterval = 0.625
 let fadeDelayRange: ClosedRange<TimeInterval> = 0.25...5
 
-/// Formats a fade delay for the Settings slider and the status menu, e.g. "0.625s" or "2s".
+/// Formats a fade delay for the Settings slider, e.g. "0.625s" or "2s".
 func fadeDelayLabel(_ seconds: TimeInterval) -> String {
     String(format: "%gs", seconds)
 }

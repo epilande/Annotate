@@ -331,7 +331,7 @@ Toggle between modes with <kbd>Space</kbd> by default, or rebind **Toggle Fade M
 
 #### Fade Mode
 
-In fade mode, annotations stay at full opacity for a short delay and then fade out, keeping your screen clean while allowing for temporary emphasis. Set the delay with the **Fade Delay** slider in Settings → General (0.25 to 5 seconds, default 0.625), or pick a preset from **Fade Delay** in the menu bar. The fade-out after the delay always takes 0.625 seconds.
+In fade mode, annotations stay at full opacity for a short delay and then fade out, keeping your screen clean while allowing for temporary emphasis. Set the delay with the **Fade Delay** slider in Settings → General (0.25 to 5 seconds, default 0.625). The fade-out after the delay always takes 0.625 seconds.
 
 #### Persist Mode
 
@@ -371,7 +371,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Switch to Select after placing text**: After committing a label, switch to the Select tool with that label selected. Off by default so text mode stays selected.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
-- **Fade Delay**: How long annotations stay at full opacity in Fade Mode before fading out, from 0.25 to 5 seconds (default 0.625). The menu bar's **Fade Delay** submenu offers presets and checks the current one.
+- **Fade Delay**: How long annotations stay at full opacity in Fade Mode before fading out, from 0.25 to 5 seconds (default 0.625).
 
 ### Tools
 
