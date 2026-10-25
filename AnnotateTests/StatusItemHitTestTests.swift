@@ -57,6 +57,13 @@ final class StatusItemHitTestTests: XCTestCase {
         XCTAssertNil(hit(at: NSPoint(x: 1080, y: 1065), menuBars: [hostMenuBar]))
     }
 
+    func testPopUpMenuLandsWhereClickingTheButtonPutsIt() {
+        // Clicking the button put the menu window's top left at (2490, 1836). `popUp` puts the
+        // window's top 5 pt above the point it's given.
+        let hit = StatusItemHitTest.Hit(frame: buttonFrame, isOnHostMenuBar: false)
+        XCTAssertEqual(StatusItemHitTest.popUpMenuLocation(for: hit), NSPoint(x: 2490, y: 1831))
+    }
+
     func testPressesAwayFromTheTopNeverReadTheWindowList() {
         var reads = 0
         let result = StatusItemHitTest.hit(

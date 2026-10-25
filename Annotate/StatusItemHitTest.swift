@@ -56,6 +56,18 @@ enum StatusItemHitTest {
         )
     }
 
+    /// Where to pop the status menu up under the item in `hit`, for
+    /// `NSMenu.popUp(positioning: nil, at:in: nil)`, so it lands where clicking the button puts it.
+    /// Clicking the button puts the menu window's top left 5 pt left of the item and 1 pt below
+    /// the menu bar. `popUp` puts the window's left edge at the point but its top 5 pt above it.
+    /// Measured on macOS 27.0.1 by opening the same menu both ways and reading the menu window's
+    /// frame from the window list.
+    static func popUpMenuLocation(for hit: Hit) -> NSPoint {
+        NSPoint(x: hit.frame.minX + popUpMenuOffset.width, y: hit.frame.minY + popUpMenuOffset.height)
+    }
+
+    static let popUpMenuOffset = NSSize(width: -5, height: -6)
+
     /// The menu bars on screen right now, in screen coordinates.
     static func visibleMenuBarFrames() -> [NSRect] {
         guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)

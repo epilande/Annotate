@@ -187,6 +187,28 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(counterPicker.mode, .counterSize)
     }
 
+    /// `NSScreen.main` follows the menu bar, so a status menu opened from another display's
+    /// overlay must still enable and open the pickers there (#122). Needs a second display.
+    func testPickerMenuRoutesToTheVisibleOverlayOffTheMainScreen() throws {
+        let mainScreen = try XCTUnwrap(NSScreen.main)
+        let otherScreen = NSScreen.screens.first { $0 != mainScreen }
+        try XCTSkipUnless(otherScreen != nil, "Needs a second display")
+        let overlayWindow = try XCTUnwrap(otherScreen.flatMap { appDelegate.overlayWindows[$0] })
+        appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+        overlayWindow.makeKeyAndOrderFront(nil)
+        defer { overlayWindow.orderOut(nil) }
+
+        for action in [#selector(AppDelegate.showColorPicker(_:)), #selector(AppDelegate.showLineWidthPicker(_:))] {
+            let item = NSMenuItem()
+            item.action = action
+            XCTAssertTrue(appDelegate.validateMenuItem(item))
+        }
+
+        appDelegate.showColorPicker(nil)
+        XCTAssertTrue(overlayWindow.isQuickPickerOpen)
+        overlayWindow.cancelQuickPicker()
+    }
+
     // MARK: - Clear Drawings Tests
 
     func testToggleOverlayClearsDrawingsWhenEnabled() {
