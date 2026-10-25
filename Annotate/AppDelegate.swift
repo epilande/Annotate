@@ -4,7 +4,7 @@ import Sparkle
 import SwiftUI
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation, NSMenuDelegate {
     static weak var shared: AppDelegate?
 
     var statusItem: NSStatusItem!
@@ -143,6 +143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             updateStatusBarIcon(with: .gray)
 
             let menu = NSMenu()
+            menu.delegate = self
 
             let colorItem = NSMenuItem(
                 title: "Color…",
@@ -438,6 +439,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         default:
             return true
         }
+    }
+
+    // The overlay sits above pop-up menus, so the status menu would open under it (#122).
+    // Every display's overlay yields, since the menu bar can be on any of them.
+    func menuWillOpen(_ menu: NSMenu) {
+        overlayWindows.values.forEach { $0.setYieldsToMenus(true) }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        overlayWindows.values.forEach { $0.setYieldsToMenus(false) }
     }
 
     /// Status-menu key equivalents are app-wide. Overlay-owned actions only

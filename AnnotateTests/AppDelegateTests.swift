@@ -131,6 +131,24 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertFalse(appDelegate.validateMenuItem(widthItem))
     }
 
+    func testStatusMenuOpensAboveEveryOverlay() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        XCTAssertTrue(menu.delegate === appDelegate)
+        let overlays = Array(appDelegate.overlayWindows.values)
+        XCTAssertFalse(overlays.isEmpty)
+        let popUpLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+
+        appDelegate.menuWillOpen(menu)
+        for overlay in overlays {
+            XCTAssertLessThan(overlay.level.rawValue, popUpLevel)
+        }
+
+        appDelegate.menuDidClose(menu)
+        for overlay in overlays {
+            XCTAssertEqual(overlay.level, OverlayWindow.elevatedLevel)
+        }
+    }
+
     func testPickerMenuRoutesToVisibleMainOverlayCenter() throws {
         let mainScreen = try XCTUnwrap(NSScreen.main)
         let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])

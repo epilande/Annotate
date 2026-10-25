@@ -324,7 +324,9 @@ class OverlayWindow: NSPanel {
         super.resignKey()
     }
 
-    private func configureWindowLevel() {
+    /// Resting level: above every system window, so the overlay covers full screen apps,
+    /// the menu bar, and pop-up menus.
+    static let elevatedLevel: NSWindow.Level = {
         let levels = [
             CGWindowLevelForKey(.mainMenuWindow),
             CGWindowLevelForKey(.statusWindow),
@@ -334,7 +336,22 @@ class OverlayWindow: NSPanel {
         ]
 
         let maxLevel = levels.map { Int($0) + 1 }.max() ?? Int(CGWindowLevelForKey(.statusWindow)) + 1
-        level = NSWindow.Level(rawValue: maxLevel)
+        return NSWindow.Level(rawValue: maxLevel)
+    }()
+
+    /// Level used while the status item menu is open. Menus draw at the pop-up menu level, so
+    /// one below it lets the menu show on top while the overlay still covers the menu bar.
+    static let menuOpenLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)) - 1)
+
+    private func configureWindowLevel() {
+        level = Self.elevatedLevel
+    }
+
+    /// Drops the overlay and its toolbar below pop-up menus while the status item menu is open
+    /// (#122), and restores the elevated level when it closes.
+    func setYieldsToMenus(_ yields: Bool) {
+        level = yields ? Self.menuOpenLevel : Self.elevatedLevel
+        toolbarPanel?.level = level
     }
 
     func startFadeLoop() {
