@@ -66,6 +66,27 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         )
     }
 
+    func testYieldingToMenusDropsBelowPopUpMenusAndRestores() throws {
+        let popUpLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let menuBarLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
+        let toolbar = try XCTUnwrap(window.toolbarPanel)
+        XCTAssertEqual(window.level, OverlayWindow.elevatedLevel)
+        XCTAssertEqual(toolbar.level, window.level)
+
+        window.setYieldsToMenus(true)
+        XCTAssertLessThan(window.level.rawValue, popUpLevel, "The status item menu must draw above the overlay (#122)")
+        XCTAssertGreaterThan(window.level.rawValue, menuBarLevel, "The overlay should still cover the menu bar")
+        XCTAssertEqual(toolbar.level, window.level)
+
+        // Repeated calls must not drift the level.
+        window.setYieldsToMenus(true)
+        XCTAssertEqual(window.level, OverlayWindow.menuOpenLevel)
+
+        window.setYieldsToMenus(false)
+        XCTAssertEqual(window.level, OverlayWindow.elevatedLevel)
+        XCTAssertEqual(toolbar.level, window.level)
+    }
+
     func testNSPanelBehavior() {
         XCTAssertFalse(window.canBecomeMain, "Overlay panel should not become main window")
         XCTAssertTrue(window.canBecomeKey, "Overlay panel should be able to become key window for keyboard input")
