@@ -45,6 +45,16 @@ class OverlayWindow: NSPanel {
     private(set) var toolbarPanel: ToolbarPanel?
     let toolbarModel = ToolbarModel()
 
+    /// Opens the status menu if a press at a screen point lands on the status item, and returns
+    /// whether it did. The overlay covers the menu bar, so the item can't get the press (#122).
+    /// Tests replace it so no real menu opens.
+    var statusItemPressHandler: (NSPoint) -> Bool = { point in
+        AppDelegate.shared?.openStatusMenu(forPressAt: point) ?? false
+    }
+    /// True from a press that opened the status menu until its release, so the rest of that
+    /// press never reaches the drawing handlers.
+    private var isStatusItemPressActive = false
+
     // Create undo manager for this window
     private let _undoManager = UndoManager()
     
@@ -460,6 +470,10 @@ class OverlayWindow: NSPanel {
             return true
         }
 
+        if routeStatusItemPress(event) {
+            return true
+        }
+
         // A press on empty canvas with the Text tool opens a field right under the pointer.
         // The rest of that press still belongs to the canvas, so a short drag that never
         // leaves the new field draws a box instead of selecting text in it.
@@ -493,6 +507,23 @@ class OverlayWindow: NSPanel {
             return false
         }
         return true
+    }
+
+    /// Hands a press on the status item to `statusItemPressHandler` and swallows the rest of that
+    /// press, so a click on the menu bar icon opens its menu instead of drawing (#122).
+    private func routeStatusItemPress(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown:
+            isStatusItemPressActive = statusItemPressHandler(convertPoint(toScreen: event.locationInWindow))
+            return isStatusItemPressActive
+        case .leftMouseDragged:
+            return isStatusItemPressActive
+        case .leftMouseUp, .rightMouseUp:
+            defer { isStatusItemPressActive = false }
+            return isStatusItemPressActive
+        default:
+            return false
+        }
     }
 
     private func isEventOverAnnotationText(_ event: NSEvent) -> Bool {

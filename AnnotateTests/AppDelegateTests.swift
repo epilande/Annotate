@@ -149,6 +149,13 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
+    func testPressAwayFromTheMenuBarLeavesTheStatusMenuClosed() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        let point = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+
+        XCTAssertFalse(appDelegate.openStatusMenu(forPressAt: point))
+    }
+
     func testPickerMenuRoutesToVisibleMainOverlayCenter() throws {
         let mainScreen = try XCTUnwrap(NSScreen.main)
         let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])

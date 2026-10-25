@@ -87,6 +87,83 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(toolbar.level, window.level)
     }
 
+    func testPressOnTheStatusItemOpensTheMenuInsteadOfDrawing() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        var pressedPoints: [NSPoint] = []
+        window.statusItemPressHandler = { point in
+            pressedPoints.append(point)
+            return true
+        }
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 700, y: 590))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 650, y: 500))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 650, y: 500))
+
+        XCTAssertEqual(pressedPoints, [window.convertPoint(toScreen: NSPoint(x: 700, y: 590))])
+        XCTAssertNil(window.overlayView.currentPath)
+        XCTAssertTrue(window.overlayView.paths.isEmpty, "The press that opened the menu must not draw (#122)")
+    }
+
+    func testPressElsewhereInTheMenuBarStillDraws() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        var pressCount = 0
+        window.statusItemPressHandler = { _ in
+            pressCount += 1
+            return false
+        }
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 590))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 580))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 580))
+
+        XCTAssertEqual(pressCount, 1)
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+    }
+
+    func testPressAfterOpeningTheMenuDrawsAgain() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        var opensMenu = true
+        window.statusItemPressHandler = { _ in opensMenu }
+
+        // The menu's tracking loop can eat the release, so the next press must not depend on it.
+        sendMouse(.leftMouseDown, at: NSPoint(x: 700, y: 590))
+        opensMenu = false
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 330))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 330))
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+    }
+
+    func testRightPressOnTheStatusItemOpensTheMenu() {
+        var pressCount = 0
+        window.statusItemPressHandler = { _ in
+            pressCount += 1
+            return true
+        }
+
+        sendMouse(.rightMouseDown, at: NSPoint(x: 700, y: 590))
+        sendMouse(.rightMouseUp, at: NSPoint(x: 700, y: 590))
+
+        XCTAssertEqual(pressCount, 1)
+    }
+
+    func testAlwaysOnModeNeverAsksAboutTheStatusItem() {
+        var pressCount = 0
+        window.statusItemPressHandler = { _ in
+            pressCount += 1
+            return true
+        }
+        window.overlayView.isReadOnlyMode = true
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 700, y: 590))
+
+        XCTAssertEqual(pressCount, 0)
+    }
+
     func testNSPanelBehavior() {
         XCTAssertFalse(window.canBecomeMain, "Overlay panel should not become main window")
         XCTAssertTrue(window.canBecomeKey, "Overlay panel should be able to become key window for keyboard input")

@@ -451,6 +451,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindows.values.forEach { $0.setYieldsToMenus(false) }
     }
 
+    /// Opens the status menu when a press on an overlay lands on the status item (#122), and
+    /// returns whether it did. The overlay covers the menu bar, so the item never gets the press.
+    /// On the menu bar that hosts the item, this clicks the button, which looks and behaves like a
+    /// real click. Another display's menu bar shows a copy of the item, and clicking the button
+    /// would open the menu on the host display, so the menu opens under the copy instead.
+    func openStatusMenu(forPressAt point: NSPoint) -> Bool {
+        guard let button = statusItem?.button,
+              let menu = statusItem?.menu,
+              let buttonWindow = button.window,
+              let hostScreen = buttonWindow.screen,
+              let hit = StatusItemHitTest.hit(
+                  at: point,
+                  buttonFrame: buttonWindow.frame,
+                  hostScreenFrame: hostScreen.frame,
+                  screenFrames: NSScreen.screens.map(\.frame),
+                  menuBarFrames: StatusItemHitTest.visibleMenuBarFrames
+              )
+        else { return false }
+
+        if hit.isOnHostMenuBar {
+            button.performClick(nil)
+        } else {
+            menu.popUp(positioning: nil, at: NSPoint(x: hit.frame.minX, y: hit.frame.minY), in: nil)
+        }
+        return true
+    }
+
     /// Status-menu key equivalents are app-wide. Overlay-owned actions only
     /// run when an overlay itself is the key window.
     ///
