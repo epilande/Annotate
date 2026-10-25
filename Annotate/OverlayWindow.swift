@@ -454,6 +454,12 @@ class OverlayWindow: NSPanel {
         }
 
         if quickPicker != nil {
+            // A press that opened the status menu never saw its release, which the menu's
+            // tracking loop ate. The picker now owns the press, so its release must reach
+            // `mouseUp` and clear `pickerConsumedMouseDown`.
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
+                isStatusItemPressActive = false
+            }
             switch event.type {
             case .leftMouseDown:
                 mouseDown(with: event)

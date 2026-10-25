@@ -138,6 +138,31 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(window.overlayView.paths.count, 1)
     }
 
+    func testStrokeFinishesAfterClosingAPickerOpenedFromTheStatusMenu() {
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .pen
+        var opensMenu = true
+        window.statusItemPressHandler = { _ in opensMenu }
+
+        // The menu's tracking loop eats the release, and its Color… item opens the picker.
+        sendMouse(.leftMouseDown, at: NSPoint(x: 700, y: 590))
+        opensMenu = false
+        tapPickerKey("c", keyCode: 8)
+        XCTAssertTrue(window.isQuickPickerOpen)
+
+        let outside = pointOutsidePicker()
+        sendMouse(.leftMouseDown, at: outside)
+        sendMouse(.leftMouseUp, at: outside)
+        XCTAssertFalse(window.isQuickPickerOpen)
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 100, y: 300))
+        sendMouse(.leftMouseDragged, at: NSPoint(x: 140, y: 330))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 140, y: 330))
+
+        XCTAssertEqual(window.overlayView.paths.count, 1)
+        XCTAssertNil(window.overlayView.currentPath, "The stroke after the picker closes must finish")
+    }
+
     func testRightPressOnTheStatusItemOpensTheMenu() {
         var pressCount = 0
         window.statusItemPressHandler = { _ in
