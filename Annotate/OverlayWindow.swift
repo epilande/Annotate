@@ -45,6 +45,16 @@ class OverlayWindow: NSPanel {
     private(set) var toolbarPanel: ToolbarPanel?
     let toolbarModel = ToolbarModel()
 
+    /// Opens the status menu if a press at a screen point lands on the status item, and returns
+    /// whether it did. The overlay covers the menu bar, so the item can't get the press (#122).
+    /// Tests replace it so no real menu opens.
+    var statusItemPressHandler: (NSPoint) -> Bool = { point in
+        AppDelegate.shared?.openStatusMenu(forPressAt: point) ?? false
+    }
+    /// True from a press that opened the status menu until its release, so the rest of that
+    /// press never reaches the drawing handlers.
+    private var isStatusItemPressActive = false
+
     // Create undo manager for this window
     private let _undoManager = UndoManager()
     
@@ -444,6 +454,12 @@ class OverlayWindow: NSPanel {
         }
 
         if quickPicker != nil {
+            // A press that opened the status menu never saw its release, which the menu's
+            // tracking loop ate. The picker now owns the press, so its release must reach
+            // `mouseUp` and clear `pickerConsumedMouseDown`.
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
+                isStatusItemPressActive = false
+            }
             switch event.type {
             case .leftMouseDown:
                 mouseDown(with: event)
@@ -457,6 +473,10 @@ class OverlayWindow: NSPanel {
             default:
                 break
             }
+            return true
+        }
+
+        if routeStatusItemPress(event) {
             return true
         }
 
@@ -493,6 +513,23 @@ class OverlayWindow: NSPanel {
             return false
         }
         return true
+    }
+
+    /// Hands a press on the status item to `statusItemPressHandler` and swallows the rest of that
+    /// press, so a click on the menu bar icon opens its menu instead of drawing (#122).
+    private func routeStatusItemPress(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown:
+            isStatusItemPressActive = statusItemPressHandler(convertPoint(toScreen: event.locationInWindow))
+            return isStatusItemPressActive
+        case .leftMouseDragged:
+            return isStatusItemPressActive
+        case .leftMouseUp, .rightMouseUp:
+            defer { isStatusItemPressActive = false }
+            return isStatusItemPressActive
+        default:
+            return false
+        }
     }
 
     private func isEventOverAnnotationText(_ event: NSEvent) -> Bool {

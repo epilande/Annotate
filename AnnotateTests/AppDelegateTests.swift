@@ -149,6 +149,13 @@ final class AppDelegateTests: XCTestCase, Sendable {
         }
     }
 
+    func testPressAwayFromTheMenuBarLeavesTheStatusMenuClosed() throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        let point = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+
+        XCTAssertFalse(appDelegate.openStatusMenu(forPressAt: point))
+    }
+
     func testPickerMenuRoutesToVisibleMainOverlayCenter() throws {
         let mainScreen = try XCTUnwrap(NSScreen.main)
         let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])
@@ -178,6 +185,85 @@ final class AppDelegateTests: XCTestCase, Sendable {
         let counterPicker = try XCTUnwrap(
             overlayWindow.overlayView.subviews.compactMap { $0 as? QuickPickerView }.first)
         XCTAssertEqual(counterPicker.mode, .counterSize)
+    }
+
+    /// `NSScreen.main` follows the menu bar, so a status menu opened from another display's
+    /// overlay must still enable and open the pickers there (#122). Needs a second display.
+    func testPickerMenuRoutesToTheVisibleOverlayOffTheMainScreen() throws {
+        let mainScreen = try XCTUnwrap(NSScreen.main)
+        let otherScreen = NSScreen.screens.first { $0 != mainScreen }
+        try XCTSkipUnless(otherScreen != nil, "Needs a second display")
+        let overlayWindow = try XCTUnwrap(otherScreen.flatMap { appDelegate.overlayWindows[$0] })
+        appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
+        overlayWindow.makeKeyAndOrderFront(nil)
+        defer { overlayWindow.orderOut(nil) }
+
+        for action in [#selector(AppDelegate.showColorPicker(_:)), #selector(AppDelegate.showLineWidthPicker(_:))] {
+            let item = NSMenuItem()
+            item.action = action
+            XCTAssertTrue(appDelegate.validateMenuItem(item))
+        }
+
+        appDelegate.showColorPicker(nil)
+        XCTAssertTrue(overlayWindow.isQuickPickerOpen)
+        overlayWindow.cancelQuickPicker()
+    }
+
+    /// With an overlay visible on each display, the picker opens on the one under the pointer even
+    /// when the other is key, and must take keyboard focus so Escape and the number keys reach it.
+    /// Whether AppKit grants key status depends on the test host being allowed to activate, so
+    /// the overlays record key requests instead of the test reading `NSApp.keyWindow`. Needs a
+    /// second display.
+    func testPickerTakesKeyboardFocusFromTheOtherDisplaysOverlay() throws {
+        let screens = NSScreen.screens
+        try XCTSkipUnless(screens.count > 1, "Needs a second display")
+        let keyOverlay = replaceOverlayWithKeyRequestRecorder(on: screens[0])
+        let pointerOverlay = replaceOverlayWithKeyRequestRecorder(on: screens[1])
+        pointerOverlay.orderFront(nil)
+        keyOverlay.makeKeyAndOrderFront(nil)
+        defer { appDelegate.pointerLocationOverride = nil }
+        appDelegate.pointerLocationOverride = NSPoint(x: screens[1].frame.midX, y: screens[1].frame.midY)
+
+        keyOverlay.askedToBecomeKey = false
+        appDelegate.showColorPicker(nil)
+        XCTAssertTrue(pointerOverlay.isQuickPickerOpen)
+        XCTAssertFalse(keyOverlay.isQuickPickerOpen)
+        XCTAssertTrue(pointerOverlay.askedToBecomeKey, "The picker's overlay must ask for keyboard focus")
+        XCTAssertFalse(keyOverlay.askedToBecomeKey)
+        // AppKit sends key events to the key window, which is now the picker's overlay.
+        pointerOverlay.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(
+            type: .keyDown, keyCode: 53, windowNumber: pointerOverlay.windowNumber)))
+        XCTAssertFalse(pointerOverlay.isQuickPickerOpen, "Escape must reach the picker's overlay")
+        XCTAssertTrue(keyOverlay.isVisible && pointerOverlay.isVisible, "Escape must only close the picker")
+
+        keyOverlay.makeKeyAndOrderFront(nil)
+        keyOverlay.askedToBecomeKey = false
+        pointerOverlay.askedToBecomeKey = false
+        pointerOverlay.overlayView.currentTool = .pen
+        appDelegate.showLineWidthPicker(nil)
+        XCTAssertTrue(pointerOverlay.isQuickPickerOpen)
+        XCTAssertTrue(pointerOverlay.askedToBecomeKey, "The picker's overlay must ask for keyboard focus")
+        XCTAssertFalse(keyOverlay.askedToBecomeKey)
+        let firstWidth = try XCTUnwrap(QuickPickerView.widthOptions.first)
+        pointerOverlay.overlayView.currentLineWidth = firstWidth + 1
+        pointerOverlay.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(
+            type: .keyDown, keyCode: 18, characters: "1", windowNumber: pointerOverlay.windowNumber)))
+        XCTAssertEqual(pointerOverlay.overlayView.currentLineWidth, firstWidth, "1 must pick the first width")
+        pointerOverlay.cancelQuickPicker()
+    }
+
+    /// Swaps the launched overlay on `screen` for one that records key requests. tearDown closes
+    /// it with the rest of `overlayWindows`.
+    private func replaceOverlayWithKeyRequestRecorder(on screen: NSScreen) -> KeyRequestRecordingOverlayWindow {
+        appDelegate.overlayWindows[screen]?.close()
+        let overlay = KeyRequestRecordingOverlayWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        appDelegate.overlayWindows[screen] = overlay
+        return overlay
     }
 
     // MARK: - Clear Drawings Tests
@@ -726,3 +812,19 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
 @MainActor
 final class MockAppDelegate: AppDelegate {}
+
+/// Records requests to become key, which AppKit may refuse while the test host isn't active.
+/// `makeKeyAndOrderFront` can call `makeKey`, so this is a flag rather than a count.
+final class KeyRequestRecordingOverlayWindow: OverlayWindow {
+    var askedToBecomeKey = false
+
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        askedToBecomeKey = true
+        super.makeKeyAndOrderFront(sender)
+    }
+
+    override func makeKey() {
+        askedToBecomeKey = true
+        super.makeKey()
+    }
+}

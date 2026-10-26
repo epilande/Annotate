@@ -397,8 +397,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 
+    /// Tests set this because XCTest can't move the pointer.
+    var pointerLocationOverride: NSPoint?
+
     func getCurrentScreen() -> NSScreen? {
-        let mouseLocation = NSEvent.mouseLocation
+        let mouseLocation = pointerLocationOverride ?? NSEvent.mouseLocation
         return NSScreen.screens.first { $0.frame.contains(mouseLocation) }
     }
 
@@ -431,7 +434,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(showColorPicker(_:)), #selector(showLineWidthPicker(_:)):
-            return visibleMainOverlayWindow != nil
+            return pickerOverlayWindow != nil
         case #selector(toggleFadeMode(_:)), #selector(clearAllAnnotations):
             // Space / Option-Delete become menu equivalents and must not fire
             // while Settings (or any other window) is key.
@@ -451,6 +454,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindows.values.forEach { $0.setYieldsToMenus(false) }
     }
 
+    /// Opens the status menu when a press on an overlay lands on the status item (#122), and
+    /// returns whether it did. The overlay covers the menu bar, so the item never gets the press.
+    /// On the menu bar that hosts the item, this clicks the button, which looks and behaves like a
+    /// real click. Another display's menu bar shows a copy of the item, and clicking the button
+    /// would open the menu on the host display, so the menu opens under the copy instead.
+    func openStatusMenu(forPressAt point: NSPoint) -> Bool {
+        guard let button = statusItem?.button,
+              let menu = statusItem?.menu,
+              let buttonWindow = button.window,
+              let hostScreen = buttonWindow.screen,
+              let hit = StatusItemHitTest.hit(
+                  at: point,
+                  buttonFrame: buttonWindow.frame,
+                  hostScreenFrame: hostScreen.frame,
+                  screenFrames: NSScreen.screens.map(\.frame),
+                  menuBarFrames: StatusItemHitTest.visibleMenuBarFrames
+              )
+        else { return false }
+
+        if hit.isOnHostMenuBar {
+            button.performClick(nil)
+        } else {
+            menu.popUp(positioning: nil, at: StatusItemHitTest.popUpMenuLocation(for: hit), in: nil)
+        }
+        return true
+    }
+
     /// Status-menu key equivalents are app-wide. Overlay-owned actions only
     /// run when an overlay itself is the key window.
     ///
@@ -463,16 +493,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
 
-    private var visibleMainOverlayWindow: OverlayWindow? {
-        guard let mainScreen = NSScreen.main,
-            let overlayWindow = overlayWindows[mainScreen],
-            overlayWindow.isVisible
-        else { return nil }
-        return overlayWindow
+    /// The visible overlay the quick pickers open on: the one on the display under the pointer,
+    /// then the key overlay, then the one on the main screen, then any other. Choosing a menu
+    /// item leaves the pointer on the menu's display, which is the overlay the menu opened from.
+    /// `NSScreen.main` can't come first: on macOS 27 it names the display with the menu bar even
+    /// while the key window is an overlay on another display, so a menu opened from that other
+    /// display's overlay greyed out the pickers (#122).
+    private var pickerOverlayWindow: OverlayWindow? {
+        let pointerOverlay = getCurrentScreen().flatMap { overlayWindows[$0] }
+        let mainOverlay = NSScreen.main.flatMap { overlayWindows[$0] }
+        let candidates = [pointerOverlay, NSApp.keyWindow as? OverlayWindow, mainOverlay]
+            + NSScreen.screens.map { overlayWindows[$0] }
+        return candidates.lazy.compactMap { $0 }.first { $0.isVisible }
     }
 
     private func showQuickPicker(_ mode: QuickPickerView.Mode) {
-        guard let overlayWindow = visibleMainOverlayWindow else { return }
+        guard let overlayWindow = pickerOverlayWindow else { return }
+        // The picker reads Escape and the number keys from its own overlay, and another
+        // display's overlay may still be key.
+        overlayWindow.makeKeyAndOrderFront(nil)
         let anchor = NSPoint(
             x: overlayWindow.overlayView.bounds.midX,
             y: overlayWindow.overlayView.bounds.midY)
