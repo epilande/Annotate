@@ -280,30 +280,26 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.selectedObjects, [.arrow(index: 0)])
     }
 
-    func testFadeCompactionTrimsExpiredPathPointsAndRebuildsBezier() {
+    func testFadeCompactionDropsExpiredStrokesWholeAndRemapsSelection() {
         overlayView.fadeMode = true
         let now = CACurrentMediaTime()
-        var path = DrawingPath(
-            points: [
-                TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now - 10),
-                TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now - 10),
-                TimedPoint(point: NSPoint(x: 20, y: 0), timestamp: now)
-            ],
-            color: .systemRed,
-            lineWidth: 3
-        )
-        path.bezierPath = NSBezierPath()
-        path.bezierPath?.move(to: NSPoint(x: 0, y: 0))
-        path.bezierPath?.line(to: NSPoint(x: 10, y: 0))
-        path.bezierPath?.line(to: NSPoint(x: 20, y: 0))
-        overlayView.paths = [path]
-        overlayView.selectedObjects = [.path(index: 0)]
+        // Point timestamps older than the fade no longer matter: only the commit time does.
+        let points = [
+            TimedPoint(point: NSPoint(x: 0, y: 0), timestamp: now - 10),
+            TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now - 10),
+            TimedPoint(point: NSPoint(x: 20, y: 0), timestamp: now - 10)
+        ]
+        overlayView.paths = [
+            DrawingPath(points: points, color: .systemRed, lineWidth: 3, creationTime: now - 10),
+            DrawingPath(points: points, color: .systemBlue, lineWidth: 3, creationTime: now)
+        ]
+        overlayView.selectedObjects = [.path(index: 1)]
 
         overlayView.compactExpiredAnnotations()
 
         XCTAssertEqual(overlayView.paths.count, 1)
-        XCTAssertEqual(overlayView.paths.first?.points.count, 1)
-        XCTAssertEqual(overlayView.paths.first?.bezierPath?.elementCount, 1)
+        XCTAssertEqual(overlayView.paths.first?.color, .systemBlue)
+        XCTAssertEqual(overlayView.paths.first?.points.count, 3)
         XCTAssertEqual(overlayView.selectedObjects, [.path(index: 0)])
     }
 
@@ -1022,6 +1018,86 @@ final class OverlayViewTests: XCTestCase, Sendable {
         seedFadingLine(age: 3.7)
         overlayView.compactExpiredAnnotations()
         XCTAssertTrue(overlayView.lines.isEmpty)
+    }
+
+    /// A thick horizontal stroke finished `age` seconds ago, the only annotation on the overlay.
+    /// Its points carry the times they were drawn, over the half second before pen up.
+    private func seedFadingStroke(_ tool: ToolType, age: CFTimeInterval) {
+        overlayView.fadeMode = true
+        let creationTime = CACurrentMediaTime() - age
+        let pointCount = 31
+        var stroke = DrawingPath(
+            points: (0..<pointCount).map { index in
+                TimedPoint(
+                    point: NSPoint(x: 100 + CGFloat(index) * 20, y: 300),
+                    timestamp: creationTime - 0.5 + 0.5 * Double(index) / Double(pointCount - 1))
+            },
+            color: .systemRed,
+            lineWidth: 20,
+            creationTime: creationTime)
+        stroke.recacheBounds()
+        overlayView.paths = tool == .pen ? [stroke] : []
+        overlayView.highlightPaths = tool == .highlighter ? [stroke] : []
+    }
+
+    private func strokes(_ tool: ToolType) -> [DrawingPath] {
+        tool == .pen ? overlayView.paths : overlayView.highlightPaths
+    }
+
+    /// A finished stroke holds at the alpha it was laid down at for the whole fade delay,
+    /// then fades over `fadeOutDuration` like every other annotation and is compacted.
+    private func assertStrokeHoldsForFadeDelay(
+        _ tool: ToolType, delay: CFTimeInterval, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        overlayView.fadeDelay = delay
+        let laydown = tool.laydownAlpha
+
+        seedFadingStroke(tool, age: 0)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.02, file: file, line: line)
+
+        // Right before the hold ends the whole stroke is still there at full strength.
+        seedFadingStroke(tool, age: delay - 0.1)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(strokes(tool).count, 1, "stroke compacted during the hold", file: file, line: line)
+        XCTAssertEqual(strokes(tool).first?.points.count, 31, "points trimmed during the hold", file: file, line: line)
+        XCTAssertTrue(overlayView.isAnythingFading(), file: file, line: line)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.02, file: file, line: line)
+
+        // After the hold the stroke fades as a whole, on the same curve shapes use.
+        let age = delay + 0.3
+        let before = CACurrentMediaTime()
+        seedFadingStroke(tool, age: age)
+        let alpha = renderedMaxAlpha(of: overlayView)
+        let elapsed = CACurrentMediaTime() - before
+        let pixelSlop = 0.01
+        let highest = laydown * (overlayView.fadeDuration - age) + pixelSlop
+        let lowest = laydown * (overlayView.fadeDuration - age - elapsed) - pixelSlop
+        XCTAssertTrue(
+            (lowest...highest).contains(Double(alpha)),
+            "mid-fade alpha \(alpha) outside \(lowest)...\(highest)",
+            file: file,
+            line: line)
+
+        seedFadingStroke(tool, age: overlayView.fadeDuration + 0.1)
+        overlayView.compactExpiredAnnotations()
+        XCTAssertEqual(strokes(tool).count, 0, "stroke outlived the fade", file: file, line: line)
+        XCTAssertFalse(overlayView.isAnythingFading(), file: file, line: line)
+    }
+
+    func testPenStrokeHoldsForShortFadeDelay() {
+        assertStrokeHoldsForFadeDelay(.pen, delay: 0.25)
+    }
+
+    func testPenStrokeHoldsForFiveSecondFadeDelay() {
+        assertStrokeHoldsForFadeDelay(.pen, delay: 5)
+    }
+
+    func testHighlighterStrokeHoldsForShortFadeDelay() {
+        assertStrokeHoldsForFadeDelay(.highlighter, delay: 0.25)
+    }
+
+    func testHighlighterStrokeHoldsForFiveSecondFadeDelay() {
+        assertStrokeHoldsForFadeDelay(.highlighter, delay: 5)
     }
 
     func testShortFadeDelayRemovesAnnotationsSooner() {

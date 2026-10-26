@@ -645,7 +645,8 @@ final class OverlayWindowTests: XCTestCase, Sendable {
                 TimedPoint(point: NSPoint(x: 10, y: 0), timestamp: now)
             ],
             color: .systemRed,
-            lineWidth: 3
+            lineWidth: 3,
+            creationTime: now
         )
         window.overlayView.paths.append(path)
         window.overlayView.registerUndo(action: .addPath(path))
