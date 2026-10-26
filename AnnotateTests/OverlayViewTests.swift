@@ -1020,11 +1020,18 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertTrue(overlayView.lines.isEmpty)
     }
 
-    /// A thick horizontal stroke finished `age` seconds ago, the only annotation on the overlay.
-    /// Its points carry the times they were drawn, over the half second before pen up.
+    /// The fixed time stroke fade tests evaluate at, so a slow run can't move a stroke
+    /// across the hold boundary between seeding and rendering.
+    private let strokeFadeNow: CFTimeInterval = 1_000
+
+    /// A thick horizontal stroke finished `age` seconds before `strokeFadeNow`, the only
+    /// annotation on the overlay. Its points carry the times they were drawn, over the half
+    /// second before pen up.
     private func seedFadingStroke(_ tool: ToolType, age: CFTimeInterval) {
         overlayView.fadeMode = true
-        let creationTime = CACurrentMediaTime() - age
+        let now = strokeFadeNow
+        overlayView.fadeClock = { now }
+        let creationTime = now - age
         let pointCount = 31
         var stroke = DrawingPath(
             points: (0..<pointCount).map { index in
@@ -1053,32 +1060,28 @@ final class OverlayViewTests: XCTestCase, Sendable {
         let laydown = tool.laydownAlpha
 
         seedFadingStroke(tool, age: 0)
-        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.02, file: file, line: line)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.01, file: file, line: line)
 
-        // Right before the hold ends the whole stroke is still there at full strength.
-        seedFadingStroke(tool, age: delay - 0.1)
+        // A millisecond before the hold ends the whole stroke is still there at full strength.
+        seedFadingStroke(tool, age: delay - 0.001)
         overlayView.compactExpiredAnnotations()
         XCTAssertEqual(strokes(tool).count, 1, "stroke compacted during the hold", file: file, line: line)
         XCTAssertEqual(strokes(tool).first?.points.count, 31, "points trimmed during the hold", file: file, line: line)
         XCTAssertTrue(overlayView.isAnythingFading(), file: file, line: line)
-        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.02, file: file, line: line)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.01, file: file, line: line)
 
         // After the hold the stroke fades as a whole, on the same curve shapes use.
         let age = delay + 0.3
-        let before = CACurrentMediaTime()
         seedFadingStroke(tool, age: age)
-        let alpha = renderedMaxAlpha(of: overlayView)
-        let elapsed = CACurrentMediaTime() - before
-        let pixelSlop = 0.01
-        let highest = laydown * (overlayView.fadeDuration - age) + pixelSlop
-        let lowest = laydown * (overlayView.fadeDuration - age - elapsed) - pixelSlop
-        XCTAssertTrue(
-            (lowest...highest).contains(Double(alpha)),
-            "mid-fade alpha \(alpha) outside \(lowest)...\(highest)",
+        XCTAssertEqual(
+            renderedMaxAlpha(of: overlayView),
+            laydown * (overlayView.fadeDuration - age),
+            accuracy: 0.01,
+            "mid-fade alpha",
             file: file,
             line: line)
 
-        seedFadingStroke(tool, age: overlayView.fadeDuration + 0.1)
+        seedFadingStroke(tool, age: overlayView.fadeDuration + 0.001)
         overlayView.compactExpiredAnnotations()
         XCTAssertEqual(strokes(tool).count, 0, "stroke outlived the fade", file: file, line: line)
         XCTAssertFalse(overlayView.isAnythingFading(), file: file, line: line)
@@ -1098,6 +1101,33 @@ final class OverlayViewTests: XCTestCase, Sendable {
 
     func testHighlighterStrokeHoldsForFiveSecondFadeDelay() {
         assertStrokeHoldsForFadeDelay(.highlighter, delay: 5)
+    }
+
+    /// The fade loop stops when Fade Mode turns off, so the switch itself has to repaint a
+    /// stroke caught mid-fade back at full strength.
+    func testSwitchingToPersistMidFadeRedrawsStrokesAtFullStrength() {
+        for tool in [ToolType.pen, .highlighter] {
+            seedFadingStroke(tool, age: overlayView.fadeDelay + 0.3)
+            XCTAssertLessThan(renderedMaxAlpha(of: overlayView), tool.laydownAlpha / 2, "\(tool) mid-fade")
+
+            // Host the view so `needsDisplay` reflects what AppKit would repaint. Pixels are
+            // checked unhosted: an offscreen render can swallow the window's pending redraw.
+            let window = NSWindow(
+                contentRect: overlayView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = overlayView
+            overlayView.display()
+            XCTAssertFalse(overlayView.needsDisplay, "\(tool): nothing left to display")
+
+            overlayView.fadeMode = false
+
+            XCTAssertTrue(overlayView.needsDisplay, "\(tool): switching to Persist redraws")
+            window.contentView = nil
+            window.close()
+
+            XCTAssertEqual(strokes(tool).count, 1)
+            XCTAssertEqual(renderedMaxAlpha(of: overlayView), tool.laydownAlpha, accuracy: 0.01, "\(tool)")
+        }
     }
 
     func testShortFadeDelayRemovesAnnotationsSooner() {

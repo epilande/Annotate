@@ -8,7 +8,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-MAX_SITES=14
+MAX_SITES=13
 MAX_OVERLAY_WINDOW_SITES=0
 
 sites() {

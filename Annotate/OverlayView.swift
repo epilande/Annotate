@@ -277,7 +277,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     var fadeMode: Bool = true {
-        didSet { notifyToolbarChanged() }
+        didSet {
+            notifyToolbarChanged()
+            // The fade loop stops on a switch to Persist, so repaint here or anything caught
+            // mid-fade stays faint until something else redraws.
+            if fadeMode != oldValue { redrawAllAnnotations() }
+        }
     }
     /// Seconds an annotation holds at full opacity in Fade Mode. `AppDelegate` keeps it in step
     /// with the Fade Delay setting.
@@ -286,6 +291,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
     let fadeOutDuration: CFTimeInterval = 0.625
     /// Age at which an annotation is gone in Fade Mode.
     var fadeDuration: CFTimeInterval { fadeDelay + fadeOutDuration }
+    /// The time fade alphas and expiry are measured at. Test hook: production keeps the media
+    /// clock that creation times are stamped with.
+    var fadeClock: () -> CFTimeInterval = CACurrentMediaTime
 
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
@@ -427,6 +435,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// view repaints even when compaction leaves the document as it was.
     func advanceFade() {
         compactExpiredAnnotations()
+        redrawAllAnnotations()
+    }
+
+    /// Repaints the whole overlay for a change outside the document that alters how every
+    /// annotation draws: the fade clock, the fade mode, or board color adaptation.
+    private func redrawAllAnnotations() {
         needsDisplay = true
     }
 
@@ -841,7 +855,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let now = fadeMode ? CACurrentMediaTime() : 0
+        let now = fadeMode ? fadeClock() : 0
 
         for step in document.paintOrder() {
             switch step {
@@ -1381,7 +1395,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func compactExpiredAnnotations() {
         guard fadeMode else { return }
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
 
         compactItems(
             \.arrows,
@@ -2801,7 +2815,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
         let stillFadingArrows = arrows.contains { arrow in
             if let creationTime = arrow.creationTime {
                 return (now - creationTime) < fadeDuration
@@ -2871,14 +2885,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func updateAdaptColors(boardEnabled: Bool) {
         adaptColorsToBoardType = boardEnabled
-        needsDisplay = true
+        redrawAllAnnotations()
     }
     
     // MARK: - Selection and Hit Testing
     
     private func isFadedOut(_ object: SelectedObject) -> Bool {
         guard fadeMode else { return false }
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
         switch object {
         case .arrow(let index):
             guard index < arrows.count else { return true }
