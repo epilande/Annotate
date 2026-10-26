@@ -781,7 +781,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         let screenFrame = overlayWindow.screen?.frame ?? NSScreen.main?.frame ?? .zero
         overlayWindow.setFrame(screenFrame, display: true)
         overlayWindow.orderFront(nil)
-        overlayWindow.stopFadeLoop()
     }
     
     /// Pushes the stored Fade Delay to every overlay. Annotations already on screen follow the
@@ -930,13 +929,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         if sender is NSMenuItem && !isOverlayKeyWindow { return }
         let isCurrentlyFadeMode = overlayWindows.values.first?.overlayView.fadeMode ?? true
 
+        // Each overlay starts or stops its own fade loop when its mode changes.
         for window in overlayWindows.values {
             window.overlayView.fadeMode.toggle()
-            if window.overlayView.fadeMode {
-                window.overlayView.startFadeLoopIfNeeded()
-            } else {
-                window.stopFadeLoop()
-            }
         }
 
         settings[.fadeMode] = !isCurrentlyFadeMode

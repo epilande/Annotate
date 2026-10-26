@@ -939,17 +939,57 @@ final class OverlayViewTests: XCTestCase, Sendable {
 
     // MARK: - Fade delay
 
-    /// A thick line created `age` seconds ago, the only annotation on the overlay.
+    /// The fixed time fade tests evaluate at, so a slow run can't move an annotation across
+    /// a fade boundary between seeding and rendering.
+    private let fadeNow: CFTimeInterval = 1_000
+
+    /// One fade-loop tick, as `OverlayWindow.fadeInterval` schedules it.
+    private let fadeInterval: CFTimeInterval = 1.0 / 60.0
+
+    /// Pins the overlay's fade clock `offset` seconds after `fadeNow`.
+    private func setFadeClock(_ offset: CFTimeInterval = 0) {
+        let time = fadeNow + offset
+        overlayView.fadeClock = { time }
+    }
+
+    /// A thick line created `age` seconds before `fadeNow`, the only annotation on the overlay.
     private func seedFadingLine(age: CFTimeInterval) {
         overlayView.fadeMode = true
+        setFadeClock()
         overlayView.lines = [
             Line(
                 startPoint: NSPoint(x: 100, y: 300),
                 endPoint: NSPoint(x: 700, y: 300),
                 color: .systemRed,
                 lineWidth: 20,
-                creationTime: CACurrentMediaTime() - age)
+                creationTime: fadeNow - age)
         ]
+    }
+
+    /// A thick horizontal stroke finished `age` seconds before `fadeNow`, the only annotation
+    /// on the overlay. Its points carry the times they were drawn, over the half second
+    /// before pen up.
+    private func seedFadingStroke(_ tool: ToolType, age: CFTimeInterval) {
+        overlayView.fadeMode = true
+        setFadeClock()
+        let creationTime = fadeNow - age
+        let pointCount = 31
+        var stroke = DrawingPath(
+            points: (0..<pointCount).map { index in
+                TimedPoint(
+                    point: NSPoint(x: 100 + CGFloat(index) * 20, y: 300),
+                    timestamp: creationTime - 0.5 + 0.5 * Double(index) / Double(pointCount - 1))
+            },
+            color: .systemRed,
+            lineWidth: 20,
+            creationTime: creationTime)
+        stroke.recacheBounds()
+        overlayView.paths = tool == .pen ? [stroke] : []
+        overlayView.highlightPaths = tool == .highlighter ? [stroke] : []
+    }
+
+    private func strokes(_ tool: ToolType) -> [DrawingPath] {
+        tool == .pen ? overlayView.paths : overlayView.highlightPaths
     }
 
     /// The highest alpha in an offscreen render of the overlay, 0 when nothing draws.
@@ -969,36 +1009,64 @@ final class OverlayViewTests: XCTestCase, Sendable {
         return maxAlpha
     }
 
-    /// Renders a line `age` seconds into its fade-out and checks it drew at `fadeDuration - age`
-    /// alpha. The bounds come from the clock around the render, so a slow CI pass can't fail it.
-    private func assertMidFadeAlpha(age: CFTimeInterval, file: StaticString = #filePath, line: UInt = #line) {
-        let before = CACurrentMediaTime()
-        seedFadingLine(age: age)
-        let creationTime = overlayView.lines[0].creationTime ?? before
-        let alpha = renderedMaxAlpha(of: overlayView)
-        let after = CACurrentMediaTime()
-
-        let pixelSlop = 0.01
-        let highest = overlayView.fadeDuration - (before - creationTime) + pixelSlop
-        let lowest = overlayView.fadeDuration - (after - creationTime) - pixelSlop
-        XCTAssertTrue(
-            (lowest...highest).contains(Double(alpha)),
-            "alpha \(alpha) outside \(lowest)...\(highest)",
-            file: file,
-            line: line)
+    /// The highest alpha in a small render around the middle of the seeded line or stroke.
+    /// Much cheaper than `renderedMaxAlpha`, for checks that render many frames.
+    private func renderedCenterAlpha() -> CGFloat {
+        let patch = NSRect(x: 395, y: 295, width: 10, height: 10)
+        guard let rep = overlayView.bitmapImageRepForCachingDisplay(in: patch) else { return -1 }
+        overlayView.cacheDisplay(in: patch, to: rep)
+        var maxAlpha: CGFloat = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                if let color = rep.colorAt(x: x, y: y) { maxAlpha = max(maxAlpha, color.alphaComponent) }
+            }
+        }
+        return maxAlpha
     }
 
-    func testDefaultFadeTimingIsUnchanged() {
-        // Holds at full opacity for 0.625 s, then fades from 0.625 alpha to nothing at 1.25 s.
-        seedFadingLine(age: 0.3)
-        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.02)
+    /// Renders one frame per fade-loop tick from two ticks before the hold ends to one tick
+    /// after the fade does, and checks the fade leaves `fullAlpha` without a step, never
+    /// brightens, and never changes by more than `maxStep` between frames.
+    private func assertFadeIsSmooth(
+        fullAlpha: CGFloat, maxStep: CGFloat = 0.05, file: StaticString = #filePath, line: UInt = #line,
+        seed: (CFTimeInterval) -> Void
+    ) {
+        var age = overlayView.fadeDelay - 2 * fadeInterval
+        var previous: CGFloat?
+        while age <= overlayView.fadeDuration + fadeInterval {
+            seed(age)
+            let alpha = renderedCenterAlpha()
+            if let previous {
+                XCTAssertLessThanOrEqual(alpha, previous + 0.005, "brightened at age \(age)", file: file, line: line)
+                XCTAssertLessThanOrEqual(previous - alpha, maxStep, "jumped at age \(age)", file: file, line: line)
+            } else {
+                XCTAssertEqual(alpha, fullAlpha, accuracy: 0.01, "faded during the hold", file: file, line: line)
+            }
+            previous = alpha
+            age += fadeInterval
+        }
+        XCTAssertEqual(previous ?? -1, 0, accuracy: 0.01, "still visible after the fade", file: file, line: line)
+    }
 
-        assertMidFadeAlpha(age: 0.9)
+    func testDefaultFadeTiming() {
+        // Holds at full opacity for 0.625 s, then eases from 1 to nothing by 1.25 s.
+        seedFadingLine(age: 0.3)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.01)
+
+        seedFadingLine(age: overlayView.fadeDelay)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.01, "the fade starts at full strength")
+
+        seedFadingLine(age: overlayView.fadeDelay + overlayView.fadeOutDuration / 2)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 0.5, accuracy: 0.01)
 
         seedFadingLine(age: 1.3)
         XCTAssertEqual(renderedMaxAlpha(of: overlayView), 0, accuracy: 0.01)
         overlayView.compactExpiredAnnotations()
         XCTAssertTrue(overlayView.lines.isEmpty)
+    }
+
+    func testFadeStartsAtFullStrengthAndNeverJumps() {
+        assertFadeIsSmooth(fullAlpha: 1) { seedFadingLine(age: $0) }
     }
 
     func testFadeDelayHoldsAnnotationsForTheConfiguredTime() {
@@ -1010,45 +1078,15 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.compactExpiredAnnotations()
         XCTAssertEqual(overlayView.lines.count, 1)
         XCTAssertTrue(overlayView.isAnythingFading())
-        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.02)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.01)
 
         // The fade-out keeps its length and starts once the hold ends.
-        assertMidFadeAlpha(age: 3.3)
+        seedFadingLine(age: 3 + overlayView.fadeOutDuration / 2)
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 0.5, accuracy: 0.01)
 
         seedFadingLine(age: 3.7)
         overlayView.compactExpiredAnnotations()
         XCTAssertTrue(overlayView.lines.isEmpty)
-    }
-
-    /// The fixed time stroke fade tests evaluate at, so a slow run can't move a stroke
-    /// across the hold boundary between seeding and rendering.
-    private let strokeFadeNow: CFTimeInterval = 1_000
-
-    /// A thick horizontal stroke finished `age` seconds before `strokeFadeNow`, the only
-    /// annotation on the overlay. Its points carry the times they were drawn, over the half
-    /// second before pen up.
-    private func seedFadingStroke(_ tool: ToolType, age: CFTimeInterval) {
-        overlayView.fadeMode = true
-        let now = strokeFadeNow
-        overlayView.fadeClock = { now }
-        let creationTime = now - age
-        let pointCount = 31
-        var stroke = DrawingPath(
-            points: (0..<pointCount).map { index in
-                TimedPoint(
-                    point: NSPoint(x: 100 + CGFloat(index) * 20, y: 300),
-                    timestamp: creationTime - 0.5 + 0.5 * Double(index) / Double(pointCount - 1))
-            },
-            color: .systemRed,
-            lineWidth: 20,
-            creationTime: creationTime)
-        stroke.recacheBounds()
-        overlayView.paths = tool == .pen ? [stroke] : []
-        overlayView.highlightPaths = tool == .highlighter ? [stroke] : []
-    }
-
-    private func strokes(_ tool: ToolType) -> [DrawingPath] {
-        tool == .pen ? overlayView.paths : overlayView.highlightPaths
     }
 
     /// A finished stroke holds at the alpha it was laid down at for the whole fade delay,
@@ -1071,15 +1109,11 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.01, file: file, line: line)
 
         // After the hold the stroke fades as a whole, on the same curve shapes use.
-        let age = delay + 0.3
-        seedFadingStroke(tool, age: age)
+        seedFadingStroke(tool, age: delay + overlayView.fadeOutDuration / 2)
         XCTAssertEqual(
-            renderedMaxAlpha(of: overlayView),
-            laydown * (overlayView.fadeDuration - age),
-            accuracy: 0.01,
-            "mid-fade alpha",
-            file: file,
-            line: line)
+            renderedMaxAlpha(of: overlayView), laydown / 2, accuracy: 0.01, "mid-fade alpha", file: file, line: line)
+
+        assertFadeIsSmooth(fullAlpha: laydown, file: file, line: line) { seedFadingStroke(tool, age: $0) }
 
         seedFadingStroke(tool, age: overlayView.fadeDuration + 0.001)
         overlayView.compactExpiredAnnotations()
@@ -1103,12 +1137,12 @@ final class OverlayViewTests: XCTestCase, Sendable {
         assertStrokeHoldsForFadeDelay(.highlighter, delay: 5)
     }
 
-    /// The fade loop stops when Fade Mode turns off, so the switch itself has to repaint a
-    /// stroke caught mid-fade back at full strength.
-    func testSwitchingToPersistMidFadeRedrawsStrokesAtFullStrength() {
+    /// A stroke caught mid-fade by a switch to Persist eases back to full strength from where
+    /// it was, rather than snapping, and the switch itself asks for the first repaint.
+    func testSwitchingToPersistMidFadeEasesStrokesBackToFullStrength() {
         for tool in [ToolType.pen, .highlighter] {
-            seedFadingStroke(tool, age: overlayView.fadeDelay + 0.3)
-            XCTAssertLessThan(renderedMaxAlpha(of: overlayView), tool.laydownAlpha / 2, "\(tool) mid-fade")
+            let laydown = tool.laydownAlpha
+            seedFadingStroke(tool, age: overlayView.fadeDelay + overlayView.fadeOutDuration / 2)
 
             // Host the view so `needsDisplay` reflects what AppKit would repaint. Pixels are
             // checked unhosted: an offscreen render can swallow the window's pending redraw.
@@ -1125,16 +1159,47 @@ final class OverlayViewTests: XCTestCase, Sendable {
             window.contentView = nil
             window.close()
 
+            XCTAssertTrue(overlayView.isAnythingFading(), "\(tool): the ease keeps the fade loop running")
+            XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown / 2, accuracy: 0.01, "\(tool): snapped")
+
+            var previous = laydown / 2
+            var elapsed = fadeInterval
+            while elapsed < overlayView.persistRestoreDuration {
+                setFadeClock(elapsed)
+                let alpha = renderedCenterAlpha()
+                XCTAssertGreaterThanOrEqual(alpha, previous - 0.005, "\(tool): dimmed at \(elapsed)")
+                XCTAssertLessThanOrEqual(alpha - previous, 0.1 * laydown, "\(tool): jumped at \(elapsed)")
+                previous = alpha
+                elapsed += fadeInterval
+            }
+
+            setFadeClock(overlayView.persistRestoreDuration)
+            XCTAssertEqual(renderedMaxAlpha(of: overlayView), laydown, accuracy: 0.01, "\(tool)")
+            setFadeClock(overlayView.persistRestoreDuration + fadeInterval)
+            XCTAssertFalse(overlayView.isAnythingFading(), "\(tool): the ease is over")
             XCTAssertEqual(strokes(tool).count, 1)
-            XCTAssertEqual(renderedMaxAlpha(of: overlayView), tool.laydownAlpha, accuracy: 0.01, "\(tool)")
         }
+    }
+
+    func testSwitchingToPersistDuringTheHoldStartsNoEase() {
+        seedFadingStroke(.pen, age: 0.1)
+        overlayView.fadeMode = false
+        XCTAssertFalse(overlayView.isAnythingFading())
+        XCTAssertEqual(renderedMaxAlpha(of: overlayView), 1, accuracy: 0.01)
+    }
+
+    func testSwitchingToPersistDropsWhatAlreadyFadedOut() {
+        seedFadingLine(age: overlayView.fadeDuration + 0.1)
+        overlayView.fadeMode = false
+        XCTAssertTrue(overlayView.lines.isEmpty, "a finished fade must not come back in Persist")
     }
 
     func testShortFadeDelayRemovesAnnotationsSooner() {
         overlayView.fadeDelay = 0.25
 
+        // Still in the hold at the default delay, already fading here.
         seedFadingLine(age: 0.5)
-        XCTAssertLessThan(renderedMaxAlpha(of: overlayView), 0.5)
+        XCTAssertLessThan(renderedMaxAlpha(of: overlayView), 0.9)
 
         seedFadingLine(age: 0.9)
         overlayView.compactExpiredAnnotations()

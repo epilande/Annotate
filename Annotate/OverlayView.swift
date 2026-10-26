@@ -277,11 +277,17 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     var fadeMode: Bool = true {
+        // Whatever has finished fading goes before Persist could bring it back.
+        willSet { if fadeMode && !newValue { compactExpiredAnnotations() } }
         didSet {
             notifyToolbarChanged()
-            // The fade loop stops on a switch to Persist, so repaint here or anything caught
-            // mid-fade stays faint until something else redraws.
-            if fadeMode != oldValue { redrawAllAnnotations() }
+            guard fadeMode != oldValue else { return }
+            // Anything caught mid-fade by a switch to Persist eases back to full strength.
+            let now = fadeClock()
+            persistRestoreStart = !fadeMode && isAnythingDimmed(at: now) ? now : nil
+            redrawAllAnnotations()
+            (window as? OverlayWindow)?.stopFadeLoop()
+            startFadeLoopIfNeeded()
         }
     }
     /// Seconds an annotation holds at full opacity in Fade Mode. `AppDelegate` keeps it in step
@@ -294,6 +300,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// The time fade alphas and expiry are measured at. Test hook: production keeps the media
     /// clock that creation times are stamped with.
     var fadeClock: () -> CFTimeInterval = CACurrentMediaTime
+    /// How long annotations caught mid-fade take to return to full strength after a switch
+    /// to Persist.
+    let persistRestoreDuration: CFTimeInterval = 0.15
+    /// When Persist began easing dimmed annotations back, or nil when nothing was dimmed.
+    private var persistRestoreStart: CFTimeInterval?
 
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
@@ -425,7 +436,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func startFadeLoopIfNeeded() {
-        guard fadeMode else { return }
         compactExpiredAnnotations()
         guard isAnythingFading() else { return }
         (window as? OverlayWindow)?.startFadeLoop()
@@ -855,7 +865,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let now = fadeMode ? fadeClock() : 0
+        let now = fadeClock()
 
         for step in document.paintOrder() {
             switch step {
@@ -1301,8 +1311,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func fadeAlphaIfVisible(creationTime: CFTimeInterval?, now: CFTimeInterval) -> CGFloat? {
-        guard fadeMode else { return 1 }
         guard let creationTime else { return 1 }
+        guard fadeMode else { return persistRestoreAlpha(creationTime: creationTime, now: now) }
         let age = now - creationTime
         guard age < fadeDuration else { return nil }
         return alphaForAge(age)
@@ -1385,12 +1395,44 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return bounds.insetBy(dx: -padding, dy: -padding)
     }
 
-    /// Full opacity through the hold, then a linear fade that starts at `fadeOutDuration` alpha
-    /// rather than 1 and reaches 0 at `fadeDuration`. That step is how Fade Mode has always
-    /// looked, and with `fadeOutDuration` under 1 second the alpha never exceeds 1.
+    /// Full opacity through the hold, then an eased fade from 1 to 0 over `fadeOutDuration`.
+    /// The curve leaves 1 with zero slope, so the fade never starts with a visible step.
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
-        if age <= fadeDelay { return 1.0 }
-        return CGFloat(max(0, fadeDuration - age))
+        guard age > fadeDelay else { return 1 }
+        let progress = min(1, (age - fadeDelay) / fadeOutDuration)
+        return CGFloat(1 - Self.smoothstep(progress))
+    }
+
+    /// In Persist, eases an annotation from the alpha it had when Fade Mode turned off back
+    /// to full strength over `persistRestoreDuration`.
+    private func persistRestoreAlpha(creationTime: CFTimeInterval, now: CFTimeInterval) -> CGFloat {
+        guard let start = persistRestoreStart else { return 1 }
+        let progress = (now - start) / persistRestoreDuration
+        guard progress < 1 else { return 1 }
+        let from = alphaForAge(start - creationTime)
+        return from + (1 - from) * CGFloat(Self.smoothstep(max(0, progress)))
+    }
+
+    private var isRestoringFromFade: Bool {
+        guard let start = persistRestoreStart else { return false }
+        return fadeClock() - start < persistRestoreDuration
+    }
+
+    /// Whether anything that fades is past its hold at `now`, so it draws below full strength.
+    private func isAnythingDimmed(at now: CFTimeInterval) -> Bool {
+        let creationTimes =
+            arrows.map(\.creationTime) + lines.map(\.creationTime) + circles.map(\.creationTime)
+            + rectangles.filter { !$0.isRedaction }.map(\.creationTime)
+            + textAnnotations.map(\.creationTime) + counterAnnotations.map(\.creationTime)
+            + paths.map(\.creationTime) + highlightPaths.map(\.creationTime)
+        return creationTimes.contains { creationTime in
+            creationTime.map { now - $0 > fadeDelay } ?? false
+        }
+    }
+
+    /// 0 at 0 and 1 at 1, with zero slope at both ends.
+    private static func smoothstep(_ progress: Double) -> Double {
+        progress * progress * (3 - 2 * progress)
     }
 
     func compactExpiredAnnotations() {
@@ -2812,7 +2854,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func isAnythingFading() -> Bool {
         guard fadeMode else {
-            return false
+            return isRestoringFromFade
         }
 
         let now = fadeClock()
