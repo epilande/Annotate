@@ -2843,12 +2843,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
-        let stillFadingPaths = (paths + highlightPaths).contains { path in
+        let duration = fadeDuration
+        let isStrokeFading = { (path: DrawingPath) -> Bool in
             if let creationTime = path.creationTime {
-                return (now - creationTime) < fadeDuration
+                return (now - creationTime) < duration
             }
             return false
         }
+        let stillFadingPaths = paths.contains(where: isStrokeFading) || highlightPaths.contains(where: isStrokeFading)
 
         return stillFadingArrows
             || stillFadingLines
