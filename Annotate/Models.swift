@@ -137,7 +137,7 @@ enum TextResizeHandle: CaseIterable, Hashable {
     case left, right
 }
 
-/// Represents a timed point for pen/highlighter so we can do trailing fade-out
+/// A freehand stroke point and the event time it was drawn at.
 struct TimedPoint {
     var point: NSPoint
     var timestamp: CFTimeInterval
@@ -150,8 +150,8 @@ struct DrawingPath {
     var lineWidth: CGFloat
     var bezierPath: NSBezierPath? = nil
     var cachedBounds: NSRect = .null
-    /// When the stroke was committed. Point timestamps cannot stand in for it: they are
-    /// rebased to start at mouseUp and fading drops the oldest ones, so they drift later.
+    /// When the stroke was committed (pen up). Fade Mode holds and fades the whole stroke from
+    /// this time, like every other annotation, rather than from its point timestamps.
     var creationTime: CFTimeInterval? = nil
 
     mutating func recacheBounds() {

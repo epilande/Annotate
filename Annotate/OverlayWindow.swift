@@ -905,7 +905,7 @@ class OverlayWindow: NSPanel {
         // A drag whose mouse-up never arrived is still live: macOS can drop a mouse-up, for
         // example a synthesized one. Finish it as that mouse-up would have, so starting the
         // next gesture never silently throws away a finished stroke, shape, or redaction.
-        if commitLiveDrawing(timestamp: event.timestamp), overlayView.fadeMode {
+        if commitLiveDrawing(), overlayView.fadeMode {
             startFadeLoop()
         }
         // A box drag or side handle resize whose mouse-up never arrived must not carry into
@@ -1363,16 +1363,9 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    // Rebases timestamps so the fade clock starts at mouseUp
-    private func commitFreehandStroke(_ tool: ToolType, timestamp: TimeInterval) {
-        guard var stroke = overlayView.endFreehandStroke(tool: tool),
-            let firstTimestamp = stroke.points.first?.timestamp
-        else { return }
-
-        let offset = timestamp - firstTimestamp
-        for index in stroke.points.indices {
-            stroke.points[index].timestamp += offset
-        }
+    /// Stamps the stroke at pen up, which is when its Fade Mode hold starts.
+    private func commitFreehandStroke(_ tool: ToolType) {
+        guard var stroke = overlayView.endFreehandStroke(tool: tool), !stroke.points.isEmpty else { return }
         stroke.creationTime = CACurrentMediaTime()
 
         if tool == .pen {
@@ -1434,12 +1427,12 @@ class OverlayWindow: NSPanel {
     /// Commits the live freehand stroke or shape on the tool its drag started with, and ends
     /// any redaction preview. Returns whether anything was committed.
     @discardableResult
-    private func commitLiveDrawing(timestamp: TimeInterval) -> Bool {
+    private func commitLiveDrawing() -> Bool {
         overlayView.endRedactionDrag()
         restoreMouseCoalescing()
         var committed = false
         if let strokeTool = activeFreehandTool {
-            commitFreehandStroke(strokeTool, timestamp: timestamp)
+            commitFreehandStroke(strokeTool)
             activeFreehandTool = nil
             committed = true
         }
@@ -1499,7 +1492,7 @@ class OverlayWindow: NSPanel {
         }
 
         // Commit before the selection and text branches below, which return early.
-        commitLiveDrawing(timestamp: event.timestamp)
+        commitLiveDrawing()
 
         if overlayView.fadeMode {
             startFadeLoop()

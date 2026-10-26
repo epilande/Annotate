@@ -277,7 +277,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     var fadeMode: Bool = true {
-        didSet { notifyToolbarChanged() }
+        // Whatever has finished fading goes before Persist could bring it back.
+        willSet { if fadeMode && !newValue { compactExpiredAnnotations() } }
+        didSet {
+            notifyToolbarChanged()
+            guard fadeMode != oldValue else { return }
+            // Anything caught mid-fade by a switch to Persist eases back to full strength.
+            let now = fadeClock()
+            persistRestoreStart = !fadeMode && isAnythingDimmed(at: now) ? now : nil
+            redrawAllAnnotations()
+            (window as? OverlayWindow)?.stopFadeLoop()
+            startFadeLoopIfNeeded()
+        }
     }
     /// Seconds an annotation holds at full opacity in Fade Mode. `AppDelegate` keeps it in step
     /// with the Fade Delay setting.
@@ -286,6 +297,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
     let fadeOutDuration: CFTimeInterval = 0.625
     /// Age at which an annotation is gone in Fade Mode.
     var fadeDuration: CFTimeInterval { fadeDelay + fadeOutDuration }
+    /// The time fade alphas and expiry are measured at. Test hook: production keeps the media
+    /// clock that creation times are stamped with.
+    var fadeClock: () -> CFTimeInterval = CACurrentMediaTime
+    /// How long annotations caught mid-fade take to return to full strength after a switch
+    /// to Persist.
+    let persistRestoreDuration: CFTimeInterval = 0.15
+    /// When Persist began easing dimmed annotations back, or nil when nothing was dimmed.
+    private var persistRestoreStart: CFTimeInterval?
 
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
@@ -417,7 +436,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func startFadeLoopIfNeeded() {
-        guard fadeMode else { return }
         compactExpiredAnnotations()
         guard isAnythingFading() else { return }
         (window as? OverlayWindow)?.startFadeLoop()
@@ -427,6 +445,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// view repaints even when compaction leaves the document as it was.
     func advanceFade() {
         compactExpiredAnnotations()
+        redrawAllAnnotations()
+    }
+
+    /// Repaints the whole overlay for a change outside the document that alters how every
+    /// annotation draws: the fade clock, the fade mode, or board color adaptation.
+    private func redrawAllAnnotations() {
         needsDisplay = true
     }
 
@@ -841,7 +865,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let now = fadeMode ? CACurrentMediaTime() : 0
+        let now = fadeClock()
 
         for step in document.paintOrder() {
             switch step {
@@ -952,26 +976,28 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         case .penStrokes:
             for path in paths where layer.contains(path.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: path.creationTime, now: now) else { continue }
                 guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
-                drawPath(path, tool: .pen, bezierPath: path.bezierPath)
+                drawPath(path, tool: .pen, alpha: alpha, bezierPath: path.bezierPath)
             }
 
             if includingLive, let path = currentPath,
                 intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
             {
-                drawPath(path, tool: .pen, bezierPath: currentPathBezier)
+                drawPath(path, tool: .pen, alpha: 1, bezierPath: currentPathBezier)
             }
 
         case .highlights:
             for path in highlightPaths where layer.contains(path.creationTime) {
+                guard let alpha = fadeAlphaIfVisible(creationTime: path.creationTime, now: now) else { continue }
                 guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
-                drawPath(path, tool: .highlighter, bezierPath: path.bezierPath)
+                drawPath(path, tool: .highlighter, alpha: alpha, bezierPath: path.bezierPath)
             }
 
             if includingLive, let highlight = currentHighlight,
                 intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
             {
-                drawPath(highlight, tool: .highlighter, bezierPath: currentHighlightBezier)
+                drawPath(highlight, tool: .highlighter, alpha: 1, bezierPath: currentHighlightBezier)
             }
 
         case .outlines:
@@ -1285,8 +1311,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func fadeAlphaIfVisible(creationTime: CFTimeInterval?, now: CFTimeInterval) -> CGFloat? {
-        guard fadeMode else { return 1 }
         guard let creationTime else { return 1 }
+        guard fadeMode else { return persistRestoreAlpha(creationTime: creationTime, now: now) }
         let age = now - creationTime
         guard age < fadeDuration else { return nil }
         return alphaForAge(age)
@@ -1369,17 +1395,49 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return bounds.insetBy(dx: -padding, dy: -padding)
     }
 
-    /// Full opacity through the hold, then a linear fade that starts at `fadeOutDuration` alpha
-    /// rather than 1 and reaches 0 at `fadeDuration`. That step is how Fade Mode has always
-    /// looked, and with `fadeOutDuration` under 1 second the alpha never exceeds 1.
+    /// Full opacity through the hold, then an eased fade from 1 to 0 over `fadeOutDuration`.
+    /// The curve leaves 1 with zero slope, so the fade never starts with a visible step.
     private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
-        if age <= fadeDelay { return 1.0 }
-        return CGFloat(max(0, fadeDuration - age))
+        guard age > fadeDelay else { return 1 }
+        let progress = min(1, (age - fadeDelay) / fadeOutDuration)
+        return CGFloat(1 - Self.smoothstep(progress))
+    }
+
+    /// In Persist, eases an annotation from the alpha it had when Fade Mode turned off back
+    /// to full strength over `persistRestoreDuration`.
+    private func persistRestoreAlpha(creationTime: CFTimeInterval, now: CFTimeInterval) -> CGFloat {
+        guard let start = persistRestoreStart else { return 1 }
+        let progress = (now - start) / persistRestoreDuration
+        guard progress < 1 else { return 1 }
+        let from = alphaForAge(start - creationTime)
+        return from + (1 - from) * CGFloat(Self.smoothstep(max(0, progress)))
+    }
+
+    private var isRestoringFromFade: Bool {
+        guard let start = persistRestoreStart else { return false }
+        return fadeClock() - start < persistRestoreDuration
+    }
+
+    /// Whether anything that fades is past its hold at `now`, so it draws below full strength.
+    private func isAnythingDimmed(at now: CFTimeInterval) -> Bool {
+        let creationTimes =
+            arrows.map(\.creationTime) + lines.map(\.creationTime) + circles.map(\.creationTime)
+            + rectangles.filter { !$0.isRedaction }.map(\.creationTime)
+            + textAnnotations.map(\.creationTime) + counterAnnotations.map(\.creationTime)
+            + paths.map(\.creationTime) + highlightPaths.map(\.creationTime)
+        return creationTimes.contains { creationTime in
+            creationTime.map { now - $0 > fadeDelay } ?? false
+        }
+    }
+
+    /// 0 at 0 and 1 at 1, with zero slope at both ends.
+    private static func smoothstep(_ progress: Double) -> Double {
+        progress * progress * (3 - 2 * progress)
     }
 
     func compactExpiredAnnotations() {
         guard fadeMode else { return }
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
 
         compactItems(
             \.arrows,
@@ -1427,15 +1485,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
             editingTextAnnotationIndex = editingTextAnnotationIndex.flatMap { textIndexMap[$0] }
             draggedTextAnnotationIndex = draggedTextAnnotationIndex.flatMap { textIndexMap[$0] }
         }
-        compactFadedPaths(
+        compactItems(
             \.paths,
-            now: now,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .path(let index) = $0 { return index }; return nil },
             make: { .path(index: $0) }
         )
-        compactFadedPaths(
+        compactItems(
             \.highlightPaths,
-            now: now,
+            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
             extractIndex: { if case .highlight(let index) = $0 { return index }; return nil },
             make: { .highlight(index: $0) }
         )
@@ -1468,37 +1526,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         document[keyPath: itemsKey] = newItems
         remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
         return indexMap
-    }
-
-    private func compactFadedPaths(
-        _ pathsKey: WritableKeyPath<OverlayDocument, [DrawingPath]>,
-        now: CFTimeInterval,
-        extractIndex: (SelectedObject) -> Int?,
-        make: (Int) -> SelectedObject
-    ) {
-        let paths = document[keyPath: pathsKey]
-        var newPaths: [DrawingPath] = []
-        var indexMap: [Int: Int] = [:]
-        var trimmed = false
-        let limit = fadeDuration / 4
-        newPaths.reserveCapacity(paths.count)
-        for (oldIndex, var path) in paths.enumerated() {
-            let remaining = path.points.filter { (now - $0.timestamp) < limit }
-            if remaining.isEmpty { continue }
-            if remaining.count != path.points.count {
-                path.points = remaining
-                rebuildPathGeometry(&path)
-                trimmed = true
-            }
-            indexMap[oldIndex] = newPaths.count
-            newPaths.append(path)
-        }
-        let countChanged = newPaths.count != paths.count
-        guard countChanged || trimmed else { return }
-        document[keyPath: pathsKey] = newPaths
-        if countChanged {
-            remapSelection(indexMap: indexMap, extractIndex: extractIndex, make: make)
-        }
     }
 
     private func remapSelection(
@@ -1885,6 +1912,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func drawPath(
         _ path: DrawingPath,
         tool: ToolType,
+        alpha: CGFloat,
         bezierPath: NSBezierPath? = nil
     ) {
         guard !path.points.isEmpty else { return }
@@ -1892,7 +1920,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let adaptedColor = adaptColorForBoard(path.color, boardType: currentBoardType)
         let renderedPath = bezierPath ?? makeBezierPath(points: path.points)
 
-        adaptedColor.withAlphaComponent(tool.laydownAlpha).setStroke()
+        adaptedColor.withAlphaComponent(tool.laydownAlpha * alpha).setStroke()
         renderedPath.lineWidth = path.lineWidth * tool.strokeWidthMultiplier
         renderedPath.lineJoinStyle = .round
         renderedPath.lineCapStyle = .round
@@ -2311,7 +2339,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 path.points = path.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
-                        timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
+                        timestamp: timedPoint.timestamp
                     )
                 }
                 rebuildPathGeometry(&path)
@@ -2324,7 +2352,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 highlight.points = highlight.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
-                        timestamp: fadeMode ? CACurrentMediaTime() : timedPoint.timestamp
+                        timestamp: timedPoint.timestamp
                     )
                 }
                 rebuildPathGeometry(&highlight)
@@ -2826,10 +2854,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func isAnythingFading() -> Bool {
         guard fadeMode else {
-            return false
+            return isRestoringFromFade
         }
 
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
         let stillFadingArrows = arrows.contains { arrow in
             if let creationTime = arrow.creationTime {
                 return (now - creationTime) < fadeDuration
@@ -2871,19 +2899,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return false
         }
 
-        let maxPathAge =
-            highlightPaths.contains { path in
-                if let minTimestamp = path.points.map({ $0.timestamp }).min() {
-                    return (now - minTimestamp) < fadeDuration
-                }
-                return false
+        let duration = fadeDuration
+        let isStrokeFading = { (path: DrawingPath) -> Bool in
+            if let creationTime = path.creationTime {
+                return (now - creationTime) < duration
             }
-            || paths.contains { path in
-                if let minTimestamp = path.points.map({ $0.timestamp }).min() {
-                    return (now - minTimestamp) < fadeDuration
-                }
-                return false
-            }
+            return false
+        }
+        let stillFadingPaths = paths.contains(where: isStrokeFading) || highlightPaths.contains(where: isStrokeFading)
 
         return stillFadingArrows
             || stillFadingLines
@@ -2891,7 +2914,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || stillFadingCircles
             || stillFadingText
             || stillFadingCounters
-            || maxPathAge
+            || stillFadingPaths
     }
 
     func adaptColorForBoard(_ color: NSColor, boardType: BoardView.BoardType) -> NSColor {
@@ -2904,14 +2927,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func updateAdaptColors(boardEnabled: Bool) {
         adaptColorsToBoardType = boardEnabled
-        needsDisplay = true
+        redrawAllAnnotations()
     }
     
     // MARK: - Selection and Hit Testing
     
     private func isFadedOut(_ object: SelectedObject) -> Bool {
         guard fadeMode else { return false }
-        let now = CACurrentMediaTime()
+        let now = fadeClock()
         switch object {
         case .arrow(let index):
             guard index < arrows.count else { return true }
@@ -2930,21 +2953,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
             return fadeAlphaIfVisible(creationTime: counterAnnotations[index].creationTime, now: now) == nil
         case .path(let index):
             guard index < paths.count else { return true }
-            return !isPathVisible(paths[index], now: now)
+            return fadeAlphaIfVisible(creationTime: paths[index].creationTime, now: now) == nil
         case .highlight(let index):
             guard index < highlightPaths.count else { return true }
-            return !isPathVisible(highlightPaths[index], now: now)
+            return fadeAlphaIfVisible(creationTime: highlightPaths[index].creationTime, now: now) == nil
         case .text(let index):
             guard index < textAnnotations.count else { return true }
             return fadeAlphaIfVisible(creationTime: textAnnotations[index].creationTime, now: now) == nil
         case .none:
             return false
         }
-    }
-
-    private func isPathVisible(_ path: DrawingPath, now: CFTimeInterval) -> Bool {
-        let limit = fadeDuration / 4
-        return path.points.contains { (now - $0.timestamp) < limit }
     }
 
     /// Find object at point, checking in reverse order (topmost/latest first)
