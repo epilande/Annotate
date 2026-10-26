@@ -397,8 +397,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 
+    /// Tests set this because XCTest can't move the pointer.
+    var pointerLocationOverride: NSPoint?
+
     func getCurrentScreen() -> NSScreen? {
-        let mouseLocation = NSEvent.mouseLocation
+        let mouseLocation = pointerLocationOverride ?? NSEvent.mouseLocation
         return NSScreen.screens.first { $0.frame.contains(mouseLocation) }
     }
 
@@ -506,6 +509,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     private func showQuickPicker(_ mode: QuickPickerView.Mode) {
         guard let overlayWindow = pickerOverlayWindow else { return }
+        // The picker reads Escape and the number keys from its own overlay, and another
+        // display's overlay may still be key.
+        overlayWindow.makeKeyAndOrderFront(nil)
         let anchor = NSPoint(
             x: overlayWindow.overlayView.bounds.midX,
             y: overlayWindow.overlayView.bounds.midY)

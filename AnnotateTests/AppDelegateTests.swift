@@ -209,6 +209,45 @@ final class AppDelegateTests: XCTestCase, Sendable {
         overlayWindow.cancelQuickPicker()
     }
 
+    /// With an overlay visible on each display, the picker opens on the one under the pointer even
+    /// when the other is key, and must take keyboard focus so Escape and the number keys reach it.
+    /// Needs a second display.
+    func testPickerTakesKeyboardFocusFromTheOtherDisplaysOverlay() throws {
+        let screens = NSScreen.screens
+        try XCTSkipUnless(screens.count > 1, "Needs a second display")
+        let keyOverlay = try XCTUnwrap(appDelegate.overlayWindows[screens[0]])
+        let pointerOverlay = try XCTUnwrap(appDelegate.overlayWindows[screens[1]])
+        pointerOverlay.orderFront(nil)
+        keyOverlay.makeKeyAndOrderFront(nil)
+        defer {
+            appDelegate.pointerLocationOverride = nil
+            keyOverlay.orderOut(nil)
+            pointerOverlay.orderOut(nil)
+        }
+        XCTAssertTrue(keyOverlay.isKeyWindow)
+        appDelegate.pointerLocationOverride = NSPoint(x: screens[1].frame.midX, y: screens[1].frame.midY)
+
+        appDelegate.showColorPicker(nil)
+        XCTAssertTrue(pointerOverlay.isQuickPickerOpen)
+        XCTAssertFalse(keyOverlay.isQuickPickerOpen)
+        XCTAssertTrue(NSApp.keyWindow === pointerOverlay)
+        NSApp.keyWindow?.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(
+            type: .keyDown, keyCode: 53, windowNumber: pointerOverlay.windowNumber)))
+        XCTAssertFalse(pointerOverlay.isQuickPickerOpen, "Escape must reach the picker's overlay")
+        XCTAssertTrue(keyOverlay.isVisible && pointerOverlay.isVisible, "Escape must only close the picker")
+
+        keyOverlay.makeKeyAndOrderFront(nil)
+        pointerOverlay.overlayView.currentTool = .pen
+        appDelegate.showLineWidthPicker(nil)
+        XCTAssertTrue(NSApp.keyWindow === pointerOverlay)
+        let firstWidth = try XCTUnwrap(QuickPickerView.widthOptions.first)
+        pointerOverlay.overlayView.currentLineWidth = firstWidth + 1
+        NSApp.keyWindow?.sendEvent(try XCTUnwrap(TestEvents.createKeyEvent(
+            type: .keyDown, keyCode: 18, characters: "1", windowNumber: pointerOverlay.windowNumber)))
+        XCTAssertEqual(pointerOverlay.overlayView.currentLineWidth, firstWidth, "1 must pick the first width")
+        pointerOverlay.cancelQuickPicker()
+    }
+
     // MARK: - Clear Drawings Tests
 
     func testToggleOverlayClearsDrawingsWhenEnabled() {
