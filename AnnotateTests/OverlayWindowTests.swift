@@ -1696,6 +1696,24 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.sendEvent(event!)
     }
 
+    func testAPlacedCounterTakesTheCounterStyleSetting() {
+        let defaults = TestUserDefaults.create()
+        window.overlayView.pickerUserDefaultsOverride = defaults
+        window.overlayView.fadeMode = false
+        window.overlayView.currentTool = .counter
+
+        sendMouse(.leftMouseDown, at: NSPoint(x: 200, y: 200))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 200, y: 200))
+        defaults.settings[.counterStyle] = .filled
+        sendMouse(.leftMouseDown, at: NSPoint(x: 300, y: 200))
+        sendMouse(.leftMouseUp, at: NSPoint(x: 300, y: 200))
+
+        XCTAssertEqual(
+            window.overlayView.counterAnnotations.map(\.style),
+            [.bordered, .filled],
+            "Changing the style restyles new counters only")
+    }
+
     private func sendMouse(_ type: NSEvent.EventType, at location: NSPoint) {
         window.sendEvent(
             TestEvents.createMouseEvent(

@@ -642,6 +642,82 @@ final class OverlayViewTests: XCTestCase, Sendable {
     }
 
     /// Offscreen-renders the view and counts its non-transparent pixels.
+    func testFilledCounterPaintsItsCircleInTheColorWithAWhiteNumber() throws {
+        let center = NSPoint(x: 200, y: 200)
+        var counter = CounterAnnotation(number: 8, position: center, color: .red, fontSize: 28)
+        // Inside the circle, clear of both the number and the bordered style's stroke.
+        let fillPoint = NSPoint(x: center.x + counter.radius * 0.7, y: center.y)
+
+        overlayView.counterAnnotations = [counter]
+        let bordered = try renderBitmap(of: overlayView)
+        let borderedFill = try color(in: bordered, at: fillPoint)
+        let borderedFillIsOpaqueRed = borderedFill.redComponent > 0.8 && borderedFill.greenComponent < 0.2
+            && borderedFill.alphaComponent > 0.9
+        XCTAssertFalse(
+            borderedFillIsOpaqueRed,
+            "The bordered style fills with a translucent contrasting color, not the selected color")
+        let borderedWhite = opaqueWhitePixelCount(in: bordered, within: counter.badgeRect)
+        XCTAssertEqual(borderedWhite, 0, "The bordered style draws its number in the selected color")
+
+        counter.style = .filled
+        overlayView.counterAnnotations = [counter]
+        let filled = try renderBitmap(of: overlayView)
+        let filledFill = try color(in: filled, at: fillPoint)
+        XCTAssertGreaterThan(filledFill.redComponent, 0.8)
+        XCTAssertLessThan(filledFill.greenComponent, 0.2)
+        XCTAssertLessThan(filledFill.blueComponent, 0.2)
+        XCTAssertGreaterThan(filledFill.alphaComponent, 0.9, "The filled style is an opaque disc")
+        let filledWhite = opaqueWhitePixelCount(in: filled, within: counter.badgeRect)
+        XCTAssertGreaterThan(filledWhite, 0, "The filled style draws its number in white")
+
+        let outside = try color(in: filled, at: NSPoint(x: center.x + counter.radius + 3, y: center.y))
+        XCTAssertLessThan(outside.alphaComponent, 0.1, "The filled style has no border ring")
+    }
+
+    private func renderBitmap(of view: NSView) throws -> NSBitmapImageRep {
+        let rep = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int(view.bounds.width),
+                pixelsHigh: Int(view.bounds.height),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: rep))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        view.draw(view.bounds)
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
+
+    /// Reads a pixel by the view's bottom-up coordinates; bitmap rows run top-down.
+    private func color(in rep: NSBitmapImageRep, at point: NSPoint) throws -> NSColor {
+        let color = try XCTUnwrap(rep.colorAt(x: Int(point.x), y: rep.pixelsHigh - 1 - Int(point.y)))
+        return try XCTUnwrap(color.usingColorSpace(.deviceRGB))
+    }
+
+    private func opaqueWhitePixelCount(in rep: NSBitmapImageRep, within rect: NSRect) -> Int {
+        var count = 0
+        for y in Int(rect.minY)..<Int(rect.maxY) {
+            for x in Int(rect.minX)..<Int(rect.maxX) {
+                guard let color = rep.colorAt(x: x, y: rep.pixelsHigh - 1 - y)?.usingColorSpace(.deviceRGB)
+                else { continue }
+                if color.alphaComponent > 0.95, color.redComponent > 0.9, color.greenComponent > 0.9,
+                    color.blueComponent > 0.9
+                {
+                    count += 1
+                }
+            }
+        }
+        return count
+    }
+
     private func renderedPixelCount(of view: NSView) -> Int {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return -1 }
         view.cacheDisplay(in: view.bounds, to: rep)

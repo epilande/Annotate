@@ -378,6 +378,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Default Text Size**: Adjust the default font size for text annotations.
 - **Label background**: Draw new text annotations on a rounded background pill for contrast.
 - **Default Counter Size**: Adjust the default size for counter annotations.
+- **Counter Style**: Bordered (default) draws a circle outlined in the selected color with the number in that color. Filled draws a borderless circle in the selected color with a white number. Existing counters keep the style they were placed with.
 - **Redact Tool**: Pick the **Style** (Solid, Pixelate, or Blur) for new redactions. Solid is the one to use for passwords and other secrets. Pixelate and Blur show the Screen Recording permission status with a shortcut to System Settings.
 
 ### Board

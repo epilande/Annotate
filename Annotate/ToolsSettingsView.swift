@@ -7,6 +7,8 @@ struct ToolsSettingsView: View {
     private var textBackgroundEnabled: Bool
     @AppStorage(.counterFontSize)
     private var defaultCounterSize: Double
+    @AppStorage(.counterStyle)
+    private var counterStyle: CounterStyle
     @AppStorage(.redactionStyle)
     private var redactionStyle: RectangleStyle
     @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
@@ -55,12 +57,23 @@ struct ToolsSettingsView: View {
                     valueText: { "\(Int($0)) pt" },
                     boundsText: { "\(Int($0)) pt" }
                 )
+                Picker("Style", selection: $counterStyle) {
+                    ForEach(CounterStyle.allCases, id: \.self) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                Text(counterStyle == .bordered
+                    ? "A circle outlined in the selected color with the number in that color."
+                    : "A circle filled with the selected color with a white number.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: {
                 SettingsHeader(
                     icon: "number.circle",
                     color: .green,
                     title: "Counter Tool",
-                    subtitle: "Adjust the default size for counter annotations"
+                    subtitle: "Adjust the default size and style for counter annotations"
                 )
             }
 

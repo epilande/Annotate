@@ -382,11 +382,28 @@ struct TextAnnotation {
     }
 }
 
+/// How a counter badge paints its circle and number.
+enum CounterStyle: String, CaseIterable {
+    /// A circle stroked in the selected color, filled with a translucent contrasting color,
+    /// with the number in the selected color.
+    case bordered
+    /// A borderless circle filled with the selected color, with a white number.
+    case filled
+
+    var displayName: String {
+        switch self {
+        case .bordered: return "Bordered"
+        case .filled: return "Filled"
+        }
+    }
+}
+
 struct CounterAnnotation {
     var number: Int
     var position: NSPoint
     var color: NSColor
     var fontSize: CGFloat = defaultCounterFontSize
+    var style: CounterStyle = .bordered
     var creationTime: CFTimeInterval?
 
     /// The badge circle radius, scaled from the number's font size so the
@@ -524,6 +541,6 @@ extension CounterAnnotation: Equatable {
     public static func == (lhs: CounterAnnotation, rhs: CounterAnnotation) -> Bool {
         return lhs.number == rhs.number && lhs.position == rhs.position
             && lhs.color.isEqual(rhs.color) && lhs.fontSize == rhs.fontSize
-            && lhs.creationTime == rhs.creationTime
+            && lhs.style == rhs.style && lhs.creationTime == rhs.creationTime
     }
 }

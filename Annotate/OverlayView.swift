@@ -1956,19 +1956,28 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         let circlePath = NSBezierPath(ovalIn: counter.badgeRect)
 
-        let backgroundColor = adaptedColor.contrastingColor()
-        backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
-        circlePath.fill()
+        let numberColor: NSColor
+        switch counter.style {
+        case .bordered:
+            let backgroundColor = adaptedColor.contrastingColor()
+            backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
+            circlePath.fill()
 
-        adaptedColor.withAlphaComponent(alpha).setStroke()
-        circlePath.lineWidth = counter.strokeWidth
-        circlePath.stroke()
+            adaptedColor.withAlphaComponent(alpha).setStroke()
+            circlePath.lineWidth = counter.strokeWidth
+            circlePath.stroke()
+            numberColor = adaptedColor
+        case .filled:
+            adaptedColor.withAlphaComponent(alpha).setFill()
+            circlePath.fill()
+            numberColor = .white
+        }
 
         // Draw the number
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: adaptedColor.withAlphaComponent(alpha),
+            .foregroundColor: numberColor.withAlphaComponent(alpha),
             .font: NSFont.systemFont(ofSize: counter.fontSize, weight: .heavy),
             .paragraphStyle: paragraphStyle,
         ]
