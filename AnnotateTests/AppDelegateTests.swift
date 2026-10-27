@@ -513,13 +513,17 @@ final class AppDelegateTests: XCTestCase, Sendable {
             menu.items.first { $0.action == #selector(AppDelegate.toggleFadeMode(_:)) })
         let clearItem = try XCTUnwrap(
             menu.items.first { $0.action == #selector(AppDelegate.clearAllAnnotations) })
-        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows.values.first)
+        // Clear All acts on the screen under the pointer. Pin the pointer to this overlay's
+        // screen so the test doesn't depend on where the mouse is on a multi-display Mac.
+        let (screen, overlayWindow) = try XCTUnwrap(appDelegate.overlayWindows.first)
+        appDelegate.pointerLocationOverride = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.paths.append(TestFactory.createDrawingPath())
         appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
         defer {
             SettingsWindowManager.shared.settingsWindow?.close()
             overlayWindow.orderOut(nil)
+            appDelegate.pointerLocationOverride = nil
         }
 
         XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
