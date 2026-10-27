@@ -12,6 +12,21 @@ enum ToolbarAction {
     case undo
 }
 
+/// Which way the floating toolbar runs.
+enum ToolbarLayout: String, CaseIterable {
+    /// One row along the bottom, wrapping onto two rows on a narrow display.
+    case horizontal
+    /// One column, resting along the left edge.
+    case vertical
+
+    var displayName: String {
+        switch self {
+        case .horizontal: return "Horizontal"
+        case .vertical: return "Vertical"
+        }
+    }
+}
+
 @MainActor
 final class ToolbarModel: ObservableObject {
     @Published var activeTool: ToolType = .pen
@@ -20,6 +35,9 @@ final class ToolbarModel: ObservableObject {
     @Published var fadeMode = true
     /// Snapshot of the user's tool shortcuts, refreshed by the window on `.shortcutsDidChange`.
     @Published var shortcuts: [ShortcutKey: String] = [:]
+    /// Whether the chips carry their shortcut keycaps.
+    @Published var showsShortcuts = true
+    @Published var layout: ToolbarLayout = .horizontal
     /// Bumped after the live host is given a new measured size so `ViewThatFits` remounts
     /// against that width instead of keeping a stacked choice from a previous overlay.
     @Published var layoutGeneration = 0
@@ -51,21 +69,41 @@ struct ToolbarView: View {
         }
     }
 
-    private var toolbarContent: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
+    private var isVertical: Bool { model.layout == .vertical }
+
+    /// The direction chips run inside a segment.
+    private var segmentLayout: AnyLayout {
+        isVertical ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 2))
+    }
+
+    @ViewBuilder
+    private var segments: some View {
+        if isVertical {
+            VStack(spacing: 8) {
                 toolsSegment
                 stateSegment
                 actionsSegment
             }
-            VStack(spacing: 8) {
-                toolsSegment
+        } else {
+            ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
+                    toolsSegment
                     stateSegment
                     actionsSegment
                 }
+                VStack(spacing: 8) {
+                    toolsSegment
+                    HStack(spacing: 10) {
+                        stateSegment
+                        actionsSegment
+                    }
+                }
             }
         }
+    }
+
+    private var toolbarContent: some View {
+        segments
         .id(model.layoutGeneration)
         .animation(reduceMotion ? nil : spring, value: model.activeTool)
         .animation(spring, value: model.currentColor)
@@ -74,7 +112,7 @@ struct ToolbarView: View {
     }
 
     private var toolsSegment: some View {
-        HStack(spacing: 2) {
+        segmentLayout {
             ForEach(ToolType.allCases, id: \.self) { tool in
                 toolbarButton(identifier: "toolbar.tool.\(tool.rawValue)", action: {
                     perform(.tool(tool))
@@ -110,6 +148,7 @@ struct ToolbarView: View {
                         .frame(width: 14, height: 14)
                     keycap(shortcut(for: .colorPicker), lit: true)
                 }
+                .chipWidth(filling: isVertical)
                 .chipPadding()
             }
 
@@ -121,6 +160,7 @@ struct ToolbarView: View {
                         .frame(width: 14, height: 14)
                     keycap(shortcut(for: .lineWidthPicker), lit: true)
                 }
+                .chipWidth(filling: isVertical)
                 .chipPadding()
             }
 
@@ -150,7 +190,7 @@ struct ToolbarView: View {
     }
 
     private func segment<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 2) { content() }
+        segmentLayout { content() }
             .toolbarSegment()
     }
 
@@ -167,13 +207,23 @@ struct ToolbarView: View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
+                // Symbols differ in width; in a column that would leave the keycaps ragged.
+                .frame(minWidth: isVertical ? 14 : nil)
             keycap(text, lit: active)
         }
+        .chipWidth(filling: isVertical)
         .foregroundStyle(Color.primary.opacity(active ? 1 : 0.76))
         .chipPadding()
     }
 
+    @ViewBuilder
     private func keycap(_ text: String, lit: Bool = false) -> some View {
+        if model.showsShortcuts {
+            keycapLabel(text, lit: lit)
+        }
+    }
+
+    private func keycapLabel(_ text: String, lit: Bool) -> some View {
         Text(text.uppercased())
             .font(.system(size: 10, weight: .bold, design: .monospaced))
             .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
@@ -204,6 +254,12 @@ private extension View {
         padding(5)
             .toolbarGlassSegment()
             .fixedSize()
+    }
+
+    /// In a column, stretches every chip to the widest one so the selection lens and hover
+    /// targets line up. The segment is `fixedSize`, so "widest" is the column's own width.
+    func chipWidth(filling: Bool) -> some View {
+        frame(maxWidth: filling ? .infinity : nil, alignment: .leading)
     }
 
     func chipPadding() -> some View {

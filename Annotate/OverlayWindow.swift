@@ -130,6 +130,8 @@ class OverlayWindow: NSPanel {
         // `refreshToolbarShortcuts` measures the bar, and attaching it restores the saved
         // position, so the size is known by the time the placement runs.
         refreshToolbar()
+        toolbarModel.showsShortcuts = pickerSettings[.toolbarShowsShortcuts]
+        toolbarModel.layout = pickerSettings[.toolbarLayout]
         refreshToolbarShortcuts()
         updateToolbarVisibility()
         NotificationCenter.default.addObserver(
@@ -148,6 +150,21 @@ class OverlayWindow: NSPanel {
         toolbarModel.shortcuts = ShortcutManager.shared.allShortcuts
         // A longer keycap widens the chips, so the bar has to be re-measured or it clips.
         toolbarPanel?.fitToContent()
+    }
+
+    /// Picks up the toolbar's keycap visibility and layout from settings. A new layout puts
+    /// the bar where the user last left that layout, since the old spot was for another shape.
+    func refreshToolbarAppearance() {
+        let showsShortcuts = pickerSettings[.toolbarShowsShortcuts]
+        let layout = pickerSettings[.toolbarLayout]
+        let layoutChanged = toolbarModel.layout != layout
+        guard toolbarModel.showsShortcuts != showsShortcuts || layoutChanged else { return }
+        toolbarModel.showsShortcuts = showsShortcuts
+        toolbarModel.layout = layout
+        toolbarPanel?.fitToContent()
+        guard layoutChanged, let panel = toolbarPanel, panel.isAttached else { return }
+        cancelQuickPicker()
+        panel.restoreSavedPosition()
     }
 
     func refreshToolbar() {

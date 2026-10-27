@@ -196,9 +196,10 @@ final class ToolbarPanel: NSPanel {
 
     // MARK: - Sizing and placement
 
-    /// Measures the SwiftUI bar and resizes the panel around its bottom center. Holding the
-    /// center rather than the origin keeps a centered bar centered when `ViewThatFits` swaps
-    /// between the one-row and stacked layouts.
+    /// Measures the SwiftUI bar and resizes the panel around its bottom center, or around its
+    /// left middle when it runs vertically. Holding the center rather than the origin keeps a
+    /// centered bar centered when `ViewThatFits` swaps between the one-row and stacked
+    /// layouts, and a column parked on the left edge stays on it when keycaps come or go.
     func fitToContent() {
         guard let overlay else { return }
         // The width the bar may occupy. Proposing it is what lets `ViewThatFits` pick the
@@ -210,8 +211,14 @@ final class ToolbarPanel: NSPanel {
         lockedContentSize = size
 
         if size != frame.size {
-            let anchor = NSPoint(x: frame.midX, y: frame.minY)
-            place(NSRect(origin: NSPoint(x: anchor.x - size.width / 2, y: anchor.y), size: size))
+            let origin: NSPoint
+            switch model.layout {
+            case .horizontal:
+                origin = NSPoint(x: frame.midX - size.width / 2, y: frame.minY)
+            case .vertical:
+                origin = NSPoint(x: frame.minX, y: frame.midY - size.height / 2)
+            }
+            place(NSRect(origin: origin, size: size))
         }
 
         // A detached panel's contentView may still be 1×1 even after `setFrame`.
@@ -293,18 +300,27 @@ final class ToolbarPanel: NSPanel {
         applyMeasuredSizeToLiveHost()
     }
 
-    /// Puts the bar back where the user left it on this display, or at the default bottom
-    /// center when nothing valid is stored.
+    /// Puts the bar back where the user left it on this display in its current layout, or at
+    /// that layout's default when nothing valid is stored: bottom center for a row, left
+    /// middle for a column.
     func restoreSavedPosition() {
         guard let overlay else { return }
         let origin: NSPoint
-        if let offset = Self.savedOffset(for: overlay) {
+        if let offset = Self.savedOffset(for: overlay, layout: model.layout) {
             origin = NSPoint(x: overlay.frame.minX + offset.x, y: overlay.frame.minY + offset.y)
         } else {
-            origin = NSPoint(
-                x: overlay.frame.midX - frame.width / 2,
-                y: overlay.frame.minY + Self.edgeInset
-            )
+            switch model.layout {
+            case .horizontal:
+                origin = NSPoint(
+                    x: overlay.frame.midX - frame.width / 2,
+                    y: overlay.frame.minY + Self.edgeInset
+                )
+            case .vertical:
+                origin = NSPoint(
+                    x: overlay.frame.minX + Self.edgeInset,
+                    y: overlay.frame.midY - frame.height / 2
+                )
+            }
         }
         place(NSRect(origin: origin, size: frame.size))
     }
@@ -357,6 +373,15 @@ final class ToolbarPanel: NSPanel {
         }
     }
 
+    /// Where each layout's positions are stored. A column and a row are different shapes that
+    /// rest in different places, so one layout's spot is no guide to the other's.
+    static func positionsKey(for layout: ToolbarLayout) -> SettingKey<[String: [Double]]> {
+        switch layout {
+        case .horizontal: return .toolbarPositions
+        case .vertical: return .verticalToolbarPositions
+        }
+    }
+
     /// Stores the bar's offset from the overlay origin, keyed by display. Absolute screen
     /// coordinates would not survive a resolution change or a display being unplugged, and
     /// `setFrameAutosaveName` would both store them and write to the standard suite
@@ -369,10 +394,11 @@ final class ToolbarPanel: NSPanel {
             Double(frame.minX - overlay.frame.minX),
             Double(frame.minY - overlay.frame.minY),
         ]
-        var stored = settings[.toolbarPositions]
+        let positionsKey = Self.positionsKey(for: model.layout)
+        var stored = settings[positionsKey]
         guard stored[key] != offset else { return }
         stored[key] = offset
-        settings[.toolbarPositions] = stored
+        settings[positionsKey] = stored
     }
 
     /// The suite the app was given, and nothing when there is no app behind the bar. A bar
@@ -385,10 +411,10 @@ final class ToolbarPanel: NSPanel {
         AppDelegate.shared?.settings
     }
 
-    private static func savedOffset(for overlay: OverlayWindow) -> NSPoint? {
+    private static func savedOffset(for overlay: OverlayWindow, layout: ToolbarLayout) -> NSPoint? {
         guard let settings,
             let key = displayKey(for: overlay),
-            let stored = settings[.toolbarPositions][key],
+            let stored = settings[positionsKey(for: layout)][key],
             stored.count == 2,
             stored.allSatisfy({ $0.isFinite })
         else { return nil }

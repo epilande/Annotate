@@ -414,6 +414,63 @@ final class ToolbarTests: XCTestCase {
             "The toolbar snapshot must refresh on .shortcutsDidChange")
     }
 
+    func testHidingShortcutsDropsTheKeycapsAndNarrowsTheBar() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        XCTAssertTrue(window.toolbarModel.showsShortcuts)
+        let withKeycaps = panel.frame.size
+
+        defaults.settings[.toolbarShowsShortcuts] = false
+        appDelegate.overlayWindows[try XCTUnwrap(NSScreen.main)] = window
+        appDelegate.applyToolbarAppearance()
+
+        XCTAssertFalse(window.toolbarModel.showsShortcuts)
+        XCTAssertLessThan(panel.frame.width, withKeycaps.width, "Without keycaps the chips are icon-only")
+        // The window server rounds the frame to whole points, hence the 1 pt tolerance.
+        let barCenter = panel.frame.midX - window.frame.minX
+        XCTAssertEqual(barCenter, window.frame.width / 2, accuracy: 1, "A row re-measured in place stays centered")
+        XCTAssertEqual(window.toolbarFrame.minY, 20, accuracy: 0.5)
+    }
+
+    func testVerticalLayoutIsAColumnRestingAlongTheLeftEdge() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let row = panel.frame.size
+
+        defaults.settings[.toolbarLayout] = .vertical
+        appDelegate.overlayWindows[try XCTUnwrap(NSScreen.main)] = window
+        appDelegate.applyToolbarAppearance()
+
+        XCTAssertEqual(window.toolbarModel.layout, .vertical)
+        XCTAssertGreaterThan(panel.frame.height, panel.frame.width, "A column is taller than wide")
+        XCTAssertLessThan(panel.frame.width, row.width)
+        XCTAssertEqual(window.toolbarFrame.minX, ToolbarPanel.edgeInset, accuracy: 0.5)
+        XCTAssertEqual(window.toolbarFrame.midY, window.frame.height / 2, accuracy: 0.5)
+        XCTAssertFalse(
+            defaults.settings.hasValue(for: .verticalToolbarPositions),
+            "Placing the column at its default must not be recorded as the user parking it there")
+    }
+
+    func testEachLayoutRemembersItsOwnPosition() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
+        appDelegate.overlayWindows[try XCTUnwrap(NSScreen.main)] = window
+
+        panel.setFrameOrigin(NSPoint(x: window.frame.minX + 140, y: window.frame.minY + 500))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        defaults.settings[.toolbarLayout] = .vertical
+        appDelegate.applyToolbarAppearance()
+        panel.setFrameOrigin(NSPoint(x: window.frame.minX + 900, y: window.frame.minY + 100))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
+
+        XCTAssertEqual(defaults.settings[.toolbarPositions][key], [140, 500])
+        XCTAssertEqual(defaults.settings[.verticalToolbarPositions][key], [900, 100])
+
+        defaults.settings[.toolbarLayout] = .horizontal
+        appDelegate.applyToolbarAppearance()
+        XCTAssertEqual(window.toolbarFrame.minX, 140, accuracy: 0.5)
+        XCTAssertEqual(window.toolbarFrame.minY, 500, accuracy: 0.5)
+    }
+
     func testWidthChipSizeFollowsCanonicalWidthLadder() {
         window.toolbarModel.currentWidth = QuickPickerView.widthOptions.first!
         let smallest = window.toolbarModel.widthDotDiameter
