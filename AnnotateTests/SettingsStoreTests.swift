@@ -58,6 +58,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.lastUsedTool], .pen)
         XCTAssertEqual(settings[.defaultTool], .lastUsed)
         XCTAssertEqual(settings[.redactionStyle], .solid)
+        XCTAssertEqual(settings[.counterStyle], .bordered)
         XCTAssertEqual(settings[.activeCursorStyle], ActiveCursorStyle.none)
 
         assertColor(settings[.selectedColor], isCloseTo: .systemRed)
@@ -92,6 +93,7 @@ final class SettingsStoreTests: XCTestCase {
         settings[.lastUsedTool] = .counter
         settings[.defaultTool] = .tool(.arrow)
         settings[.redactionStyle] = .pixelate
+        settings[.counterStyle] = .filled
         settings[.activeCursorStyle] = .crosshair
         settings[.clickRippleColor] = .systemPurple
         settings[.hideCursorEffectsInApps] = ["com.apple.Keynote", "com.microsoft.Powerpoint"]
@@ -108,6 +110,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.lastUsedTool], .counter)
         XCTAssertEqual(settings[.defaultTool], .tool(.arrow))
         XCTAssertEqual(settings[.redactionStyle], .pixelate)
+        XCTAssertEqual(settings[.counterStyle], .filled)
         XCTAssertEqual(settings[.activeCursorStyle], .crosshair)
         assertColor(settings[.clickRippleColor], isCloseTo: .systemPurple)
         XCTAssertEqual(settings[.hideCursorEffectsInApps], ["com.apple.Keynote", "com.microsoft.Powerpoint"])
@@ -386,6 +389,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(AppStorage(.textFontSize, store: defaults).wrappedValue, Double(defaultTextAnnotationFontSize))
         XCTAssertEqual(AppStorage(.soundTheme, store: defaults).wrappedValue, .chalk)
         XCTAssertEqual(AppStorage(.fadeDelay, store: defaults).wrappedValue, 0.625)
+        XCTAssertEqual(AppStorage(.counterStyle, store: defaults).wrappedValue, .bordered)
 
         settings[.toolbarVisible] = false
         settings[.textFontSize] = 40

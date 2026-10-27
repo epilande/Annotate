@@ -1027,6 +1027,7 @@ class OverlayWindow: NSPanel {
                 position: startPoint,
                 color: currentColor,
                 fontSize: pickerSettings[.counterFontSize],
+                style: pickerSettings[.counterStyle],
                 creationTime: CACurrentMediaTime()
             )
 

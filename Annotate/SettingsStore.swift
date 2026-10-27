@@ -128,6 +128,12 @@ extension SettingKey<RectangleStyle> {
     static var redactionStyle: Self { .rawValue("RedactionStyle", default: .solid) { $0 != .outline } }
 }
 
+extension SettingKey<CounterStyle> {
+    /// The look the Counter tool gives new badges. Existing badges keep the style they were
+    /// placed with.
+    static var counterStyle: Self { .rawValue("CounterStyle", default: .bordered) }
+}
+
 extension SettingKey<ActiveCursorStyle> {
     static var activeCursorStyle: Self { .rawValue("ActiveCursorStyle", default: .none) }
 }
