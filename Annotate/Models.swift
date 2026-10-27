@@ -387,7 +387,8 @@ enum CounterStyle: String, CaseIterable {
     /// A circle stroked in the selected color, filled with a translucent contrasting color,
     /// with the number in the selected color.
     case bordered
-    /// A borderless circle filled with the selected color, with a white number.
+    /// A borderless circle filled with the selected color, with a white number, or a black
+    /// one on light colors such as yellow, cyan and white.
     case filled
 
     var displayName: String {
@@ -405,6 +406,13 @@ struct CounterAnnotation {
     var fontSize: CGFloat = defaultCounterFontSize
     var style: CounterStyle = .bordered
     var creationTime: CFTimeInterval?
+
+    /// The number color for the Filled style: white, or black on a fill light enough that a
+    /// white number would wash out. The cutoff sits in the palette's gap: orange and green
+    /// reach 0.65 and keep white, while yellow, cyan and white start at 0.78.
+    static func filledNumberColor(on fill: NSColor) -> NSColor {
+        fill.luminance < 0.7 ? .white : .black
+    }
 
     /// The badge circle radius, scaled from the number's font size so the
     /// original 15 pt radius is preserved at the default 14 pt font.

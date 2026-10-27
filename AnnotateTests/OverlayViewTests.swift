@@ -674,6 +674,17 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertLessThan(outside.alphaComponent, 0.1, "The filled style has no border ring")
     }
 
+    func testFilledCounterOnALightColorDrawsABlackNumber() throws {
+        let counter = CounterAnnotation(
+            number: 8, position: NSPoint(x: 200, y: 200), color: .white, fontSize: 28, style: .filled)
+        overlayView.counterAnnotations = [counter]
+
+        let rendered = try renderBitmap(of: overlayView)
+
+        let blackPixels = opaqueBlackPixelCount(in: rendered, within: counter.badgeRect)
+        XCTAssertGreaterThan(blackPixels, 0, "A white number on a white circle would be invisible")
+    }
+
     private func renderBitmap(of view: NSView) throws -> NSBitmapImageRep {
         let rep = try XCTUnwrap(
             NSBitmapImageRep(
@@ -703,14 +714,26 @@ final class OverlayViewTests: XCTestCase, Sendable {
     }
 
     private func opaqueWhitePixelCount(in rep: NSBitmapImageRep, within rect: NSRect) -> Int {
+        opaquePixelCount(in: rep, within: rect) {
+            $0.redComponent > 0.9 && $0.greenComponent > 0.9 && $0.blueComponent > 0.9
+        }
+    }
+
+    private func opaqueBlackPixelCount(in rep: NSBitmapImageRep, within rect: NSRect) -> Int {
+        opaquePixelCount(in: rep, within: rect) {
+            $0.redComponent < 0.1 && $0.greenComponent < 0.1 && $0.blueComponent < 0.1
+        }
+    }
+
+    private func opaquePixelCount(
+        in rep: NSBitmapImageRep, within rect: NSRect, matching isMatch: (NSColor) -> Bool
+    ) -> Int {
         var count = 0
         for y in Int(rect.minY)..<Int(rect.maxY) {
             for x in Int(rect.minX)..<Int(rect.maxX) {
                 guard let color = rep.colorAt(x: x, y: rep.pixelsHigh - 1 - y)?.usingColorSpace(.deviceRGB)
                 else { continue }
-                if color.alphaComponent > 0.95, color.redComponent > 0.9, color.greenComponent > 0.9,
-                    color.blueComponent > 0.9
-                {
+                if color.alphaComponent > 0.95, isMatch(color) {
                     count += 1
                 }
             }

@@ -64,7 +64,7 @@ struct ToolsSettingsView: View {
                 }
                 Text(counterStyle == .bordered
                     ? "A circle outlined in the selected color with the number in that color."
-                    : "A circle filled with the selected color with a white number.")
+                    : "A circle filled with the selected color with a white number, or a black one on light colors.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

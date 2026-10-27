@@ -1970,7 +1970,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .filled:
             adaptedColor.withAlphaComponent(alpha).setFill()
             circlePath.fill()
-            numberColor = .white
+            numberColor = CounterAnnotation.filledNumberColor(on: adaptedColor)
         }
 
         // Draw the number

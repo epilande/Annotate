@@ -4,17 +4,16 @@ extension NSColor {
     /// Returns a contrasting color (black or white) based on the brightness of the original color
     /// - Returns: White for dark colors, black for light colors
     func contrastingColor() -> NSColor {
-        guard let rgbColor = self.usingColorSpace(.sRGB) else {
-            return .white
-        }
+        luminance < 0.6 ? .white : .black
+    }
 
-        // Calculate luminance to determine if color is light or dark
-        // based on standard coefficients from the WCAG 2.0 specification
-        let luminance =
-            0.2126 * rgbColor.redComponent + 0.7152 * rgbColor.greenComponent + 0.0722
-            * rgbColor.blueComponent
-
-        return luminance < 0.6 ? .white : .black
+    /// Brightness from 0 (black) to 1 (white), weighting the sRGB components by the standard
+    /// coefficients from the WCAG 2.0 specification. A color that can't be converted to sRGB
+    /// reads as 0, so it is treated as dark.
+    var luminance: CGFloat {
+        guard let rgbColor = self.usingColorSpace(.sRGB) else { return 0 }
+        return 0.2126 * rgbColor.redComponent + 0.7152 * rgbColor.greenComponent
+            + 0.0722 * rgbColor.blueComponent
     }
 
     /// Compares two colors for approximate equality within a small tolerance

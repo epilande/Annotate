@@ -231,6 +231,19 @@ final class ModelTests: XCTestCase {
         XCTAssertNotEqual(bordered, filled)
     }
 
+    func testFilledCounterNumberIsBlackOnlyOnLightPaletteColors() {
+        let lightColors: [NSColor] = [.systemYellow, .cyan, .white]
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+                for color in colorPalette {
+                    let expected: NSColor = lightColors.contains(color) ? .black : .white
+                    let numberColor = CounterAnnotation.filledNumberColor(on: color)
+                    XCTAssertEqual(numberColor, expected, "\(color) in \(appearance.rawValue)")
+                }
+            }
+        }
+    }
+
     func testCounterToolFontSizeDefaultsAndPersists() {
         let defaults = TestUserDefaults.create()
         XCTAssertEqual(defaults.settings[.counterFontSize], defaultCounterFontSize)
