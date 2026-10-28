@@ -184,7 +184,7 @@ final class QuickPickerView: NSView {
         }
 
         let frame = Self.pickerFrame(
-            itemCount: mode == .color ? colorPalette.count : Self.options(for: mode).count,
+            itemCount: Self.itemCount(for: mode),
             anchor: anchor,
             within: placementBounds)
         super.init(frame: frame)
@@ -228,11 +228,24 @@ final class QuickPickerView: NSView {
         return options[steppedIndex]
     }
 
+    /// How far a picker keeps from the edges of the bounds it is placed in.
+    static let boundsInset: CGFloat = 8
+
+    static func pickerSize(for mode: Mode) -> NSSize {
+        pickerSize(itemCount: itemCount(for: mode))
+    }
+
+    private static func pickerSize(itemCount: Int) -> NSSize {
+        NSSize(width: padding * 2 + cellSize * CGFloat(itemCount), height: padding * 2 + cellSize)
+    }
+
+    private static func itemCount(for mode: Mode) -> Int {
+        mode == .color ? colorPalette.count : options(for: mode).count
+    }
+
     static func pickerFrame(itemCount: Int, anchor: NSPoint, within bounds: NSRect) -> NSRect {
-        let size = NSSize(
-            width: padding * 2 + cellSize * CGFloat(itemCount),
-            height: padding * 2 + cellSize)
-        let insetBounds = bounds.insetBy(dx: 8, dy: 8)
+        let size = pickerSize(itemCount: itemCount)
+        let insetBounds = bounds.insetBy(dx: boundsInset, dy: boundsInset)
 
         var origin = NSPoint(x: anchor.x - size.width / 2, y: anchor.y + 28)
         if origin.y + size.height > insetBounds.maxY {

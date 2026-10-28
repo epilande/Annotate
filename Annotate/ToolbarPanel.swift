@@ -373,6 +373,13 @@ final class ToolbarPanel: NSPanel {
         }
     }
 
+    /// Re-saves the bar's spot after a re-measure moved it, but only when the user parked it:
+    /// a bar that was never moved stays unsaved so it keeps following its layout's default.
+    func resavePositionIfParked() {
+        guard let overlay, Self.savedOffset(for: overlay, layout: model.layout) != nil else { return }
+        savePosition()
+    }
+
     /// Where each layout's positions are stored. A column and a row are different shapes that
     /// rest in different places, so one layout's spot is no guide to the other's.
     static func positionsKey(for layout: ToolbarLayout) -> SettingKey<[String: [Double]]> {

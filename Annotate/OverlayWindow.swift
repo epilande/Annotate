@@ -162,7 +162,13 @@ class OverlayWindow: NSPanel {
         toolbarModel.showsShortcuts = showsShortcuts
         toolbarModel.layout = layout
         toolbarPanel?.fitToContent()
-        guard layoutChanged, let panel = toolbarPanel, panel.isAttached else { return }
+        guard let panel = toolbarPanel, panel.isAttached else { return }
+        guard layoutChanged else {
+            // Re-measuring kept the bar centered on its old spot, so a parked bar's saved
+            // offset now points half the width change away and the next show would jump.
+            panel.resavePositionIfParked()
+            return
+        }
         cancelQuickPicker()
         panel.restoreSavedPosition()
     }
@@ -238,9 +244,16 @@ class OverlayWindow: NSPanel {
     }
 
     /// The largest slab of `bounds` left over once the bar is taken out of it, so a picker
-    /// placed inside it clears the bar wherever the user parked it. Falls back to the full
-    /// bounds when the two do not overlap or nothing usable remains.
-    static func placementBounds(_ bounds: NSRect, clearing bar: NSRect, gap: CGFloat) -> NSRect {
+    /// placed inside it clears the bar wherever the user parked it. Slabs a picker of `size`
+    /// fits in win over larger ones it does not: a column parked mid-screen leaves tall side
+    /// slabs narrower than the width picker, which would push it back over the bar. Falls back
+    /// to the full bounds when the two do not overlap or nothing usable remains.
+    static func placementBounds(
+        _ bounds: NSRect,
+        clearing bar: NSRect,
+        gap: CGFloat,
+        fitting size: NSSize
+    ) -> NSRect {
         guard !bar.isEmpty, bounds.intersects(bar) else { return bounds }
         let slabs = [
             NSRect(
@@ -259,7 +272,10 @@ class OverlayWindow: NSPanel {
         // Measured through `size`, not `width`/`height`: those are standardized, so a slab the
         // bar left no room for reports its negative extent as a positive one and wins on area.
         let usable = slabs.filter { $0.size.width > 0 && $0.size.height > 0 }
-        return usable.max { $0.width * $0.height < $1.width * $1.height } ?? bounds
+        let inset = QuickPickerView.boundsInset * 2
+        let roomy = usable.filter { $0.width - inset >= size.width && $0.height - inset >= size.height }
+        let candidates = roomy.isEmpty ? usable : roomy
+        return candidates.max { $0.width * $0.height < $1.width * $1.height } ?? bounds
     }
 
     /// The display this overlay covers. `NSWindow.screen` is nil while the window is off
@@ -578,7 +594,10 @@ class OverlayWindow: NSPanel {
         // The bar can sit anywhere now, so hand the picker the largest slab of canvas that
         // the bar does not occupy instead of assuming it hugs the bottom.
         let placementBounds = Self.placementBounds(
-            overlayView.bounds, clearing: toolbarFrame, gap: ToolbarPanel.pickerGap)
+            overlayView.bounds,
+            clearing: toolbarFrame,
+            gap: ToolbarPanel.pickerGap,
+            fitting: QuickPickerView.pickerSize(for: mode))
         let picker = QuickPickerView(
             mode: mode,
             anchor: anchor,

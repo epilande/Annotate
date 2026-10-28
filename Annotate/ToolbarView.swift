@@ -151,6 +151,8 @@ struct ToolbarView: View {
                 .chipWidth(filling: isVertical)
                 .chipPadding()
             }
+            // Without its keycap the chip is only a dot, so give VoiceOver a name for it.
+            .accessibilityLabel("Color")
 
             toolbarButton(identifier: "toolbar.width", action: { perform(.widthPicker) }) {
                 HStack(spacing: 6) {
@@ -163,6 +165,7 @@ struct ToolbarView: View {
                 .chipWidth(filling: isVertical)
                 .chipPadding()
             }
+            .accessibilityLabel("Line Width")
 
             toolbarButton(identifier: "toolbar.fade", action: { perform(.toggleFade) }) {
                 chip(symbol: "circle.lefthalf.filled", keycap: shortcut(for: .toggleFade), active: model.fadeMode)
