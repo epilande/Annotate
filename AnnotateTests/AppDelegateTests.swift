@@ -513,13 +513,17 @@ final class AppDelegateTests: XCTestCase, Sendable {
             menu.items.first { $0.action == #selector(AppDelegate.toggleFadeMode(_:)) })
         let clearItem = try XCTUnwrap(
             menu.items.first { $0.action == #selector(AppDelegate.clearAllAnnotations) })
-        let overlayWindow = try XCTUnwrap(appDelegate.overlayWindows.values.first)
+        // Clear All acts on the screen under the pointer. Pin the pointer to this overlay's
+        // screen so the test doesn't depend on where the mouse is on a multi-display Mac.
+        let (screen, overlayWindow) = try XCTUnwrap(appDelegate.overlayWindows.first)
+        appDelegate.pointerLocationOverride = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
         overlayWindow.overlayView.fadeMode = false
         overlayWindow.overlayView.paths.append(TestFactory.createDrawingPath())
         appDelegate.overlayWindows.values.forEach { $0.orderOut(nil) }
         defer {
             SettingsWindowManager.shared.settingsWindow?.close()
             overlayWindow.orderOut(nil)
+            appDelegate.pointerLocationOverride = nil
         }
 
         XCTAssertFalse(appDelegate.validateMenuItem(fadeItem))
@@ -620,6 +624,69 @@ final class AppDelegateTests: XCTestCase, Sendable {
             initialTitle, newTitle, "Menu item title should change when board visibility changes")
 
         BoardManager.shared.isEnabled = initialState
+    }
+
+    /// Pressing `b` twice within the 0.3 s fade-out used to leave the board hidden while the
+    /// menu said "Hide": the first press's fade-out completion hid the view after the second
+    /// press had shown it again. Toggle through both the `b` key and the menu item, at gaps
+    /// inside and outside the fade, and check every board agrees with the menu once it settles.
+    func testRapidBoardTogglesKeepBoardAndMenuInSync() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let itemIndex = try XCTUnwrap(menu.items.firstIndex {
+            $0.action == #selector(AppDelegate.toggleBoardVisibility(_:))
+        })
+        let delegate = try XCTUnwrap(appDelegate)
+        let window = try XCTUnwrap(delegate.overlayWindows.values.first)
+        let pressB = {
+            window.keyDown(with: TestEvents.createKeyEvent(
+                type: .keyDown, keyCode: 11, characters: "b", charactersIgnoringModifiers: "b")!)
+        }
+        // The status menu's items have no target and AppDelegate isn't NSApp's delegate under
+        // test, so send the item's action to it the way a click would.
+        let clickMenuItem = {
+            let item = menu.items[itemIndex]
+            XCTAssertTrue(NSApp.sendAction(item.action!, to: delegate, from: item))
+        }
+
+        func assertInSync(_ context: String, file: StaticString = #filePath, line: UInt = #line) {
+            let enabled = BoardManager.shared.isEnabled
+            let title = menu.items[itemIndex].title
+            XCTAssertEqual(title.hasPrefix("Hide"), enabled, "\(context): menu says \(title)", file: file, line: line)
+            for overlay in delegate.overlayWindows.values {
+                let board: BoardView = overlay.boardView
+                XCTAssertEqual(board.isHidden, !enabled, "\(context): board isHidden", file: file, line: line)
+                if enabled {
+                    XCTAssertEqual(board.alphaValue, 1, "\(context): board alpha", file: file, line: line)
+                }
+            }
+        }
+
+        BoardManager.shared.isEnabled = true
+        wait(for: 0.5)
+        assertInSync("start")
+
+        let toggles: [(String, () -> Void)] = [("b", pressB), ("menu", clickMenuItem)]
+        for gap in [0.15, 0.6] {
+            for (firstName, first) in toggles {
+                for (secondName, second) in toggles {
+                    let context = "\(firstName) then \(secondName) \(gap) s apart"
+                    first()
+                    wait(for: gap)
+                    second()
+                    wait(for: 0.4)
+                    assertInSync(context)
+                    XCTAssertTrue(BoardManager.shared.isEnabled, "\(context): two toggles end shown")
+                }
+            }
+        }
+
+        for _ in 0..<5 {
+            pressB()
+            wait(for: 0.07)
+        }
+        wait(for: 0.5)
+        XCTAssertFalse(BoardManager.shared.isEnabled, "Five toggles from shown end hidden")
+        assertInSync("five quick presses")
     }
 
     // MARK: - Toggle Click Effects Tests

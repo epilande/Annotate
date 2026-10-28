@@ -67,10 +67,10 @@ class BoardView: NSView {
         updateForAppearance()
     }
 
+    /// Applied in the same pass that posts the notification, so the board never lags the
+    /// menu item, which `AppDelegate` updates synchronously from the same state.
     @objc private func visibilityChanged() {
-        Task { @MainActor in
-            self.isHidden = !BoardManager.shared.isEnabled
-        }
+        isHidden = !BoardManager.shared.isEnabled
     }
 
     func updateForAppearance() {
@@ -87,24 +87,18 @@ class BoardView: NSView {
         updateForAppearance()
     }
 
+    /// Showing fades the board in; hiding is instant. The inherited setter has already applied
+    /// the new value by the time `didSet` runs, so nothing here may set visibility later. A
+    /// fade-out whose completion hid the view used to land after a newer show when the board
+    /// was toggled twice within 0.3 s, leaving it hidden while the menu said "Hide".
     override var isHidden: Bool {
         didSet {
-            if !isHidden && oldValue {
-                alphaValue = 0
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.3
-                    self.animator().alphaValue = 1
-                }
-            } else if isHidden && !oldValue {
-                NSAnimationContext.runAnimationGroup({ context in
-                    context.duration = 0.3
-                    self.animator().alphaValue = 0
-                }) {
-                    super.isHidden = true
-                }
-                return
+            guard oldValue, !isHidden else { return }
+            alphaValue = 0
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                self.animator().alphaValue = 1
             }
-            super.isHidden = isHidden
         }
     }
 }
