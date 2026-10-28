@@ -10,6 +10,10 @@ struct GeneralSettingsView: View {
     private var hideToolFeedback: Bool
     @AppStorage(.toolbarVisible)
     private var toolbarVisible: Bool
+    @AppStorage(.toolbarShowsShortcuts)
+    private var toolbarShowsShortcuts: Bool
+    @AppStorage(.toolbarLayout)
+    private var toolbarLayout: ToolbarLayout
     @AppStorage(.soundsEnabled)
     private var soundsEnabled: Bool
     @AppStorage(.soundTheme)
@@ -75,6 +79,28 @@ struct GeneralSettingsView: View {
                 }
                 .onChange(of: toolbarVisible) { _, visible in
                     AppDelegate.shared?.setToolbarVisible(visible)
+                }
+
+                Toggle(isOn: $toolbarShowsShortcuts) {
+                    Text("Show shortcuts in toolbar")
+                    Text("Label each toolbar button with its keyboard shortcut")
+                }
+                .disabled(!toolbarVisible)
+                .onChange(of: toolbarShowsShortcuts) { _, _ in
+                    AppDelegate.shared?.applyToolbarAppearance()
+                }
+
+                Picker(selection: $toolbarLayout) {
+                    ForEach(ToolbarLayout.allCases, id: \.self) { layout in
+                        Text(layout.displayName).tag(layout)
+                    }
+                } label: {
+                    Text("Toolbar Layout")
+                    Text("Run the toolbar along the bottom or down the left edge")
+                }
+                .disabled(!toolbarVisible)
+                .onChange(of: toolbarLayout) { _, _ in
+                    AppDelegate.shared?.applyToolbarAppearance()
                 }
 
                 Toggle(isOn: $soundsEnabled) {

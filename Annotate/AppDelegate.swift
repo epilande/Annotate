@@ -961,6 +961,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         }
     }
 
+    /// Re-reads the toolbar's keycap visibility and layout into every overlay's bar.
+    func applyToolbarAppearance() {
+        overlayWindows.values.forEach { $0.refreshToolbarAppearance() }
+    }
+
     @objc func showSettings() {
         NSApp.activate(ignoringOtherApps: true)
         SettingsWindowManager.shared.show()

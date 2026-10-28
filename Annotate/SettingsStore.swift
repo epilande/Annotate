@@ -56,6 +56,8 @@ extension SettingKey<Bool> {
     static var fadeMode: Self { .bool("FadeMode", default: true, acceptsText: false) }
     static var alwaysOnMode: Self { .bool("AlwaysOnMode") }
     static var toolbarVisible: Self { .bool("ToolbarVisible", default: true, acceptsText: false) }
+    /// Whether the floating toolbar's chips carry their shortcut keycaps.
+    static var toolbarShowsShortcuts: Self { .bool("ToolbarShowsShortcuts", default: true) }
     static var soundsEnabled: Self { .bool("SoundsEnabled") }
     static var enableBoard: Self { .bool("EnableBoard") }
 
@@ -122,6 +124,10 @@ extension SettingKey<DefaultToolOption> {
     static var defaultTool: Self { .rawValue("DefaultTool", default: .lastUsed) }
 }
 
+extension SettingKey<ToolbarLayout> {
+    static var toolbarLayout: Self { .rawValue("ToolbarLayout", default: .horizontal) }
+}
+
 extension SettingKey<RectangleStyle> {
     /// The fill the Redact tool gives new rectangles. Never `.outline`: a stored outline falls
     /// back to the solid default so a redaction always hides.
@@ -156,9 +162,14 @@ extension SettingKey<[String]> {
 extension SettingKey<[String: [Double]]> {
     /// Where the user parked the floating toolbar, per display: display number to the bar's
     /// [x, y] offset from its overlay window's origin.
-    static var toolbarPositions: Self {
+    static var toolbarPositions: Self { positions("ToolbarPositions") }
+    /// The same for the vertical layout, which rests somewhere else and is a different shape.
+    static var verticalToolbarPositions: Self { positions("VerticalToolbarPositions") }
+
+    private static func positions(_ name: String) -> Self {
         SettingKey(
-            name: "ToolbarPositions", defaultValue: [:],
+            name: name,
+            defaultValue: [:],
             decode: { defaults, name in
                 defaults.dictionary(forKey: name)?.compactMapValues { $0 as? [Double] }
             },

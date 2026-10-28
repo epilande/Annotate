@@ -33,6 +33,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(settings[.fadeMode])
         XCTAssertFalse(settings[.alwaysOnMode])
         XCTAssertTrue(settings[.toolbarVisible])
+        XCTAssertTrue(settings[.toolbarShowsShortcuts])
         XCTAssertFalse(settings[.soundsEnabled])
         XCTAssertFalse(settings[.enableBoard])
         XCTAssertFalse(settings[.textBackground])
@@ -55,6 +56,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.systemCursorScale], 1)
 
         XCTAssertEqual(settings[.soundTheme], .chalk)
+        XCTAssertEqual(settings[.toolbarLayout], .horizontal)
         XCTAssertEqual(settings[.lastUsedTool], .pen)
         XCTAssertEqual(settings[.defaultTool], .lastUsed)
         XCTAssertEqual(settings[.redactionStyle], .solid)
@@ -65,6 +67,7 @@ final class SettingsStoreTests: XCTestCase {
         assertColor(settings[.clickRippleColor], isCloseTo: .systemYellow)
         XCTAssertEqual(settings[.hideCursorEffectsInApps], [])
         XCTAssertEqual(settings[.toolbarPositions], [:])
+        XCTAssertEqual(settings[.verticalToolbarPositions], [:])
 
         for action in ShortcutKey.allCases {
             XCTAssertEqual(settings[.shortcut(action)], action.defaultBinding, "\(action)")
@@ -98,6 +101,9 @@ final class SettingsStoreTests: XCTestCase {
         settings[.clickRippleColor] = .systemPurple
         settings[.hideCursorEffectsInApps] = ["com.apple.Keynote", "com.microsoft.Powerpoint"]
         settings[.toolbarPositions] = ["1": [12, 34], "2": [-5, 6.5]]
+        settings[.toolbarLayout] = .vertical
+        settings[.toolbarShowsShortcuts] = false
+        settings[.verticalToolbarPositions] = ["1": [20, 300]]
         settings[.shortcut(.pen)] = ShortcutBinding("q", modifiers: [.command, .shift])
         settings[.shortcut(.arrow)] = .unassigned
 
@@ -115,6 +121,9 @@ final class SettingsStoreTests: XCTestCase {
         assertColor(settings[.clickRippleColor], isCloseTo: .systemPurple)
         XCTAssertEqual(settings[.hideCursorEffectsInApps], ["com.apple.Keynote", "com.microsoft.Powerpoint"])
         XCTAssertEqual(settings[.toolbarPositions], ["1": [12, 34], "2": [-5, 6.5]])
+        XCTAssertEqual(settings[.toolbarLayout], .vertical)
+        XCTAssertFalse(settings[.toolbarShowsShortcuts])
+        XCTAssertEqual(settings[.verticalToolbarPositions], ["1": [20, 300]])
         XCTAssertEqual(settings[.shortcut(.pen)], ShortcutBinding("q", modifiers: [.command, .shift]))
         XCTAssertEqual(settings[.shortcut(.arrow)], .unassigned)
     }
@@ -386,6 +395,8 @@ final class SettingsStoreTests: XCTestCase {
 
     func testAppStorageUsesTheKeysNameAndDefault() {
         XCTAssertTrue(AppStorage(.toolbarVisible, store: defaults).wrappedValue)
+        XCTAssertTrue(AppStorage(.toolbarShowsShortcuts, store: defaults).wrappedValue)
+        XCTAssertEqual(AppStorage(.toolbarLayout, store: defaults).wrappedValue, .horizontal)
         XCTAssertEqual(AppStorage(.textFontSize, store: defaults).wrappedValue, Double(defaultTextAnnotationFontSize))
         XCTAssertEqual(AppStorage(.soundTheme, store: defaults).wrappedValue, .chalk)
         XCTAssertEqual(AppStorage(.fadeDelay, store: defaults).wrappedValue, 0.625)
