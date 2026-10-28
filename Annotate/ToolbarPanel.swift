@@ -45,13 +45,19 @@ final class ToolbarPanel: NSPanel {
     /// True once this press has been handed to the window server, so a drag that keeps
     /// reporting events is never started twice.
     private var hasStartedWindowDrag = false
-    /// Starts the window server's move of the bar and reports whether the button is still down
-    /// afterwards. Replaced in tests: the real move follows the mouse hardware, which a
-    /// synthetic press never holds down.
-    var windowDragger: (NSWindow, NSEvent) -> Bool = { window, event in
+    /// The mouse-down that began the current press. `performDrag` wants the original press,
+    /// even when the drag is only handed over once the pointer has moved.
+    private var pressEvent: NSEvent?
+    /// Polls the button after a hand-off to the window server, which can return before the
+    /// drag is over and may keep the mouse-up for itself.
+    private var releaseWatch: Timer?
+    /// Starts the window server's move of the bar. Replaced in tests: the real move follows
+    /// the mouse hardware, which a synthetic press never holds down.
+    var windowDragger: (NSWindow, NSEvent) -> Void = { window, event in
         window.performDrag(with: event)
-        return NSEvent.pressedMouseButtons & 1 != 0
     }
+    /// Whether the primary button is down. Replaced in tests for the same reason.
+    var isPrimaryButtonDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
@@ -120,24 +126,27 @@ final class ToolbarPanel: NSPanel {
     /// during a drag. Screen-space travel (and the bar's own origin, when AppKit swallows the
     /// dragged events) is what actually tells a click from a drag.
     ///
-    /// A press on a chip is not always carried by AppKit. From macOS 27, SwiftUI cuts every
-    /// part of the bar it draws out of the window's drag region, so only the transparent edge
-    /// and the gaps between segments move the bar natively. When the pointer slides along a bar
-    /// that is not following it, the chip still holds the press, and the drag is started here.
+    /// A press on a chip is not always carried by AppKit. On macOS 27 the drag region AppKit
+    /// reports for the panel leaves out everything the hosting view draws, so only the
+    /// transparent edge and the gaps between segments move the bar natively. When the pointer
+    /// slides along a bar that is not following it, the chip still holds the press, and the
+    /// drag is started here.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown:
+            stopWatchingForRelease()
             isUserDragging = true
             hasStartedWindowDrag = false
+            pressEvent = event
             press.begin(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
             super.sendEvent(event)
         case .leftMouseDragged:
             let point = screenPoint(for: event)
             press.consider(screenPoint: point, windowOrigin: frame.origin)
-            if isUserDragging, !hasStartedWindowDrag, press.isDrag,
+            if isUserDragging, !hasStartedWindowDrag, press.isDrag, let pressEvent,
                 press.pointerHasSlidAlongTheBar(screenPoint: point, windowOrigin: frame.origin)
             {
-                carryChipDrag(with: event)
+                carryChipDrag(from: pressEvent, at: event)
             } else {
                 super.sendEvent(event)
             }
@@ -163,7 +172,7 @@ final class ToolbarPanel: NSPanel {
     /// tracking the press, and the window server may keep the mouse-up for itself, which would
     /// leave the chip pressed. A mouse-up delivered here ends that press first, while
     /// `press.isDrag` is set, so the action it fires is refused.
-    private func carryChipDrag(with event: NSEvent) {
+    private func carryChipDrag(from pressEvent: NSEvent, at event: NSEvent) {
         if let release = NSEvent.mouseEvent(
             with: .leftMouseUp,
             location: event.locationInWindow,
@@ -178,21 +187,45 @@ final class ToolbarPanel: NSPanel {
             // `super`, because this panel's own mouse-up handling would close the gesture.
             super.sendEvent(release)
         }
-        startWindowDrag(with: event)
+        startWindowDrag(with: pressEvent)
     }
 
-    /// Starts the window server's move of the bar, at most once per press.
+    /// Starts the window server's move of the bar, at most once per press. `event` is the
+    /// press's original mouse-down, as `performDrag` asks for.
     private func startWindowDrag(with event: NSEvent) {
         hasStartedWindowDrag = true
-        let isButtonStillDown = windowDragger(self, event)
-        // `performDrag` swallows dragged events, so judge the gesture against the bar's origin
-        // before closing it. Chip actions are refused while `press.isDrag` is still set.
+        windowDragger(self, event)
+        // `performDrag` returns right away and may never send the mouse-up, so `sendEvent`
+        // cannot be relied on to see the end of the gesture. Close it once the button is back
+        // up, whether or not a mouse-up ever arrives.
+        if isPrimaryButtonDown() {
+            watchForRelease()
+        } else {
+            finishWindowDrag()
+        }
+    }
+
+    private func watchForRelease() {
+        stopWatchingForRelease()
+        let watch = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isPrimaryButtonDown() else { return }
+                self.finishWindowDrag()
+            }
+        }
+        RunLoop.main.add(watch, forMode: .common)
+        releaseWatch = watch
+    }
+
+    private func stopWatchingForRelease() {
+        releaseWatch?.invalidate()
+        releaseWatch = nil
+    }
+
+    /// `performDrag` swallows dragged events, so judge the gesture against the bar's origin
+    /// before closing it. Chip actions are refused while `press.isDrag` is still set.
+    private func finishWindowDrag() {
         press.consider(windowOrigin: frame.origin)
-        // `performDrag` may swallow the whole gesture, mouse-up included, in which case
-        // `sendEvent` never sees the end of it and this is the only place left to close it.
-        // The button being back up is what tells the two apart: if it is still down the drag
-        // is still running, so leave the gesture open for the mouse-up to close.
-        guard !isButtonStillDown else { return }
         endUserDrag()
     }
 
@@ -200,8 +233,10 @@ final class ToolbarPanel: NSPanel {
     /// moved nothing leaves the pending flag clear, so it never records a position the user
     /// did not choose. Safe to call more than once for the same gesture.
     private func endUserDrag() {
+        stopWatchingForRelease()
         isUserDragging = false
         hasStartedWindowDrag = false
+        pressEvent = nil
         press.end()
         guard hasPendingSave else { return }
         hasPendingSave = false
@@ -242,6 +277,7 @@ final class ToolbarPanel: NSPanel {
     }
 
     func tearDown() {
+        stopWatchingForRelease()
         NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: self)
         detach()
         close()
