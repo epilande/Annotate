@@ -328,7 +328,7 @@ struct ShortcutSettingRow: View {
                     .frame(minWidth: 60)
                 } else {
                     Button(action: { editingShortcut = tool }) {
-                        Text(shortcut.isEmpty ? "Not Set" : shortcut)
+                        Text(keycap: shortcut.isEmpty ? "Not Set" : shortcut)
                             .font(.body.weight(.medium).monospaced())
                             .foregroundStyle(.primary)
                             .frame(minWidth: 32)
@@ -338,7 +338,7 @@ struct ShortcutSettingRow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Record \(label) shortcut")
-                    .accessibilityValue(shortcut.isEmpty ? "Not Set" : shortcut)
+                    .accessibilityValue(shortcut.isEmpty ? "Not Set" : ShortcutBinding.spokenLabel(for: shortcut))
                     .accessibilityIdentifier("shortcut.\(tool.rawValue).record")
                     .opacity(isHoveringKey ? 0.8 : 1.0)
                     .onHover { isHoveringKey = $0 }
@@ -380,7 +380,7 @@ struct ShortcutSettingRow: View {
                     Button("OK") {}
                 } message: {
                     Text(
-                        "The default shortcut “\(tool.defaultBinding.displayValue)” is already assigned. Clear it from the other action first."
+                        "The default shortcut “\(ShortcutBinding.spokenLabel(for: tool.defaultBinding.displayValue))” is already assigned. Clear it from the other action first."
                     )
                 }
             }

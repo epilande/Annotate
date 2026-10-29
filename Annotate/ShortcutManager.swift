@@ -42,11 +42,20 @@ struct ShortcutBinding: Equatable, Hashable {
         hasher.combine(modifiers.rawValue)
     }
 
+    /// Stands in for the space bar in keycaps, where "Space" would be the widest label by far.
+    /// `Text(keycap:)` draws it, and `spokenLabel(for:)` turns it back into a word.
+    static let spaceGlyph = "␣"
+
+    /// A `displayValue` as VoiceOver and prose should say it.
+    static func spokenLabel(for displayValue: String) -> String {
+        displayValue.replacingOccurrences(of: spaceGlyph, with: "Space")
+    }
+
     var displayValue: String {
         guard !key.isEmpty else { return "" }
         let label: String
         switch key {
-        case " ": label = "Space"
+        case " ": label = Self.spaceGlyph
         case "\u{7f}": label = "⌫"
         case "\r": label = "↩"
         case "\t": label = "⇥"

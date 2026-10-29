@@ -57,6 +57,15 @@ struct ToolbarView: View {
 
     private let spring = Animation.spring(response: 0.24, dampingFraction: 0.72)
 
+    private static let symbolFont = Font.system(size: 13, weight: .medium)
+    private static let fadeSymbol = "circle.lefthalf.filled"
+    private static let deleteLastSymbol = "delete.left"
+    private static let clearAllSymbol = "trash"
+    private static let undoSymbol = "arrow.uturn.backward"
+    /// Every symbol a chip can show. The color and width dots are narrower than all of them.
+    private static let chipSymbols =
+        ToolType.allCases.map(\.symbolName) + [fadeSymbol, deleteLastSymbol, clearAllSymbol, undoSymbol]
+
     @ViewBuilder
     var body: some View {
         if #available(macOS 26.0, *) {
@@ -79,7 +88,7 @@ struct ToolbarView: View {
     @ViewBuilder
     private var segments: some View {
         if isVertical {
-            VStack(spacing: 8) {
+            EqualWidthColumn(spacing: 8) {
                 toolsSegment
                 stateSegment
                 actionsSegment
@@ -136,16 +145,18 @@ struct ToolbarView: View {
                 }
             }
         }
-        .toolbarSegment()
+        .toolbarSegment(vertical: isVertical)
     }
 
     private var stateSegment: some View {
         segment {
             toolbarButton(identifier: "toolbar.color", action: { perform(.colorPicker) }) {
                 HStack(spacing: 6) {
-                    SwiftUI.Circle()
-                        .fill(Color(nsColor: model.currentColor))
-                        .frame(width: 14, height: 14)
+                    iconSlot {
+                        SwiftUI.Circle()
+                            .fill(Color(nsColor: model.currentColor))
+                            .frame(width: 14, height: 14)
+                    }
                     keycap(shortcut(for: .colorPicker), lit: true)
                 }
                 .chipWidth(filling: isVertical)
@@ -156,10 +167,12 @@ struct ToolbarView: View {
 
             toolbarButton(identifier: "toolbar.width", action: { perform(.widthPicker) }) {
                 HStack(spacing: 6) {
-                    SwiftUI.Circle()
-                        .fill(Color(nsColor: model.currentColor))
-                        .frame(width: model.widthDotDiameter, height: model.widthDotDiameter)
-                        .frame(width: 14, height: 14)
+                    iconSlot {
+                        SwiftUI.Circle()
+                            .fill(Color(nsColor: model.currentColor))
+                            .frame(width: model.widthDotDiameter, height: model.widthDotDiameter)
+                            .frame(width: 14, height: 14)
+                    }
                     keycap(shortcut(for: .lineWidthPicker), lit: true)
                 }
                 .chipWidth(filling: isVertical)
@@ -168,7 +181,7 @@ struct ToolbarView: View {
             .accessibilityLabel("Line Width")
 
             toolbarButton(identifier: "toolbar.fade", action: { perform(.toggleFade) }) {
-                chip(symbol: "circle.lefthalf.filled", keycap: shortcut(for: .toggleFade), active: model.fadeMode)
+                chip(symbol: Self.fadeSymbol, keycap: shortcut(for: .toggleFade), active: model.fadeMode)
                     .background {
                         if model.fadeMode {
                             ToolbarSelectionLens()
@@ -181,20 +194,20 @@ struct ToolbarView: View {
     private var actionsSegment: some View {
         segment {
             toolbarButton(identifier: "toolbar.deleteLast", action: { perform(.deleteLast) }) {
-                chip(symbol: "delete.left", keycap: "⌫")
+                chip(symbol: Self.deleteLastSymbol, keycap: "⌫")
             }
             toolbarButton(identifier: "toolbar.clearAll", action: { perform(.clearAll) }) {
-                chip(symbol: "trash", keycap: shortcut(for: .clearAll))
+                chip(symbol: Self.clearAllSymbol, keycap: shortcut(for: .clearAll))
             }
             toolbarButton(identifier: "toolbar.undo", action: { perform(.undo) }) {
-                chip(symbol: "arrow.uturn.backward", keycap: "⌘Z")
+                chip(symbol: Self.undoSymbol, keycap: "⌘Z")
             }
         }
     }
 
     private func segment<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         segmentLayout { content() }
-            .toolbarSegment()
+            .toolbarSegment(vertical: isVertical)
     }
 
     private func toolbarButton<Label: View>(
@@ -208,15 +221,37 @@ struct ToolbarView: View {
 
     private func chip(symbol: String, keycap text: String, active: Bool = false) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                // Symbols differ in width; in a column that would leave the keycaps ragged.
-                .frame(minWidth: isVertical ? 14 : nil)
+            iconSlot {
+                Image(systemName: symbol)
+                    .font(Self.symbolFont)
+            }
             keycap(text, lit: active)
         }
         .chipWidth(filling: isVertical)
         .foregroundStyle(Color.primary.opacity(active ? 1 : 0.76))
         .chipPadding()
+    }
+
+    /// In a column, seats an icon at the leading edge of a slot as wide as the widest icon on
+    /// the bar, so the keycaps after the icons start at the same x in every segment. The slot
+    /// is sized by laying out every symbol, hidden and zero-height, rather than by a measured
+    /// constant, so a new or wider symbol keeps the keycaps in line.
+    @ViewBuilder
+    private func iconSlot<Icon: View>(@ViewBuilder _ icon: () -> Icon) -> some View {
+        if isVertical {
+            ZStack(alignment: .leading) {
+                ZStack {
+                    ForEach(Self.chipSymbols, id: \.self) { Image(systemName: $0) }
+                }
+                .font(Self.symbolFont)
+                .frame(height: 0)
+                .hidden()
+                .accessibilityHidden(true)
+                icon()
+            }
+        } else {
+            icon()
+        }
     }
 
     @ViewBuilder
@@ -227,8 +262,9 @@ struct ToolbarView: View {
     }
 
     private func keycapLabel(_ text: String, lit: Bool) -> some View {
-        Text(text.uppercased())
+        Text(keycap: text.uppercased())
             .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .accessibilityLabel(ShortcutBinding.spokenLabel(for: text))
             .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
             .fixedSize()
             .padding(.horizontal, 4)
@@ -244,6 +280,34 @@ struct ToolbarView: View {
     }
 }
 
+/// The vertical toolbar's segments, top to bottom, each as wide as the widest one's natural
+/// width. A `VStack` would leave each segment at its own width, so one long keycap (or icon)
+/// would make its segment jut out past the others.
+struct EqualWidthColumn: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = columnWidth(of: subviews)
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        let gaps = spacing * CGFloat(max(subviews.count - 1, 0))
+        return CGSize(width: width, height: heights.reduce(0, +) + gaps)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let segmentProposal = ProposedViewSize(width: columnWidth(of: subviews), height: nil)
+        var y = bounds.minY
+        for subview in subviews {
+            subview.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading, proposal: segmentProposal)
+            y += subview.sizeThatFits(segmentProposal).height + spacing
+        }
+    }
+
+    /// The widest segment's natural width: what each one asks for with no width proposed.
+    private func columnWidth(of subviews: Subviews) -> CGFloat {
+        subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+    }
+}
+
 private struct SelectedToolBounds: PreferenceKey {
     static var defaultValue: Anchor<CGRect>? { nil }
 
@@ -253,14 +317,16 @@ private struct SelectedToolBounds: PreferenceKey {
 }
 
 private extension View {
-    func toolbarSegment() -> some View {
+    /// A row's segments keep their own size. A column's take the width `EqualWidthColumn`
+    /// proposes, which is never narrower than their own.
+    func toolbarSegment(vertical: Bool) -> some View {
         padding(5)
             .toolbarGlassSegment()
-            .fixedSize()
+            .fixedSize(horizontal: !vertical, vertical: true)
     }
 
-    /// In a column, stretches every chip to the widest one so the selection lens and hover
-    /// targets line up. The segment is `fixedSize`, so "widest" is the column's own width.
+    /// In a column, stretches every chip to the segment's width so the selection lens and hover
+    /// targets line up. `EqualWidthColumn` gives every segment the widest one's width.
     func chipWidth(filling: Bool) -> some View {
         frame(maxWidth: filling ? .infinity : nil, alignment: .leading)
     }
