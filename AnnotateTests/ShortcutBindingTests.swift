@@ -153,6 +153,16 @@ final class ShortcutBindingTests: XCTestCase {
         XCTAssertEqual(manager.binding(for: .clearAll).menuKeyEquivalent, "\u{8}")
     }
 
+    func testSpaceShowsAsAGlyphButIsSpokenAsAWord() {
+        XCTAssertEqual(ShortcutKey.toggleFade.defaultBinding.displayValue, "␣")
+        XCTAssertEqual(ShortcutBinding(" ", modifiers: [.shift, .command]).displayValue, "⇧⌘␣")
+        XCTAssertEqual(manager.allShortcuts[.toggleFade], "␣", "Settings and the toolbar share this label")
+
+        XCTAssertEqual(ShortcutBinding.spokenLabel(for: "␣"), "Space")
+        XCTAssertEqual(ShortcutBinding.spokenLabel(for: "⇧⌘␣"), "⇧⌘Space")
+        XCTAssertEqual(ShortcutBinding.spokenLabel(for: "⌥⌫"), "⌥⌫", "Other labels pass through")
+    }
+
     func testConflictingAndReservedEventsKeepRecordingAndPreserveBinding() throws {
         let events = [
             try event("p", keyCode: 35),

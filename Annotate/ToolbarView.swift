@@ -262,8 +262,9 @@ struct ToolbarView: View {
     }
 
     private func keycapLabel(_ text: String, lit: Bool) -> some View {
-        Text(text.uppercased())
+        Text(keycap: text.uppercased())
             .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .accessibilityLabel(ShortcutBinding.spokenLabel(for: text))
             .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
             .fixedSize()
             .padding(.horizontal, 4)
