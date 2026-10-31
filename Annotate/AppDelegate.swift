@@ -531,29 +531,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         }
 
         if overlayWindow.isVisible {
+            hideOverlays([overlayWindow])
+        } else {
+            activateOverlay(overlayWindow, on: currentScreen)
+        }
+    }
+
+    /// Opens the interactive overlay on the display under the pointer, as the overlay shortcut
+    /// does. Leaves Always-On first, since its overlays are already visible but read-only.
+    /// Does nothing if an interactive overlay is already open.
+    func showInteractiveOverlay() {
+        if alwaysOnMode || !overlayWindows.values.contains(where: \.isVisible) {
+            toggleOverlay()
+        }
+    }
+
+    /// Closes every open overlay, wherever the pointer is, and leaves Always-On.
+    func hideAllOverlays() {
+        if alwaysOnMode {
+            toggleAlwaysOnMode()
+        } else {
+            hideOverlays(overlayWindows.values.filter(\.isVisible))
+        }
+    }
+
+    private func activateOverlay(_ overlayWindow: OverlayWindow, on screen: NSScreen) {
+        configureWindowForNormalMode(overlayWindow)
+
+        if settings[.clearDrawingsOnStart] {
+            overlayWindow.overlayView.clearAll()
+        }
+
+        updateStatusBarIcon(with: currentColor)
+        SoundPlayer.shared.playOverlayOn()
+        overlayWindow.setFrame(screen.frame, display: true)
+        overlayWindow.makeKeyAndOrderFront(nil)
+        CursorHighlightManager.shared.annotationColor = currentColor
+        CursorHighlightManager.shared.overlayVisibilityChanged()
+        applyConfiguredDefaultTool()
+    }
+
+    private func hideOverlays(_ windows: [OverlayWindow]) {
+        guard !windows.isEmpty else { return }
+        for overlayWindow in windows {
             if let activeField = overlayWindow.overlayView.activeTextField {
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
-            updateStatusBarIcon(with: .gray)
-            SoundPlayer.shared.playOverlayOff()
             overlayWindow.orderOut(nil)
-            CursorHighlightManager.shared.overlayVisibilityChanged()
-        } else {
-            configureWindowForNormalMode(overlayWindow)
-
-            if settings[.clearDrawingsOnStart] {
-                overlayWindow.overlayView.clearAll()
-            }
-
-            updateStatusBarIcon(with: currentColor)
-            SoundPlayer.shared.playOverlayOn()
-            let screenFrame = currentScreen.frame
-            overlayWindow.setFrame(screenFrame, display: true)
-            overlayWindow.makeKeyAndOrderFront(nil)
-            CursorHighlightManager.shared.annotationColor = currentColor
-            CursorHighlightManager.shared.overlayVisibilityChanged()
-            applyConfiguredDefaultTool()
         }
+        updateStatusBarIcon(with: .gray)
+        SoundPlayer.shared.playOverlayOff()
+        CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 
     @objc func toggleAlwaysOnMode() {
@@ -640,6 +668,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         showOverlay()
     }
 
+    /// Makes `color` the annotation color: stored, on every overlay, and on the cursor highlight.
+    /// The status item only takes it while an overlay is up; gray means the overlay is hidden.
+    func setColor(_ color: NSColor) {
+        settings[.selectedColor] = color
+        currentColor = color
+        overlayWindows.values.forEach { $0.currentColor = color }
+        if alwaysOnMode {
+            updateStatusBarIcon(with: color.withAlphaComponent(0.7))
+        } else if overlayWindows.values.contains(where: \.isVisible) {
+            updateStatusBarIcon(with: color)
+        }
+        CursorHighlightManager.shared.annotationColor = color
+    }
+
     /// Applies the configured default tool when the overlay activates. Does nothing when the
     /// setting is "Last used", leaving whatever tool is already current in place, or when
     /// every window is already on the configured tool (avoids showing tool feedback on
@@ -696,11 +738,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     @objc func toggleBoardVisibility(_ sender: Any?) {
-        BoardManager.shared.toggle()
+        setBoardEnabled(!BoardManager.shared.isEnabled)
+    }
+
+    func setBoardEnabled(_ enabled: Bool) {
+        BoardManager.shared.isEnabled = enabled
         updateBoardMenuItems()
-        let boardEnabled = BoardManager.shared.isEnabled
         overlayWindows.values.forEach {
-            $0.overlayView.updateAdaptColors(boardEnabled: boardEnabled)
+            $0.overlayView.updateAdaptColors(boardEnabled: enabled)
         }
     }
 
@@ -723,9 +768,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         CursorHighlightManager.shared.cursorHighlightEnabled = newState
         updateClickEffectsMenuItems()
 
-        let text = newState ? "Cursor Highlight On" : "Cursor Highlight Off"
-        let icon = newState ? "👆" : "🚫"
-        for (_, window) in overlayWindows where window.isVisible {
+        showToggleFeedback(
+            newState ? "Cursor Highlight On" : "Cursor Highlight Off",
+            icon: newState ? "👆" : "🚫")
+    }
+
+    /// Shows the on-screen HUD on every open overlay. With none open there is nowhere to draw it.
+    func showToggleFeedback(_ text: String, icon: String) {
+        for window in overlayWindows.values where window.isVisible {
             window.showToggleFeedback(text, icon: icon)
         }
     }
@@ -925,24 +975,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.performClearAll()
     }
 
+    /// Clears every open overlay, key or not, which in Always-On is every display's. Returns
+    /// whether there was anything to clear.
+    @discardableResult
+    func clearVisibleOverlays() -> Bool {
+        let cleared = overlayWindows.values.filter(\.isVisible)
+            .map { $0.performClearAll(playsSound: false) }
+            .contains(true)
+        if cleared {
+            SoundPlayer.shared.playClearAll()
+        }
+        return cleared
+    }
+
     @objc func toggleFadeMode(_ sender: Any?) {
         if sender is NSMenuItem && !isOverlayKeyWindow { return }
         let isCurrentlyFadeMode = overlayWindows.values.first?.overlayView.fadeMode ?? true
+        setFadeMode(!isCurrentlyFadeMode)
+    }
 
-        // Each overlay starts or stops its own fade loop when its mode changes.
-        for window in overlayWindows.values {
-            window.overlayView.fadeMode.toggle()
+    var fadeModeEnabled: Bool {
+        settings[.fadeMode]
+    }
+
+    func setFadeMode(_ enabled: Bool) {
+        settings[.fadeMode] = enabled
+
+        // Each overlay starts or stops its own fade loop when its mode changes. Always-On never
+        // fades; its overlays pick the stored mode up when they leave it.
+        if !alwaysOnMode {
+            overlayWindows.values.forEach { $0.overlayView.fadeMode = enabled }
         }
 
-        settings[.fadeMode] = !isCurrentlyFadeMode
+        updateFadeModeMenuItems(isCurrentlyFadeMode: !enabled)
 
-        updateFadeModeMenuItems(isCurrentlyFadeMode: isCurrentlyFadeMode)
-
-        let text = isCurrentlyFadeMode ? "Persist Mode" : "Fade Mode"
-        let icon = isCurrentlyFadeMode ? "📌" : "⏳"
-        for (_, window) in overlayWindows where window.isVisible {
-            window.showToggleFeedback(text, icon: icon)
-        }
+        showToggleFeedback(enabled ? "Fade Mode" : "Persist Mode", icon: enabled ? "⏳" : "📌")
     }
 
     var toolbarVisible: Bool {
