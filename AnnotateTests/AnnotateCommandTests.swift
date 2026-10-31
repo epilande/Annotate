@@ -49,6 +49,13 @@ final class AnnotateCommandTests: XCTestCase {
         wait(for: 0.01)
     }
 
+    /// Types through the field editor, as a user does, so the field's own value is stale until
+    /// editing ends.
+    private func typeIntoActiveLabel(_ text: String, on view: OverlayView) throws {
+        let field = try XCTUnwrap(view.activeTextField)
+        try XCTUnwrap(field.currentEditor(), "The label must be in an editing session").string = text
+    }
+
     private var visibleOverlays: [OverlayWindow] {
         appDelegate.overlayWindows.values.filter(\.isVisible)
     }
@@ -210,7 +217,7 @@ final class AnnotateCommandTests: XCTestCase {
         view.currentTextAnnotation = TextAnnotation(
             text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
         view.createTextField(at: point, withText: "")
-        try XCTUnwrap(view.activeTextField).stringValue = "Draft"
+        try typeIntoActiveLabel("Draft", on: view)
         endEvent()
 
         XCTAssertEqual(run(.clear), .ran)
@@ -235,7 +242,7 @@ final class AnnotateCommandTests: XCTestCase {
         view.editingTextAnnotationIndex = 0
         view.currentTextAnnotation = label
         view.createTextField(at: label.position, withText: label.text)
-        try XCTUnwrap(view.activeTextField).stringValue = "After"
+        try typeIntoActiveLabel("After", on: view)
         endEvent()
 
         run(.clear)
@@ -244,6 +251,32 @@ final class AnnotateCommandTests: XCTestCase {
 
         view.undo()
         XCTAssertEqual(view.textAnnotations.map(\.text), ["After"])
+    }
+
+    func testClearAfterEmptyingALabelInAnEditLetsUndoRestoreIt() throws {
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        let label = TextAnnotation(
+            text: "Before",
+            position: NSPoint(x: 100, y: 100),
+            color: .red,
+            fontSize: defaultTextAnnotationFontSize)
+        view.textAnnotations = [label]
+        view.paths.append(TestFactory.createDrawingPath())
+        view.editingTextAnnotationIndex = 0
+        view.currentTextAnnotation = label
+        view.createTextField(at: label.position, withText: label.text)
+        try typeIntoActiveLabel("", on: view)
+        endEvent()
+
+        run(.clear)
+        endEvent()
+        XCTAssertTrue(view.textAnnotations.isEmpty)
+        XCTAssertTrue(view.paths.isEmpty)
+
+        view.undo()
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Before"])
+        XCTAssertEqual(view.paths.count, 1)
     }
 
     func testClearShowsItsHUDOnlyWhenItClearedSomething() {

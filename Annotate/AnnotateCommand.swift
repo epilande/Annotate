@@ -94,12 +94,14 @@ enum AnnotateCommand: Hashable, Sendable {
             }
             return OverlayState(appDelegate) == before ? .noOp : .ran
         case .tool(let tool):
-            let alreadyActive = !appDelegate.alwaysOnMode
-                && appDelegate.overlayWindows.values.contains(where: \.isVisible)
-                && appDelegate.overlayWindows.values.allSatisfy { $0.overlayView.currentTool == tool }
-            // Shows the tool HUD itself.
+            let before = OverlayState(appDelegate)
+            let toolAlreadySet = appDelegate.overlayWindows.values.allSatisfy {
+                $0.overlayView.currentTool == tool
+            }
+            // Shows the tool HUD itself. Also opens the overlay under the pointer, which may be
+            // hidden while another display's overlay is open.
             appDelegate.switchTool(to: tool)
-            return alreadyActive ? .noOp : .ran
+            return toolAlreadySet && OverlayState(appDelegate) == before ? .noOp : .ran
         case .color(let color):
             let alreadySet = appDelegate.currentColor.isClose(to: color.nsColor)
             appDelegate.setColor(color.nsColor)
@@ -136,7 +138,7 @@ enum AnnotateCommand: Hashable, Sendable {
         }
     }
 
-    /// What show, hide, and toggle can change: the mode and which overlays are on screen.
+    /// What show, hide, toggle, and tool can change: the mode and which overlays are on screen.
     @MainActor
     private struct OverlayState: Equatable {
         let alwaysOn: Bool

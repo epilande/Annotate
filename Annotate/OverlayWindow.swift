@@ -318,10 +318,14 @@ class OverlayWindow: NSPanel {
         // Commit the label being typed so Clear's undo snapshot holds its current text.
         // Committing registers an undo step of its own, and in the same event the two would
         // share one undo group, so one Undo would bring the label back and take it away again.
+        // An edit that empties its label removes it instead, and that removal stays undoable:
+        // the snapshot no longer holds the label, so it's the only way Undo can restore it.
         if let activeField = overlayView.activeTextField {
-            undoManager?.disableUndoRegistration()
+            let removesLabel = activeField.stringValue
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if !removesLabel { undoManager?.disableUndoRegistration() }
             overlayView.finalizeTextAnnotation(activeField)
-            undoManager?.enableUndoRegistration()
+            if !removesLabel { undoManager?.enableUndoRegistration() }
         }
         // Clear first so ending a redaction drag finds nothing left to sample and lets
         // the snapshot go. The live shape is dropped even on an empty canvas.
