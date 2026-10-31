@@ -54,20 +54,34 @@ jobs:
       - name: Swift Package Manager - Test
         run: swift test
 
+      # xcpretty drops the output of failed tool steps like ExtractAppIntentsMetadata, so the
+      # raw log is kept and the failure step below prints it.
       - name: Xcode - Build
         run: |
+          set -o pipefail
           xcodebuild \
             -project Annotate.xcodeproj \
             -scheme Annotate \
             -configuration Debug \
             -destination "platform=macOS" \
-            build | xcpretty && exit ${PIPESTATUS[0]}
+            build 2>&1 | tee xcodebuild-build.log | xcpretty
 
       - name: Xcode - Test
         run: |
+          set -o pipefail
           xcodebuild \
             -project Annotate.xcodeproj \
             -scheme Annotate \
             -configuration Debug \
             -destination "platform=macOS" \
-            test | xcpretty && exit ${PIPESTATUS[0]}
+            test 2>&1 | tee xcodebuild-test.log | xcpretty
+
+      - name: Show raw xcodebuild errors
+        if: failure()
+        run: |
+          for log in xcodebuild-*.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$log"
+            grep -n -E -A25 "error:|failed with a nonzero exit code|^ExtractAppIntentsMetadata" "$log" | tail -300 || true
+            echo "::endgroup::"
+          done
