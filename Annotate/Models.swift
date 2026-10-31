@@ -1,7 +1,8 @@
 import Cocoa
 
-/// Represents the available tools for annotation.
-enum ToolType: String, CaseIterable {
+/// Represents the available tools for annotation. The raw value names the tool in settings,
+/// Shortcuts actions, and command paths, so renaming a case breaks saved shortcuts and links.
+enum ToolType: String, CaseIterable, Sendable {
     case pen
     case arrow
     case line

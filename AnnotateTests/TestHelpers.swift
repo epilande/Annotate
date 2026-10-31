@@ -225,8 +225,14 @@ extension XCTestCase {
         // Do not wait on XCTestExpectation: that stalls @MainActor tests on CI.
         // Do not run in .common — that is a mode set, not a runnable mode, so
         // the wait elapsed wall-clock without ever draining the main queue.
-        guard duration > 0 else { return }
-        _ = CFRunLoopRunInMode(.defaultMode, duration, false)
+        // The run returns early when something stops the main run loop, so keep running until
+        // the whole duration has passed. A hold that ends early reads as a tap.
+        let deadline = CACurrentMediaTime() + duration
+        var remaining = duration
+        while remaining > 0 {
+            _ = CFRunLoopRunInMode(.defaultMode, remaining, false)
+            remaining = deadline - CACurrentMediaTime()
+        }
     }
 
     nonisolated func assertEventually(

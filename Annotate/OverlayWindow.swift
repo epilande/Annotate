@@ -19,7 +19,7 @@ class OverlayWindow: NSPanel {
     let fadeInterval: TimeInterval = 1.0 / 60.0
     
     // Track the current feedback view to remove it when a new one appears
-    private var currentFeedbackView: NSView?
+    private(set) var currentFeedbackView: NSView?
     private var feedbackRemovalTask: DispatchWorkItem?
     private enum QuickPickerInteraction {
         case waitingForRelease(key: String, openedAt: CFTimeInterval, moved: Bool, holdActive: Bool)
@@ -289,7 +289,8 @@ class OverlayWindow: NSPanel {
         // dismiss an open picker. Close it here, or the picker actions below are refused and a
         // stale picker stays on screen behind the bar.
         cancelQuickPicker()
-        if let activeField = overlayView.activeTextField {
+        // Clear All commits the label itself, keeping it out of the undo history.
+        if case .clearAll = action {} else if let activeField = overlayView.activeTextField {
             overlayView.finalizeTextAnnotation(activeField)
         }
         switch action {
@@ -310,14 +311,30 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    func performClearAll() {
+    /// Returns whether there was anything to clear. Pass `playsSound: false` when clearing
+    /// several overlays at once so the sound plays once.
+    @discardableResult
+    func performClearAll(playsSound: Bool = true) -> Bool {
+        // Commit the label being typed so Clear's undo snapshot holds its current text.
+        // Committing registers an undo step of its own, and in the same event the two would
+        // share one undo group, so one Undo would bring the label back and take it away again.
+        // An edit that empties its label removes it instead, and that removal stays undoable:
+        // the snapshot no longer holds the label, so it's the only way Undo can restore it.
+        if let activeField = overlayView.activeTextField {
+            let removesLabel = activeField.stringValue
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if !removesLabel { undoManager?.disableUndoRegistration() }
+            overlayView.finalizeTextAnnotation(activeField)
+            if !removesLabel { undoManager?.enableUndoRegistration() }
+        }
         // Clear first so ending a redaction drag finds nothing left to sample and lets
         // the snapshot go. The live shape is dropped even on an empty canvas.
         let cleared = overlayView.clearAll()
         discardLiveDrawing()
-        if cleared {
+        if cleared && playsSound {
             SoundPlayer.shared.playClearAll()
         }
+        return cleared
     }
 
     private var toolbarActionAnchor: NSPoint {
@@ -886,13 +903,10 @@ class OverlayWindow: NSPanel {
     }
 
     private func applyColor(_ color: NSColor) {
+        AppDelegate.shared?.setColor(color)
+        // The picker's own store and window, in case the delegate doesn't track this overlay.
         pickerSettings[.selectedColor] = color
-
-        let appDelegate = AppDelegate.shared
-        appDelegate?.currentColor = color
-        runtimeOverlayWindows.forEach { $0.currentColor = color }
-        appDelegate?.updateStatusBarIcon(with: color)
-        CursorHighlightManager.shared.annotationColor = color
+        currentColor = color
     }
 
     private func dismissQuickPicker() {
@@ -1999,6 +2013,13 @@ class OverlayWindow: NSPanel {
         let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
         showFeedback("\(icon) \(text)")
+    }
+
+    func showColorFeedback(_ color: PaletteColor) {
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
+        guard !hideToolFeedback else { return }
+        showFeedback(
+            "🎨 \(color.displayName)", lineColor: color.nsColor, lineWidth: overlayView.currentLineWidth)
     }
 
     func showToolFeedback(_ tool: ToolType) {

@@ -41,6 +41,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
 - ⌨️ **Keyboard Shortcuts:** Switch between modes and toggle the overlay with customizable keyboard shortcuts.
 - ⚡ **Global Hotkey:** Toggle Annotate with a global shortcut.
+- 🤖 **Shortcuts Actions:** Open the overlay, pick a tool or color, clear, and switch the toolbar, Fade Mode, or board from the Shortcuts app.
 - 🔄 **Auto-Updates:** Automatic update checking with secure, cryptographically signed updates.
 
 ## 📦 Installation
@@ -352,6 +353,24 @@ Always-On Mode displays your annotations persistently without any user interacti
 
 - <kbd>Delete</kbd>: Removes the most recently added annotation.
 - <kbd>Option</kbd> + <kbd>Delete</kbd>: Clear all annotations from the screen.
+
+### Shortcuts Actions
+
+Annotate adds these actions to the Shortcuts app, so you can run them from a shortcut, a keyboard trigger, or another automation tool:
+
+| Action            | What it does                                                                     |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Toggle Overlay    | Opens the overlay on the display under the pointer, or closes it.                |
+| Show Overlay      | Opens the overlay. Leaves Always-On Mode first.                                  |
+| Hide Overlay      | Closes the overlay on every display. Leaves Always-On Mode.                      |
+| Select Tool       | Selects a tool and opens the overlay.                                            |
+| Set Color         | Sets the annotation color from the palette. Doesn't open the overlay.            |
+| Clear Annotations | Clears every open overlay. Undo brings the annotations back.                     |
+| Set Toolbar       | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.              |
+| Set Fade Mode     | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit.    |
+| Set Board         | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.           |
+
+Select Tool, Set Color, Clear Annotations, and the Set actions show an on-screen message on any open overlay.
 
 ## ⚙️ Settings
 

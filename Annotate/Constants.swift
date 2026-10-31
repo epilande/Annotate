@@ -6,11 +6,33 @@ extension KeyboardShortcuts.Name {
     static let toggleAlwaysOnMode = Self("toggleAlwaysOnMode")
 }
 
-let colorPalette: [NSColor] = [
-    .systemRed, .systemOrange, .systemYellow,
-    .systemGreen, .cyan, .systemIndigo,
-    .magenta, .white, .black,
-]
+/// The annotation colors offered by the color picker, in picker order. The raw value names the
+/// color in Shortcuts actions and commands, so renaming a case breaks saved shortcuts.
+enum PaletteColor: String, CaseIterable, Sendable {
+    case red, orange, yellow
+    case green, cyan, indigo
+    case magenta, white, black
+
+    var nsColor: NSColor {
+        switch self {
+        case .red: return .systemRed
+        case .orange: return .systemOrange
+        case .yellow: return .systemYellow
+        case .green: return .systemGreen
+        case .cyan: return .cyan
+        case .indigo: return .systemIndigo
+        case .magenta: return .magenta
+        case .white: return .white
+        case .black: return .black
+        }
+    }
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+let colorPalette: [NSColor] = PaletteColor.allCases.map(\.nsColor)
 
 /// Seconds an annotation stays at full opacity in Fade Mode before it starts to fade out.
 /// The default is the hold Fade Mode has always used.
