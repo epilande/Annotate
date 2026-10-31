@@ -1409,11 +1409,15 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         let originalColor = window.overlayView.currentColor
         sendKey("c", type: .keyDown, keyCode: 8)
         XCTAssertTrue(window.isQuickPickerOpen)
+        let holdStart = CACurrentMediaTime()
         wait(for: OverlayWindowTests.quickPickerHoldWait)
+        let held = CACurrentMediaTime() - holdStart
         sendKey("c", type: .keyUp, keyCode: 8)
         waitForPickerToDismiss()
 
-        XCTAssertFalse(window.isQuickPickerOpen, "A hold should commit and dismiss on key-up")
+        XCTAssertFalse(
+            window.isQuickPickerOpen,
+            String(format: "A hold should commit and dismiss on key-up (held %.3f s)", held))
         XCTAssertTrue(window.overlayView.currentColor.isClose(to: originalColor))
     }
 
