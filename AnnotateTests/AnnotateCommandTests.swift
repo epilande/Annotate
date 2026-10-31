@@ -38,7 +38,8 @@ final class AnnotateCommandTests: XCTestCase {
         super.tearDown()
     }
 
-    private func run(_ command: AnnotateCommand) {
+    @discardableResult
+    private func run(_ command: AnnotateCommand) -> AnnotateCommand.Outcome {
         command.run(on: appDelegate)
     }
 
@@ -196,6 +197,16 @@ final class AnnotateCommandTests: XCTestCase {
         }
     }
 
+    func testClearShowsItsHUDOnlyWhenItClearedSomething() {
+        run(.show)
+        XCTAssertEqual(run(.clear), .noOp)
+        XCTAssertNil(overlay.currentFeedbackView)
+
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+        XCTAssertEqual(run(.clear), .ran)
+        XCTAssertEqual(feedbackText(on: overlay), "🗑️ Cleared")
+    }
+
     func testClearLeavesAHiddenOverlayAlone() {
         overlay.overlayView.paths.append(TestFactory.createDrawingPath())
         XCTAssertFalse(appDelegate.clearVisibleOverlays())
@@ -277,6 +288,67 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(BoardManager.shared.isEnabled, "Off must not toggle")
 
         XCTAssertTrue(visibleOverlays.isEmpty)
+    }
+
+    // MARK: - Outcome
+
+    func testCommandsReportWhetherTheyChangedAnything() {
+        XCTAssertEqual(run(.hide), .noOp, "Nothing is open")
+        XCTAssertEqual(run(.show), .ran)
+        XCTAssertEqual(run(.show), .noOp, "Already open")
+        XCTAssertEqual(run(.tool(.arrow)), .ran)
+        XCTAssertEqual(run(.tool(.arrow)), .noOp)
+        XCTAssertEqual(run(.color(.cyan)), .ran)
+        XCTAssertEqual(run(.color(.cyan)), .noOp)
+        XCTAssertEqual(run(.toolbar(.off)), .ran)
+        XCTAssertEqual(run(.toolbar(.off)), .noOp)
+        XCTAssertEqual(run(.fade(.toggle)), .ran)
+        XCTAssertEqual(run(.board(.off)), .noOp, "The board starts off")
+        XCTAssertEqual(run(.board(.on)), .ran)
+        XCTAssertEqual(run(.hide), .ran)
+        XCTAssertEqual(run(.toggle), .ran)
+    }
+
+    // MARK: - Path form
+
+    private static let everyCommand: [AnnotateCommand] =
+        [.toggle, .show, .hide, .clear]
+        + ToolType.allCases.map(AnnotateCommand.tool)
+        + PaletteColor.allCases.map(AnnotateCommand.color)
+        + AnnotateCommand.Switch.allCases.flatMap { [.toolbar($0), .fade($0), .board($0)] }
+
+    func testEveryCommandRoundTripsThroughItsPath() {
+        for command in Self.everyCommand {
+            XCTAssertEqual(AnnotateCommand(path: command.path), command, command.path)
+        }
+        XCTAssertEqual(Set(Self.everyCommand.map(\.path)).count, Self.everyCommand.count)
+    }
+
+    func testPathsAreStable() {
+        XCTAssertEqual(AnnotateCommand.toggle.path, "/toggle")
+        XCTAssertEqual(AnnotateCommand.tool(.highlighter).path, "/tool/highlighter")
+        XCTAssertEqual(AnnotateCommand.color(.indigo).path, "/color/indigo")
+        XCTAssertEqual(AnnotateCommand.toolbar(.off).path, "/toolbar/off")
+        XCTAssertEqual(AnnotateCommand.fade(.toggle).path, "/fade/toggle")
+        XCTAssertEqual(AnnotateCommand.board(.on).path, "/board/on")
+    }
+
+    func testPathParsingIsLenientAboutSlashesAndCase() {
+        XCTAssertEqual(AnnotateCommand(path: "show"), .show)
+        XCTAssertEqual(AnnotateCommand(path: "/show/"), .show)
+        XCTAssertEqual(AnnotateCommand(path: "/Tool/Arrow"), .tool(.arrow))
+        XCTAssertEqual(AnnotateCommand(path: "color/RED/"), .color(.red))
+    }
+
+    func testPathParsingRejectsMalformedPaths() {
+        let invalid = [
+            "", "/", "//", "/nope", "/tool", "/tool/", "/tool/brush", "/color/purple",
+            "/toolbar", "/toolbar/maybe", "/show/now", "/clear/all", "/tool/arrow/extra",
+            "//show", "/fade//on",
+        ]
+        for path in invalid {
+            XCTAssertNil(AnnotateCommand(path: path), path)
+        }
     }
 
     // MARK: - App Intents
