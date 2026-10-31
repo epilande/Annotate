@@ -112,7 +112,7 @@ struct SetToolbarIntent: AnnotateCommandIntent {
         "Shows or hides the overlay toolbar. Doesn't open the overlay.")
 
     @Parameter(title: "State", default: .toggle)
-    var state: AnnotateCommand.Switch
+    var state: CommandSwitch
 
     static var parameterSummary: some ParameterSummary {
         Summary("Set toolbar to \(\.$state)")
@@ -122,7 +122,7 @@ struct SetToolbarIntent: AnnotateCommandIntent {
 
     init() {}
 
-    init(state: AnnotateCommand.Switch) {
+    init(state: CommandSwitch) {
         self.state = state
     }
 }
@@ -133,7 +133,7 @@ struct SetFadeModeIntent: AnnotateCommandIntent {
         "Turns Fade mode on or off. With it off, annotations persist until cleared.")
 
     @Parameter(title: "State", default: .toggle)
-    var state: AnnotateCommand.Switch
+    var state: CommandSwitch
 
     static var parameterSummary: some ParameterSummary {
         Summary("Set fade mode to \(\.$state)")
@@ -143,7 +143,7 @@ struct SetFadeModeIntent: AnnotateCommandIntent {
 
     init() {}
 
-    init(state: AnnotateCommand.Switch) {
+    init(state: CommandSwitch) {
         self.state = state
     }
 }
@@ -154,7 +154,7 @@ struct SetBoardIntent: AnnotateCommandIntent {
         "Shows or hides the whiteboard (the blackboard in Dark Mode) behind annotations.")
 
     @Parameter(title: "State", default: .toggle)
-    var state: AnnotateCommand.Switch
+    var state: CommandSwitch
 
     static var parameterSummary: some ParameterSummary {
         Summary("Set board to \(\.$state)")
@@ -164,7 +164,7 @@ struct SetBoardIntent: AnnotateCommandIntent {
 
     init() {}
 
-    init(state: AnnotateCommand.Switch) {
+    init(state: CommandSwitch) {
         self.state = state
     }
 }
@@ -205,10 +205,10 @@ extension PaletteColor: AppEnum {
     ]
 }
 
-extension AnnotateCommand.Switch: AppEnum {
+extension CommandSwitch: AppEnum {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "State"
 
-    static let caseDisplayRepresentations: [AnnotateCommand.Switch: DisplayRepresentation] = [
+    static let caseDisplayRepresentations: [CommandSwitch: DisplayRepresentation] = [
         .on: "On",
         .off: "Off",
         .toggle: "Toggle",

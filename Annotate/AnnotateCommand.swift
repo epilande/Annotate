@@ -13,23 +13,9 @@ enum AnnotateCommand: Hashable, Sendable {
     case color(PaletteColor)
     case clear
     /// Shows or hides the overlay toolbar without opening the overlay.
-    case toolbar(Switch)
-    case fade(Switch)
-    case board(Switch)
-
-    /// The target state for an on/off setting. The raw value names the state in Shortcuts
-    /// actions and command paths, so renaming a case breaks saved shortcuts and links.
-    enum Switch: String, CaseIterable, Sendable {
-        case on, off, toggle
-
-        func resolve(current: Bool) -> Bool {
-            switch self {
-            case .on: return true
-            case .off: return false
-            case .toggle: return !current
-            }
-        }
-    }
+    case toolbar(CommandSwitch)
+    case fade(CommandSwitch)
+    case board(CommandSwitch)
 
     /// Whether running a command changed anything.
     enum Outcome: Equatable, Sendable {
@@ -41,7 +27,8 @@ enum AnnotateCommand: Hashable, Sendable {
     // MARK: - Path form
 
     /// The command's stable string form, `/<command>[/<value>]`, such as `/show`, `/tool/arrow`,
-    /// or `/toolbar/off`. Values are the raw values of `ToolType`, `PaletteColor`, and `Switch`.
+    /// or `/toolbar/off`. Values are the raw values of `ToolType`, `PaletteColor`, and
+    /// `CommandSwitch`.
     var path: String {
         switch self {
         case .toggle: return "/toggle"
@@ -79,13 +66,13 @@ enum AnnotateCommand: Hashable, Sendable {
             guard let color = PaletteColor(rawValue: value) else { return nil }
             self = .color(color)
         case ("toolbar", let value?):
-            guard let target = Switch(rawValue: value) else { return nil }
+            guard let target = CommandSwitch(rawValue: value) else { return nil }
             self = .toolbar(target)
         case ("fade", let value?):
-            guard let target = Switch(rawValue: value) else { return nil }
+            guard let target = CommandSwitch(rawValue: value) else { return nil }
             self = .fade(target)
         case ("board", let value?):
-            guard let target = Switch(rawValue: value) else { return nil }
+            guard let target = CommandSwitch(rawValue: value) else { return nil }
             self = .board(target)
         default:
             return nil
@@ -158,6 +145,23 @@ enum AnnotateCommand: Hashable, Sendable {
         init(_ appDelegate: AppDelegate) {
             alwaysOn = appDelegate.alwaysOnMode
             visible = Set(appDelegate.overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
+        }
+    }
+}
+
+/// The target state for an on/off setting. The raw value names the state in Shortcuts
+/// actions and command paths, so renaming a case breaks saved shortcuts and links.
+///
+/// Top level rather than nested in `AnnotateCommand`: Xcode 26's App Intents metadata
+/// extraction can't read the static display representations of a nested `AppEnum`.
+enum CommandSwitch: String, CaseIterable, Sendable {
+    case on, off, toggle
+
+    func resolve(current: Bool) -> Bool {
+        switch self {
+        case .on: return true
+        case .off: return false
+        case .toggle: return !current
         }
     }
 }

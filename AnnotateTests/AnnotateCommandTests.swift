@@ -68,12 +68,12 @@ final class AnnotateCommandTests: XCTestCase {
     }
 
     func testSwitchResolvesAgainstTheCurrentState() {
-        XCTAssertTrue(AnnotateCommand.Switch.on.resolve(current: true))
-        XCTAssertTrue(AnnotateCommand.Switch.on.resolve(current: false))
-        XCTAssertFalse(AnnotateCommand.Switch.off.resolve(current: true))
-        XCTAssertFalse(AnnotateCommand.Switch.off.resolve(current: false))
-        XCTAssertFalse(AnnotateCommand.Switch.toggle.resolve(current: true))
-        XCTAssertTrue(AnnotateCommand.Switch.toggle.resolve(current: false))
+        XCTAssertTrue(CommandSwitch.on.resolve(current: true))
+        XCTAssertTrue(CommandSwitch.on.resolve(current: false))
+        XCTAssertFalse(CommandSwitch.off.resolve(current: true))
+        XCTAssertFalse(CommandSwitch.off.resolve(current: false))
+        XCTAssertFalse(CommandSwitch.toggle.resolve(current: true))
+        XCTAssertTrue(CommandSwitch.toggle.resolve(current: false))
     }
 
     // MARK: - Show, hide, toggle
@@ -364,7 +364,7 @@ final class AnnotateCommandTests: XCTestCase {
         [.toggle, .show, .hide, .clear]
         + ToolType.allCases.map(AnnotateCommand.tool)
         + PaletteColor.allCases.map(AnnotateCommand.color)
-        + AnnotateCommand.Switch.allCases.flatMap { [.toolbar($0), .fade($0), .board($0)] }
+        + CommandSwitch.allCases.flatMap { [.toolbar($0), .fade($0), .board($0)] }
 
     func testEveryCommandRoundTripsThroughItsPath() {
         for command in Self.everyCommand {
@@ -411,8 +411,8 @@ final class AnnotateCommandTests: XCTestCase {
             let title = PaletteColor.caseDisplayRepresentations[color].map { String(localized: $0.title) }
             XCTAssertEqual(title, color.displayName)
         }
-        for state in AnnotateCommand.Switch.allCases {
-            XCTAssertNotNil(AnnotateCommand.Switch.caseDisplayRepresentations[state])
+        for state in CommandSwitch.allCases {
+            XCTAssertNotNil(CommandSwitch.caseDisplayRepresentations[state])
         }
     }
 
