@@ -1,6 +1,6 @@
 import Cocoa
 
-/// An action other apps can trigger: Shortcuts actions today, `annotate://` links next (#134).
+/// An action other apps can trigger, from Shortcuts actions or `annotate://` links.
 /// Each command runs the same `AppDelegate` code the menu and shortcuts do, then shows the
 /// on-screen HUD on any open overlay.
 enum AnnotateCommand: Hashable, Sendable {

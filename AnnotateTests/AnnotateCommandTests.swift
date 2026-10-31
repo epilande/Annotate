@@ -393,7 +393,7 @@ final class AnnotateCommandTests: XCTestCase {
 
     // MARK: - Path form
 
-    private static let everyCommand: [AnnotateCommand] =
+    static let everyCommand: [AnnotateCommand] =
         [.toggle, .show, .hide, .clear]
         + ToolType.allCases.map(AnnotateCommand.tool)
         + PaletteColor.allCases.map(AnnotateCommand.color)

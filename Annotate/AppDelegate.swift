@@ -26,6 +26,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var localMouseUpMonitor: Any?
     var localFlagsChangedMonitor: Any?
 
+    /// Links that arrive before launch finishes, run once it does.
+    var pendingCommandURLs: [URL] = []
+    private(set) var hasFinishedLaunching = false
+
     override init() {
         self.settings = .standard
         super.init()
@@ -92,6 +96,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         setupCursorHighlightWindows()
         setupGlobalMouseMonitors()
         setupCursorHighlightObservers()
+
+        hasFinishedLaunching = true
+        runPendingCommandURLs()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

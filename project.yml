@@ -31,6 +31,13 @@ targets:
         INFOPLIST_FILE: Annotate/Info.plist
         ENABLE_PREVIEWS: true
         DEVELOPMENT_ASSET_PATHS: '"Annotate/Preview Content"'
+      # The link scheme in Info.plist. Debug builds get their own so they never take links
+      # meant for the installed app. Keep in sync with AnnotateCommand.urlScheme.
+      configs:
+        Debug:
+          ANNOTATE_URL_SCHEME: annotate-debug
+        Release:
+          ANNOTATE_URL_SCHEME: annotate
 
   AnnotateTests:
     type: bundle.unit-test
