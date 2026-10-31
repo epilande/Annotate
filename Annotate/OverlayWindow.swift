@@ -289,7 +289,8 @@ class OverlayWindow: NSPanel {
         // dismiss an open picker. Close it here, or the picker actions below are refused and a
         // stale picker stays on screen behind the bar.
         cancelQuickPicker()
-        if let activeField = overlayView.activeTextField {
+        // Clear All commits the label itself, keeping it out of the undo history.
+        if case .clearAll = action {} else if let activeField = overlayView.activeTextField {
             overlayView.finalizeTextAnnotation(activeField)
         }
         switch action {
@@ -314,6 +315,14 @@ class OverlayWindow: NSPanel {
     /// several overlays at once so the sound plays once.
     @discardableResult
     func performClearAll(playsSound: Bool = true) -> Bool {
+        // Commit the label being typed so Clear's undo snapshot holds its current text.
+        // Committing registers an undo step of its own, and in the same event the two would
+        // share one undo group, so one Undo would bring the label back and take it away again.
+        if let activeField = overlayView.activeTextField {
+            undoManager?.disableUndoRegistration()
+            overlayView.finalizeTextAnnotation(activeField)
+            undoManager?.enableUndoRegistration()
+        }
         // Clear first so ending a redaction drag finds nothing left to sample and lets
         // the snapshot go. The live shape is dropped even on an empty canvas.
         let cleared = overlayView.clearAll()

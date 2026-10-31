@@ -43,6 +43,12 @@ final class AnnotateCommandTests: XCTestCase {
         command.run(on: appDelegate)
     }
 
+    /// Ends the run-loop pass, which closes the undo group AppKit opens per event. A Shortcuts
+    /// action runs in a pass of its own, after the passes that typed into the label.
+    private func endEvent() {
+        wait(for: 0.01)
+    }
+
     private var visibleOverlays: [OverlayWindow] {
         appDelegate.overlayWindows.values.filter(\.isVisible)
     }
@@ -195,6 +201,49 @@ final class AnnotateCommandTests: XCTestCase {
         for window in appDelegate.overlayWindows.values {
             XCTAssertTrue(window.overlayView.arrows.isEmpty)
         }
+    }
+
+    func testClearCommitsANewLabelBeingTypedSoUndoRestoresIt() throws {
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        let point = NSPoint(x: 100, y: 100)
+        view.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        view.createTextField(at: point, withText: "")
+        try XCTUnwrap(view.activeTextField).stringValue = "Draft"
+        endEvent()
+
+        XCTAssertEqual(run(.clear), .ran)
+        endEvent()
+        XCTAssertNil(view.activeTextField)
+        XCTAssertTrue(view.textAnnotations.isEmpty)
+
+        view.undo()
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Draft"])
+    }
+
+    func testClearCommitsAnEditInProgressSoUndoRestoresTheNewText() throws {
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        let label = TextAnnotation(
+            text: "Before",
+            position: NSPoint(x: 100, y: 100),
+            color: .red,
+            fontSize: defaultTextAnnotationFontSize)
+        view.textAnnotations = [label]
+        // As a double-click on the label starts an edit.
+        view.editingTextAnnotationIndex = 0
+        view.currentTextAnnotation = label
+        view.createTextField(at: label.position, withText: label.text)
+        try XCTUnwrap(view.activeTextField).stringValue = "After"
+        endEvent()
+
+        run(.clear)
+        endEvent()
+        XCTAssertTrue(view.textAnnotations.isEmpty)
+
+        view.undo()
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["After"])
     }
 
     func testClearShowsItsHUDOnlyWhenItClearedSomething() {

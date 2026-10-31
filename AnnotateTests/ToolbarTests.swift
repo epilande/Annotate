@@ -837,6 +837,25 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = appDelegate
     }
 
+    func testToolbarClearAllCommitsTheLabelBeingTypedSoUndoRestoresIt() throws {
+        let view = try XCTUnwrap(window.overlayView)
+        let point = NSPoint(x: 100, y: 100)
+        view.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        view.createTextField(at: point, withText: "")
+        try XCTUnwrap(view.activeTextField).stringValue = "Draft"
+        // Typing and the click on Clear All are separate events, each with its own undo group.
+        wait(for: 0.01)
+
+        window.performToolbarAction(.clearAll)
+        wait(for: 0.01)
+        XCTAssertNil(view.activeTextField)
+        XCTAssertTrue(view.textAnnotations.isEmpty)
+
+        window.performToolbarAction(.undo)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Draft"])
+    }
+
     func testQuickPickerPlacementAndFeedbackClearVisibleToolbar() throws {
         let clearance = window.toolbarClearance
         XCTAssertGreaterThan(clearance, 0)
