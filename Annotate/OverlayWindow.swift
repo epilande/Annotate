@@ -19,7 +19,7 @@ class OverlayWindow: NSPanel {
     let fadeInterval: TimeInterval = 1.0 / 60.0
     
     // Track the current feedback view to remove it when a new one appears
-    private var currentFeedbackView: NSView?
+    private(set) var currentFeedbackView: NSView?
     private var feedbackRemovalTask: DispatchWorkItem?
     private enum QuickPickerInteraction {
         case waitingForRelease(key: String, openedAt: CFTimeInterval, moved: Bool, holdActive: Bool)
@@ -310,14 +310,18 @@ class OverlayWindow: NSPanel {
         }
     }
 
-    func performClearAll() {
+    /// Returns whether there was anything to clear. Pass `playsSound: false` when clearing
+    /// several overlays at once so the sound plays once.
+    @discardableResult
+    func performClearAll(playsSound: Bool = true) -> Bool {
         // Clear first so ending a redaction drag finds nothing left to sample and lets
         // the snapshot go. The live shape is dropped even on an empty canvas.
         let cleared = overlayView.clearAll()
         discardLiveDrawing()
-        if cleared {
+        if cleared && playsSound {
             SoundPlayer.shared.playClearAll()
         }
+        return cleared
     }
 
     private var toolbarActionAnchor: NSPoint {
@@ -886,13 +890,10 @@ class OverlayWindow: NSPanel {
     }
 
     private func applyColor(_ color: NSColor) {
+        AppDelegate.shared?.setColor(color)
+        // The picker's own store and window, in case the delegate doesn't track this overlay.
         pickerSettings[.selectedColor] = color
-
-        let appDelegate = AppDelegate.shared
-        appDelegate?.currentColor = color
-        runtimeOverlayWindows.forEach { $0.currentColor = color }
-        appDelegate?.updateStatusBarIcon(with: color)
-        CursorHighlightManager.shared.annotationColor = color
+        currentColor = color
     }
 
     private func dismissQuickPicker() {
@@ -1999,6 +2000,13 @@ class OverlayWindow: NSPanel {
         let hideToolFeedback = pickerSettings[.hideToolFeedback]
         guard !hideToolFeedback else { return }
         showFeedback("\(icon) \(text)")
+    }
+
+    func showColorFeedback(_ color: PaletteColor) {
+        let hideToolFeedback = pickerSettings[.hideToolFeedback]
+        guard !hideToolFeedback else { return }
+        showFeedback(
+            "🎨 \(color.displayName)", lineColor: color.nsColor, lineWidth: overlayView.currentLineWidth)
     }
 
     func showToolFeedback(_ tool: ToolType) {

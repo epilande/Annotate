@@ -1,7 +1,7 @@
 import Cocoa
 
 /// Represents the available tools for annotation.
-enum ToolType: String, CaseIterable {
+enum ToolType: String, CaseIterable, Sendable {
     case pen
     case arrow
     case line
