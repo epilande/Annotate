@@ -24,6 +24,8 @@ struct GeneralSettingsView: View {
     private var defaultToolOption: DefaultToolOption
     @AppStorage(.fadeDelay)
     private var fadeDelay: Double
+    @AppStorage(.urlCommandsEnabled)
+    private var urlCommandsEnabled: Bool
 
     /// Tools offered in the Default Tool picker, excluding Select and Eraser since neither
     /// is a sensible tool to land on when the overlay opens.
@@ -147,6 +149,11 @@ struct GeneralSettingsView: View {
                 } label: {
                     Text("Default Tool")
                     Text("Tool selected each time the overlay is activated")
+                }
+
+                Toggle(isOn: $urlCommandsEnabled) {
+                    Text("Allow URL commands")
+                    Text("Run \(AnnotateCommand.urlScheme):// links from other apps, scripts, and the browser")
                 }
             } header: {
                 SettingsHeader(

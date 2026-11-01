@@ -60,6 +60,8 @@ extension SettingKey<Bool> {
     static var toolbarShowsShortcuts: Self { .bool("ToolbarShowsShortcuts", default: true) }
     static var soundsEnabled: Self { .bool("SoundsEnabled") }
     static var enableBoard: Self { .bool("EnableBoard") }
+    /// Whether `annotate://` links run commands. When off, links are ignored.
+    static var urlCommandsEnabled: Self { .bool("URLCommandsEnabled", default: true) }
 
     static var textBackground: Self { .bool("TextBackgroundOn") }
     /// Whether committing a label switches to the Select tool with that label selected.

@@ -42,6 +42,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - ⌨️ **Keyboard Shortcuts:** Switch between modes and toggle the overlay with customizable keyboard shortcuts.
 - ⚡ **Global Hotkey:** Toggle Annotate with a global shortcut.
 - 🤖 **Shortcuts Actions:** Open the overlay, pick a tool or color, clear, and switch the toolbar, Fade Mode, or board from the Shortcuts app.
+- 🔗 **URL Scheme:** Run the same commands from `annotate://` links in scripts, launchers, Stream Deck, or the browser.
 - 🔄 **Auto-Updates:** Automatic update checking with secure, cryptographically signed updates.
 
 ## 📦 Installation
@@ -372,6 +373,35 @@ Annotate adds these actions to the Shortcuts app, so you can run them from a sho
 
 Select Tool, Set Color, Clear Annotations, and the Set actions show an on-screen message on any open overlay.
 
+### URL Scheme
+
+Every Shortcuts action also has an `annotate://` link, so anything that can open a URL can run it:
+
+```sh
+open "annotate://tool/arrow"
+```
+
+| Link                                   | What it does                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------- |
+| `annotate://toggle`                    | Opens the overlay on the display under the pointer, or closes it.             |
+| `annotate://show`                      | Opens the overlay. Leaves Always-On Mode first.                               |
+| `annotate://hide`                      | Closes the overlay on every display. Leaves Always-On Mode.                   |
+| `annotate://tool/<tool>`               | Selects a tool and opens the overlay.                                         |
+| `annotate://color/<color>`             | Sets the annotation color from the palette. Doesn't open the overlay.         |
+| `annotate://clear`                     | Clears every open overlay. Undo brings the annotations back.                  |
+| `annotate://toolbar/<on\|off\|toggle>` | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.           |
+| `annotate://fade/<on\|off\|toggle>`    | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit. |
+| `annotate://board/<on\|off\|toggle>`   | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.        |
+
+- **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
+- **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
+
+Opening a link brings Annotate to the front. To set a color or switch the toolbar without leaving the app you're in, open the link in the background with `open -g`.
+
+Links show the same on-screen messages as the Shortcuts actions. Matching ignores case. A link Annotate doesn't recognize, including one with a query string, does nothing. Turn links off with **Allow URL commands** in Settings → General.
+
+Debug builds answer to `annotate-debug://` instead, so a development build never takes links meant for the installed app.
+
 ## ⚙️ Settings
 
 Access the Settings panel from the menu bar icon or by pressing <kbd>Command</kbd> + <kbd>,</kbd>.
@@ -392,6 +422,7 @@ Settings are organized into a sidebar with five panes: **General**, **Tools**, *
 - **Show in Dock**: Display Annotate icon in the Dock.
 - **Switch to Select after placing text**: After committing a label, switch to the Select tool with that label selected. Off by default so text mode stays selected.
 - **Default Tool**: Choose which tool is selected each time the overlay is activated (defaults to last used).
+- **Allow URL commands**: Run [`annotate://` links](#url-scheme) from other apps, scripts, and the browser. On by default; turn it off to ignore every link.
 - **Fade Delay**: How long annotations stay at full opacity in Fade Mode before fading out, from 0.25 to 5 seconds (default 0.625).
 
 ### Tools
