@@ -97,6 +97,24 @@ final class URLCommandTests: XCTestCase {
         }
     }
 
+    // MARK: - Logging
+
+    func testLogDescriptionKeepsOnlyTheSchemeAndCommand() throws {
+        XCTAssertEqual(AnnotateCommand.logDescription(of: try link("annotate://tool/arrow")), "annotate://tool/arrow")
+        XCTAssertEqual(AnnotateCommand.logDescription(of: try link("annotate:show")), "annotate:show")
+        XCTAssertEqual(
+            AnnotateCommand.logDescription(of: try link("annotate://show?token=s3cret#frag")),
+            "annotate://show (dropped query, fragment)")
+        XCTAssertEqual(
+            AnnotateCommand.logDescription(of: try link("annotate://me:hunter2@show:8080/now")),
+            "annotate://show/now (dropped user, password, port)")
+    }
+
+    func testLogDescriptionKeepsPercentEncodingOnOneLine() throws {
+        XCTAssertEqual(
+            AnnotateCommand.logDescription(of: try link("annotate://tool/arr%0Aow")), "annotate://tool/arr%0Aow")
+    }
+
     // MARK: - Opening links
 
     func testURLCommandsAreOnByDefault() {

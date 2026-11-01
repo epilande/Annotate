@@ -27,6 +27,27 @@ extension AnnotateCommand {
         else { return nil }
         self.init(path: host + components.path)
     }
+
+    /// A link with only its scheme, host, and path, safe to log in the clear. Drops the user,
+    /// password, port, query, and fragment, where a pasted or forwarded link could carry a token
+    /// or other private data, and names which of them were there. Keeps percent-encoding, so the
+    /// result is one line however the link was built.
+    static func logDescription(of url: URL) -> String {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return "<unparseable link>"
+        }
+        let host = components.percentEncodedHost.map { "//" + $0 } ?? ""
+        let link = (components.scheme.map { $0 + ":" } ?? "") + host + components.percentEncodedPath
+        let parts: [(name: String, isPresent: Bool)] = [
+            ("user", components.percentEncodedUser != nil),
+            ("password", components.percentEncodedPassword != nil),
+            ("port", components.port != nil),
+            ("query", components.percentEncodedQuery != nil),
+            ("fragment", components.percentEncodedFragment != nil),
+        ]
+        let dropped = parts.filter(\.isPresent).map(\.name)
+        return dropped.isEmpty ? link : "\(link) (dropped \(dropped.joined(separator: ", ")))"
+    }
 }
 
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "URLCommands")
@@ -47,11 +68,13 @@ extension AppDelegate {
     @discardableResult
     func openCommandURL(_ url: URL) -> AnnotateCommand.Outcome? {
         guard settings[.urlCommandsEnabled] else {
-            log.info("Ignored a link because URL commands are off: \(url.absoluteString, privacy: .public)")
+            let link = AnnotateCommand.logDescription(of: url)
+            log.info("Ignored a link because URL commands are off: \(link, privacy: .public)")
             return nil
         }
         guard let command = AnnotateCommand(url: url) else {
-            log.info("Ignored a link that isn't a command: \(url.absoluteString, privacy: .public)")
+            let link = AnnotateCommand.logDescription(of: url)
+            log.info("Ignored a link that isn't a command: \(link, privacy: .public)")
             return nil
         }
         return command.run(on: self)
