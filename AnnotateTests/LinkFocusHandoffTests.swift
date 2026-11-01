@@ -327,6 +327,83 @@ final class LinkFocusHandoffTests: XCTestCase {
         XCTAssertTrue(activated.isEmpty)
     }
 
+    func testAPassiveLinkBeforeTheLaunchActivationStillHandsBack() {
+        // Regression: a second color link arrives after the launch link settled but before the
+        // launch activation lands. It replaced the deferred decision and never took the
+        // activation, so Annotate stayed frontmost.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: 0.05)
+        deliver(leavingOverlayOpen: false)
+        settle()
+        XCTAssertTrue(activated.isEmpty, "Not active yet, so nothing to hand back")
+
+        scheduler.advance(by: 0.3)
+        becomeActive()
+        XCTAssertTrue(activated.isEmpty, "Settles again, in case a link arrives with the activation")
+        settle()
+
+        XCTAssertEqual(activated, [previousApp])
+        XCTAssertFalse(handoff.isSettling)
+    }
+
+    func testAPassiveLinkSettlingWhenTheLaunchActivationLandsHandsBack() {
+        // Same as above, but the activation lands while the second link is still settling.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: 0.05)
+        deliver(leavingOverlayOpen: false)
+        scheduler.advance(by: 0.1)
+        becomeActive()
+        settle()
+
+        XCTAssertEqual(activated, [previousApp])
+        XCTAssertFalse(handoff.isSettling)
+    }
+
+    func testPassiveLinksAfterLaunchDoNotExtendTheLaunchActivationWindow() {
+        // The window runs from when the launch links settled. A later link carries it over
+        // as is, so a launch activation after it is still left alone.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: LinkFocusHandoff.launchActivationWindow - 0.25)
+        deliver(leavingOverlayOpen: false)
+        settle()
+
+        scheduler.advance(by: 0.125)
+        becomeActive()
+        XCTAssertFalse(handoff.isSettling, "Past the window, so nothing settles again")
+        settle()
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testALaunchActivationPastTheWindowIsLeftAloneWhileALaterLinkSettles() {
+        // The later link is still settling when the activation lands, just past the window.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: LinkFocusHandoff.launchActivationWindow - 0.125)
+        deliver(leavingOverlayOpen: false)
+        scheduler.advance(by: 0.1875)
+        becomeActive()
+        settle()
+
+        XCTAssertTrue(activated.isEmpty)
+        XCTAssertFalse(handoff.isSettling)
+    }
+
     func testALateLaunchActivationIsLeftAlone() {
         handoff.noteLaunch(previousApp: previousApp)
         isActive = false

@@ -50,8 +50,12 @@ final class LinkFocusHandoff: NSObject {
     /// Links waiting for focus to be decided.
     private struct Burst {
         let start: Date
-        /// Whether any of the links came with the launch.
+        /// Whether any of the links came with the launch, or arrived while a launch decision
+        /// waited for the launch activation and took it over.
         var launched: Bool
+        /// The deadline of the launch decision these links took over. A launch activation after
+        /// it is left alone. Nil when nothing was taken over.
+        var launchDeadline: Date?
         /// The latest `linksDidRun` call. Only its scheduled settle decides.
         var latest: Int
         /// Asks whether an interactive overlay is open. The latest call's.
@@ -73,7 +77,8 @@ final class LinkFocusHandoff: NSObject {
     private var burst: Burst?
     private var callCount = 0
     /// A launch burst settled before the launch activation landed. When it lands, the burst
-    /// settles again, unless a newer link has replaced it.
+    /// settles again. A newer link replaces it and takes over its claim to the activation, so
+    /// focus is still decided after the last link.
     private var deferredLaunch: (keepsFocus: @MainActor () -> Bool, deadline: Date)?
 
     init(
@@ -115,6 +120,8 @@ final class LinkFocusHandoff: NSObject {
     /// open. If not, and opening the links activated Annotate, the previous app gets focus back.
     /// A newer link always supersedes any decision still waiting.
     func linksDidRun(launched: Bool = false, keepsFocus: @escaping @MainActor () -> Bool) {
+        // A live burst means nothing is deferred, so only a new burst takes over the launch.
+        let takenOver = deferredLaunch.flatMap { now() <= $0.deadline ? $0.deadline : nil }
         deferredLaunch = nil
         if var burst {
             burst.launched = burst.launched || launched
@@ -123,9 +130,11 @@ final class LinkFocusHandoff: NSObject {
             self.burst = burst
         } else {
             let start = now()
+            let launched = launched || takenOver != nil
             var burst = Burst(
                 start: start,
                 launched: launched,
+                launchDeadline: takenOver,
                 latest: 0,
                 keepsFocus: keepsFocus,
                 activation: takeActivation(forBurstAt: start, launched: launched))
@@ -168,7 +177,8 @@ final class LinkFocusHandoff: NSObject {
         guard isActive() else {
             // The launch activation hasn't landed yet. Decide again once it does.
             if burst.launched {
-                deferredLaunch = (burst.keepsFocus, now().addingTimeInterval(Self.launchActivationWindow))
+                let deadline = burst.launchDeadline ?? now().addingTimeInterval(Self.launchActivationWindow)
+                deferredLaunch = (burst.keepsFocus, deadline)
             }
             return
         }
@@ -193,8 +203,11 @@ final class LinkFocusHandoff: NSObject {
     /// The workspace posts the other app's deactivation before AppKit posts this.
     @objc private func didBecomeActive() {
         let activation = Activation(previousApp: lastDeactivatedApp, date: now())
-        // A launch burst still settling takes the launch activation, whenever it lands.
-        if var burst, burst.launched, !burst.resigned, burst.activation == nil {
+        // A launch burst still settling takes the launch activation, whenever it lands, unless
+        // it took over a launch decision whose window has passed.
+        if var burst, burst.launched, !burst.resigned, burst.activation == nil,
+            burst.launchDeadline.map({ activation.date <= $0 }) ?? true
+        {
             burst.activation = activation
             self.burst = burst
             return
@@ -207,6 +220,7 @@ final class LinkFocusHandoff: NSObject {
                 var burst = Burst(
                     start: activation.date,
                     launched: true,
+                    launchDeadline: deferred.deadline,
                     latest: 0,
                     keepsFocus: deferred.keepsFocus,
                     activation: activation)
