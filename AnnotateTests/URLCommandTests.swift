@@ -402,8 +402,24 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(focus.activated().isEmpty, "Not active yet, so nothing to hand back")
 
         focus.becomeActive()
+        focus.settle()
 
         XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
+    }
+
+    func testAToolLinkAfterALaunchColorLinkKeepsFocus() throws {
+        // A color link launches the app and settles before the launch activation lands. A tool
+        // link then opens the overlay, and the activation lands before the tool link settles.
+        let focus = installLaunchFocusHarness()
+        try open("annotate-debug://color/green")
+        launchAndSettle(focus)
+
+        try open("annotate-debug://tool/arrow")
+        focus.becomeActive()
+        focus.settle()
+
+        XCTAssertEqual(overlay?.isVisible, true)
+        XCTAssertTrue(focus.activated().isEmpty)
     }
 
     func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatedItFirst() throws {

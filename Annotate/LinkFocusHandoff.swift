@@ -41,19 +41,40 @@ final class LinkFocusHandoff: NSObject {
     private let activate: @MainActor (NSRunningApplication) -> Void
     private let schedule: Schedule
 
+    /// When Annotate became active, and the app that was active before it.
+    private struct Activation {
+        let previousApp: NSRunningApplication?
+        let date: Date
+    }
+
+    /// Links waiting for focus to be decided.
+    private struct Burst {
+        let start: Date
+        /// Whether any of the links came with the launch.
+        var launched: Bool
+        /// The latest `linksDidRun` call. Only its scheduled settle decides.
+        var latest: Int
+        /// Asks whether an interactive overlay is open. The latest call's.
+        var keepsFocus: @MainActor () -> Bool
+        /// The activation that opening these links caused. Taken when the burst starts, so an
+        /// activation that comes later (the user switching back on purpose) never counts.
+        var activation: Activation?
+        /// Annotate resigned active while the burst settled. The user went elsewhere, so
+        /// nothing is handed back.
+        var resigned = false
+    }
+
     /// The app that most recently gave up focus to another app.
     private var lastDeactivatedApp: NSRunningApplication?
-    /// When Annotate last became active, and the app that was active before it.
-    private var activation: (previousApp: NSRunningApplication?, date: Date)?
+    /// The latest activation that no burst has taken yet.
+    private var activation: Activation?
     /// The app the user was in when Annotate launched.
     private var launchPreviousApp: NSRunningApplication?
-    /// Links from the launch settled before the launch activation, which should hand focus back
-    /// when it lands.
-    private var pendingHandBack: (app: NSRunningApplication, deadline: Date)?
-    /// The links still settling: when the first arrived, whether any came with the launch, and
-    /// which `linksDidRun` call is the latest.
-    private var burst: (start: Date, launched: Bool, latest: Int)?
+    private var burst: Burst?
     private var callCount = 0
+    /// A launch burst settled before the launch activation landed. When it lands, the burst
+    /// settles again, unless a newer link has replaced it.
+    private var deferredLaunch: (keepsFocus: @MainActor () -> Bool, deadline: Date)?
 
     init(
         workspaceCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
@@ -92,51 +113,67 @@ final class LinkFocusHandoff: NSObject {
     /// or were ignored. Pass `launched` for links that arrived with the launch. Once no link has
     /// arrived for `settleDelay`, the handoff asks `keepsFocus` whether an interactive overlay is
     /// open. If not, and opening the links activated Annotate, the previous app gets focus back.
+    /// A newer link always supersedes any decision still waiting.
     func linksDidRun(launched: Bool = false, keepsFocus: @escaping @MainActor () -> Bool) {
-        callCount += 1
-        let call = callCount
-        if let burst {
-            self.burst = (burst.start, burst.launched || launched, call)
+        deferredLaunch = nil
+        if var burst {
+            burst.launched = burst.launched || launched
+            burst.keepsFocus = keepsFocus
+            startSettling(&burst)
+            self.burst = burst
         } else {
-            burst = (now(), launched, call)
-        }
-        schedule(Self.settleDelay) { [weak self] in
-            guard let self, self.burst?.latest == call else { return }
-            self.settle(keepsFocus: keepsFocus())
+            let start = now()
+            var burst = Burst(
+                start: start,
+                launched: launched,
+                latest: 0,
+                keepsFocus: keepsFocus,
+                activation: takeActivation(forBurstAt: start, launched: launched))
+            startSettling(&burst)
+            self.burst = burst
         }
     }
 
     /// Whether links are still waiting for focus to be decided.
     var isSettling: Bool { burst != nil }
 
-    private func settle(keepsFocus: Bool) {
+    /// Takes the activation that opening a burst's links caused. One activation hands back
+    /// once, whatever the links did. Any activation since launch is the launch's own. Otherwise
+    /// it must come shortly before the first link, as Launch Services activates the app just
+    /// before it delivers the link.
+    private func takeActivation(forBurstAt start: Date, launched: Bool) -> Activation? {
+        guard let activation else { return nil }
+        self.activation = nil
+        if launched { return activation }
+        let age = start.timeIntervalSince(activation.date)
+        return age >= 0 && age <= Self.activationWindow ? activation : nil
+    }
+
+    /// Makes this burst's latest call the one whose settle decides, and schedules it.
+    private func startSettling(_ burst: inout Burst) {
+        callCount += 1
+        let call = callCount
+        burst.latest = call
+        schedule(Self.settleDelay) { [weak self] in
+            guard let self, self.burst?.latest == call else { return }
+            self.settle()
+        }
+    }
+
+    private func settle() {
         guard let burst else { return }
         self.burst = nil
-        // One activation hands back once, whatever the links did.
-        let activation = self.activation
-        self.activation = nil
-        pendingHandBack = nil
-        guard !keepsFocus else { return }
+        guard !burst.resigned, !burst.keepsFocus() else { return }
 
         guard isActive() else {
-            // The launch activation hasn't landed yet.
-            if burst.launched, let app = launchPreviousApp ?? lastDeactivatedApp {
-                pendingHandBack = (app, now().addingTimeInterval(Self.launchActivationWindow))
+            // The launch activation hasn't landed yet. Decide again once it does.
+            if burst.launched {
+                deferredLaunch = (burst.keepsFocus, now().addingTimeInterval(Self.launchActivationWindow))
             }
             return
         }
-        guard let activation else { return }
-        // Any activation since launch is the launch's own. Otherwise it must be close enough to
-        // the first link to be Launch Services activating the app for these links.
-        let previousApp: NSRunningApplication?
-        if burst.launched {
-            previousApp = activation.previousApp ?? launchPreviousApp
-        } else if burst.start.timeIntervalSince(activation.date) <= Self.activationWindow {
-            previousApp = activation.previousApp
-        } else {
-            previousApp = nil
-        }
-        handBack(to: previousApp)
+        guard let activation = burst.activation else { return }
+        handBack(to: activation.previousApp ?? (burst.launched ? launchPreviousApp : nil))
     }
 
     @discardableResult
@@ -155,15 +192,41 @@ final class LinkFocusHandoff: NSObject {
 
     /// The workspace posts the other app's deactivation before AppKit posts this.
     @objc private func didBecomeActive() {
-        if let pending = pendingHandBack {
-            pendingHandBack = nil
-            if now() <= pending.deadline, handBack(to: pending.app) { return }
+        let activation = Activation(previousApp: lastDeactivatedApp, date: now())
+        // A launch burst still settling takes the launch activation, whenever it lands.
+        if var burst, burst.launched, !burst.resigned, burst.activation == nil {
+            burst.activation = activation
+            self.burst = burst
+            return
         }
-        activation = (lastDeactivatedApp, now())
+        // A launch burst that settled first settles again, as a burst of its own, so a link that
+        // arrives with or after this activation still supersedes it.
+        if let deferred = deferredLaunch {
+            deferredLaunch = nil
+            if activation.date <= deferred.deadline {
+                var burst = Burst(
+                    start: activation.date,
+                    launched: true,
+                    latest: 0,
+                    keepsFocus: deferred.keepsFocus,
+                    activation: activation)
+                startSettling(&burst)
+                self.burst = burst
+                return
+            }
+        }
+        self.activation = activation
     }
 
+    /// The user went elsewhere, so neither an untaken activation nor a settling burst hands
+    /// focus back, even if the user comes back before the burst settles.
     @objc private func didResignActive() {
         activation = nil
+        if var burst {
+            burst.activation = nil
+            burst.resigned = true
+            self.burst = burst
+        }
     }
 
     // MARK: - System

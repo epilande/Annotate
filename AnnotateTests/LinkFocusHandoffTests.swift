@@ -73,6 +73,11 @@ final class LinkFocusHandoffTests: XCTestCase {
         becomeActive()
     }
 
+    private func resignActive() {
+        isActive = false
+        appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
+    }
+
     private func becomeActive() {
         isActive = true
         appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
@@ -154,7 +159,32 @@ final class LinkFocusHandoffTests: XCTestCase {
     func testResigningActiveWhileSettlingDropsTheActivation() {
         activateAnnotate(from: previousApp)
         deliver(leavingOverlayOpen: false)
-        appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
+        resignActive()
+        settle()
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testSwitchingAwayAndBackWhileSettlingKeepsFocus() {
+        // Regression: the user leaves and deliberately comes back before the burst settles.
+        // The new activation came after the link, so it isn't Launch Services opening it.
+        activateAnnotate(from: previousApp)
+        deliver(leavingOverlayOpen: false)
+        scheduler.advance(by: 0.05)
+        resignActive()
+        scheduler.advance(by: 0.05)
+        activateAnnotate(from: previousApp)
+        settle()
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testAnActivationAfterTheFirstLinkDoesNotCount() {
+        // Launch Services activates before it delivers, so a later activation is the user's.
+        isActive = false
+        deliver(leavingOverlayOpen: false)
+        scheduler.advance(by: 0.05)
+        activateAnnotate(from: previousApp)
         settle()
 
         XCTAssertTrue(activated.isEmpty)
@@ -195,16 +225,31 @@ final class LinkFocusHandoffTests: XCTestCase {
         XCTAssertTrue(activated.isEmpty, "The tool link's overlay needs focus")
     }
 
-    func testABurstLongerThanTheActivationWindowStillCounts() {
-        // The window is measured to the burst's first link, not to when it settles.
+    func testABurstLongerThanTheActivationWindowDecidesOnceAfterItsLastLink() {
+        // The window is measured to the burst's first link, not to when it settles. Steps are
+        // binary fractions so the manual clock lands exactly on each deadline.
+        let gap: TimeInterval = 0.125
         activateAnnotate(from: previousApp)
-        for _ in 0..<5 {
+        for _ in 0..<6 {
             deliver(leavingOverlayOpen: false)
-            scheduler.advance(by: 0.2)
+            scheduler.advance(by: gap)
+            XCTAssertTrue(activated.isEmpty, "Nothing fires while links keep arriving")
+            XCTAssertTrue(handoff.isSettling)
         }
-        settle()
+        // 0.75 s since the first link: past the activation window and past every superseded
+        // deadline, so only the latest call's settle can decide.
+        XCTAssertTrue(activated.isEmpty)
 
-        XCTAssertEqual(activated, [previousApp])
+        scheduler.advance(by: LinkFocusHandoff.settleDelay - gap - gap / 2)
+        XCTAssertTrue(activated.isEmpty, "Still within the settle delay of the last link")
+        XCTAssertTrue(handoff.isSettling)
+
+        scheduler.advance(by: gap / 2)
+        XCTAssertEqual(activated, [previousApp], "One decision, settleDelay after the last link")
+        XCTAssertFalse(handoff.isSettling)
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(activated.count, 1)
     }
 
     func testLinksFartherApartThanTheSettleDelayDecideSeparately() {
@@ -230,8 +275,56 @@ final class LinkFocusHandoffTests: XCTestCase {
 
         scheduler.advance(by: 0.3)
         becomeActive()
+        XCTAssertTrue(activated.isEmpty, "Settles again, in case a link arrives with the activation")
+        settle()
 
         XCTAssertEqual(activated, [previousApp])
+    }
+
+    func testLaunchActivationDuringTheBurstIsTheLaunchsOwn() {
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        scheduler.advance(by: 0.1)
+        becomeActive()
+        settle()
+
+        XCTAssertEqual(activated, [previousApp])
+    }
+
+    func testAnOverlayLinkAfterLaunchSupersedesTheDeferredHandBack() {
+        // Regression: a launch color link settles before the launch activation, then a tool
+        // link opens the overlay, and the activation lands before the tool link settles.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: 0.05)
+        deliver(leavingOverlayOpen: true)
+        scheduler.advance(by: 0.05)
+        becomeActive()
+        settle()
+        scheduler.advance(by: 1)
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testAnOverlayLinkDeliveredRightAfterTheLaunchActivationKeepsFocus() {
+        // Launch Services order: the activation for the tool link lands first, then the link.
+        handoff.noteLaunch(previousApp: previousApp)
+        isActive = false
+        deliver(leavingOverlayOpen: false, launched: true)
+        settle()
+
+        scheduler.advance(by: 0.3)
+        becomeActive()
+        scheduler.advance(by: 0.02)
+        deliver(leavingOverlayOpen: true)
+        settle()
+        scheduler.advance(by: 1)
+
+        XCTAssertTrue(activated.isEmpty)
     }
 
     func testALateLaunchActivationIsLeftAlone() {
