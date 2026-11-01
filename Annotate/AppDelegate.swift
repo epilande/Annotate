@@ -29,6 +29,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Links that arrive before launch finishes, run once it does.
     var pendingCommandURLs: [URL] = []
     private(set) var hasFinishedLaunching = false
+    /// Created at launch, before any link can activate the app.
+    var linkFocusHandoff: LinkFocusHandoff?
 
     override init() {
         self.settings = .standard
@@ -97,6 +99,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         setupGlobalMouseMonitors()
         setupCursorHighlightObservers()
 
+        if linkFocusHandoff == nil {
+            linkFocusHandoff = LinkFocusHandoff()
+        }
         hasFinishedLaunching = true
         runPendingCommandURLs()
     }
@@ -495,7 +500,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// the overlay key while its ToolbarPanel child reports `canBecomeKey = false`.
     var overlayKeyWindowOverride: Bool?
 
-    private var isOverlayKeyWindow: Bool {
+    var isOverlayKeyWindow: Bool {
         overlayKeyWindowOverride
             ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }

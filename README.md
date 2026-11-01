@@ -396,7 +396,7 @@ open "annotate://tool/arrow"
 - **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
 
-Opening a link brings Annotate to the front. To set a color or switch the toolbar without leaving the app you're in, open the link in the background with `open -g`.
+Opening a link with plain `open` brings Annotate to the front for a moment. Links that don't open the overlay, such as color and toolbar links, then hand focus back to the app you were in. To skip the switch entirely, open the link in the background with `open -g`.
 
 Links show the same on-screen messages as the Shortcuts actions. Matching ignores case. A link Annotate doesn't recognize, including one with a query string, does nothing. Turn links off with **Allow URL commands** in Settings → General.
 

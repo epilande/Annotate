@@ -202,6 +202,61 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(appDelegate.toolbarVisible)
     }
 
+    /// Installs a handoff that sees Launch Services activate Annotate for the next link, and
+    /// returns the apps it gave focus to.
+    private func activateForNextLink() -> () -> [NSRunningApplication] {
+        let workspaceCenter = NotificationCenter()
+        let appCenter = NotificationCenter()
+        var activated: [NSRunningApplication] = []
+        appDelegate.linkFocusHandoff = LinkFocusHandoff(
+            workspaceCenter: workspaceCenter,
+            appCenter: appCenter,
+            ownProcessIdentifier: -1,
+            isActive: { true },
+            activate: { activated.append($0) })
+        workspaceCenter.post(
+            name: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            userInfo: [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        return { activated }
+    }
+
+    func testAColorLinkHandsFocusBackToThePreviousApp() throws {
+        launch()
+        appDelegate.overlayKeyWindowOverride = false
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://color/green")
+
+        XCTAssertEqual(activated(), [NSRunningApplication.current])
+    }
+
+    func testALinkThatLeavesTheOverlayKeyKeepsFocus() throws {
+        launch()
+        // XCTest can't make the overlay key, so this stands in for the shown overlay taking it.
+        appDelegate.overlayKeyWindowOverride = true
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://tool/arrow")
+
+        XCTAssertEqual(overlay?.isVisible, true)
+        XCTAssertTrue(activated().isEmpty)
+    }
+
+    func testAnIgnoredLinkHandsFocusBackToo() throws {
+        launch()
+        appDelegate.overlayKeyWindowOverride = false
+        var activated = activateForNextLink()
+        try open("annotate-debug://tool/brush")
+        XCTAssertEqual(activated(), [NSRunningApplication.current], "Rejected link")
+
+        testDefaults.settings[.urlCommandsEnabled] = false
+        activated = activateForNextLink()
+        try open("annotate-debug://color/green")
+        XCTAssertEqual(activated(), [NSRunningApplication.current], "URL commands off")
+    }
+
     func testALinkThatLaunchesTheAppRunsOnceLaunchFinishes() throws {
         // Launch Services can deliver the link that launched the app before launch finishes.
         try open("annotate-debug://tool/rectangle")
