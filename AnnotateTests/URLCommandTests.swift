@@ -365,4 +365,16 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(overlay.overlayView.currentTool, .rectangle)
         XCTAssertTrue(appDelegate.pendingCommandURLs.isEmpty)
     }
+
+    func testALinkThatArrivesBeforeTheLaunchLinksRunWaitsBehindThem() throws {
+        try open("annotate-debug://tool/rectangle")
+        launch()
+        // Launch finished, but the queued link hasn't run yet.
+        try open("annotate-debug://tool/arrow")
+        XCTAssertNotEqual(overlay?.isVisible, true)
+
+        wait(for: 0.05)
+
+        XCTAssertEqual(overlay?.overlayView.currentTool, .arrow, "The later link runs last")
+    }
 }

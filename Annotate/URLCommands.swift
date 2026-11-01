@@ -76,8 +76,9 @@ private let log = Logger(subsystem: "com.epilande.Annotate", category: "URLComma
 extension AppDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         // A link that launches the app can arrive before launch finishes, when there is no
-        // overlay to open yet.
-        guard hasFinishedLaunching else {
+        // overlay to open yet. Links that arrive while those are still queued wait behind them,
+        // so links run in the order they were opened.
+        guard hasFinishedLaunching, pendingCommandURLs.isEmpty else {
             pendingCommandURLs += urls
             return
         }
@@ -119,12 +120,12 @@ extension AppDelegate {
     }
 
     /// Runs the links that arrived during launch on the next run-loop pass, after the Always-On
-    /// restore that launch queues.
+    /// restore that launch queues. They stay in `pendingCommandURLs` until then.
     func runPendingCommandURLs() {
         guard !pendingCommandURLs.isEmpty else { return }
-        let urls = pendingCommandURLs
-        pendingCommandURLs = []
         DispatchQueue.main.async {
+            let urls = self.pendingCommandURLs
+            self.pendingCommandURLs = []
             self.openCommandURLs(urls, launched: true)
         }
     }
