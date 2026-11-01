@@ -85,7 +85,7 @@ extension AppDelegate {
     }
 
     /// Runs a link's command and shows its HUD. Then, if opening the link activated Annotate and
-    /// no overlay took keyboard input, hands focus back to the previous app. Returns nil without doing anything when URL
+    /// left no interactive overlay open, hands focus back to the previous app. Returns nil without doing anything when URL
     /// commands are off in Settings or the link isn't a command.
     ///
     /// A rejected link is logged with a fixed reason in the clear and the link itself as private,
@@ -94,7 +94,7 @@ extension AppDelegate {
     func openCommandURL(_ url: URL) -> AnnotateCommand.Outcome? {
         // After the command, so a link that opens the overlay keeps focus. A link that does
         // nothing hands focus back too.
-        defer { linkFocusHandoff?.linkDidRun(keepsFocus: isOverlayKeyWindow) }
+        defer { linkFocusHandoff?.linkDidRun(keepsFocus: isInteractiveOverlayOpen) }
         guard settings[.urlCommandsEnabled] else {
             let link = AnnotateCommand.logDescription(of: url)
             log.info("Ignored a link because URL commands are off: \(link, privacy: .private)")

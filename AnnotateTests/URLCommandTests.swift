@@ -224,7 +224,6 @@ final class URLCommandTests: XCTestCase {
 
     func testAColorLinkHandsFocusBackToThePreviousApp() throws {
         launch()
-        appDelegate.overlayKeyWindowOverride = false
         let activated = activateForNextLink()
 
         try open("annotate-debug://color/green")
@@ -232,10 +231,8 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(activated(), [NSRunningApplication.current])
     }
 
-    func testALinkThatLeavesTheOverlayKeyKeepsFocus() throws {
+    func testALinkThatOpensTheOverlayKeepsFocus() throws {
         launch()
-        // XCTest can't make the overlay key, so this stands in for the shown overlay taking it.
-        appDelegate.overlayKeyWindowOverride = true
         let activated = activateForNextLink()
 
         try open("annotate-debug://tool/arrow")
@@ -244,9 +241,18 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(activated().isEmpty)
     }
 
+    func testAColorLinkInAlwaysOnHandsFocusBack() throws {
+        launch()
+        appDelegate.toggleAlwaysOnMode()
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://color/green")
+
+        XCTAssertEqual(activated(), [NSRunningApplication.current], "Always-On overlays take no input")
+    }
+
     func testAnIgnoredLinkHandsFocusBackToo() throws {
         launch()
-        appDelegate.overlayKeyWindowOverride = false
         var activated = activateForNextLink()
         try open("annotate-debug://tool/brush")
         XCTAssertEqual(activated(), [NSRunningApplication.current], "Rejected link")

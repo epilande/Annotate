@@ -500,7 +500,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// the overlay key while its ToolbarPanel child reports `canBecomeKey = false`.
     var overlayKeyWindowOverride: Bool?
 
-    var isOverlayKeyWindow: Bool {
+    private var isOverlayKeyWindow: Bool {
         overlayKeyWindowOverride
             ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
@@ -556,6 +556,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         if alwaysOnMode || !overlayWindows.values.contains(where: \.isVisible) {
             toggleOverlay()
         }
+    }
+
+    /// Whether an overlay that takes input is open. Always-On overlays are read-only.
+    var isInteractiveOverlayOpen: Bool {
+        !alwaysOnMode && overlayWindows.values.contains(where: \.isVisible)
     }
 
     /// Closes every open overlay, wherever the pointer is, and leaves Always-On.
