@@ -361,3 +361,52 @@ extension AppDelegate {
         }
     }
 }
+
+// MARK: - Accessibility
+/// Reads what VoiceOver would read from a SwiftUI hosting view.
+@MainActor
+enum TestAccessibility {
+    /// What one element exposes to VoiceOver.
+    struct Element: Equatable {
+        var label: String?
+        var hint: String?
+        var value: String?
+        var isSelected: Bool
+    }
+
+    private static let enhancedUserInterface = "AXEnhancedUserInterface" as NSString
+
+    /// SwiftUI builds its accessibility elements only while an assistive app such as VoiceOver
+    /// is attached, which it signals by setting this attribute on the app. Returns the previous
+    /// value so `tearDown` can put it back. The setter is the legacy informal-protocol one,
+    /// called by selector because no `NSAccessibility` protocol method covers this attribute.
+    @discardableResult
+    static func setAssistiveAppAttached(_ attached: Bool) -> Bool {
+        let getter = NSSelectorFromString("accessibilityAttributeValue:")
+        let previous = NSApp.perform(getter, with: enhancedUserInterface)?.takeUnretainedValue() as? Bool
+        let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
+        NSApp.perform(setter, with: NSNumber(value: attached), with: enhancedUserInterface)
+        return previous ?? false
+    }
+
+    /// Every element under `root` that has an accessibility identifier, keyed by it. SwiftUI's
+    /// elements are private `NSObject`s that don't bridge to `NSAccessibilityProtocol` in
+    /// Swift, so they are read through key-value coding.
+    static func elements(in root: NSObject) -> [String: Element] {
+        var found: [String: Element] = [:]
+        func visit(_ node: NSObject) {
+            if let identifier = node.value(forKey: "accessibilityIdentifier") as? String, !identifier.isEmpty {
+                found[identifier] = Element(
+                    label: node.value(forKey: "accessibilityLabel") as? String,
+                    hint: node.value(forKey: "accessibilityHelp") as? String,
+                    value: (node.value(forKey: "accessibilityValue")).map { "\($0)" },
+                    isSelected: node.value(forKey: "accessibilitySelected") as? Bool ?? false)
+            }
+            for child in node.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] {
+                visit(child)
+            }
+        }
+        visit(root)
+        return found
+    }
+}

@@ -12,6 +12,23 @@ enum ToolbarAction {
     case undo
 }
 
+extension ToolbarAction {
+    /// What VoiceOver calls the chip. It names the action rather than reading the keycap, and
+    /// stays the same in either layout and with the keycaps hidden.
+    var accessibilityLabel: String {
+        switch self {
+        case .tool(let tool): return tool.displayName
+        case .colorPicker: return "Color"
+        case .widthPicker: return "Line Width"
+        case .toggleFade: return "Fade Mode"
+        // Matches the Delete row in Settings › Shortcuts: the selection, else the newest item.
+        case .deleteLast: return "Delete"
+        case .clearAll: return "Clear All"
+        case .undo: return "Undo"
+        }
+    }
+}
+
 /// Which way the floating toolbar runs.
 enum ToolbarLayout: String, CaseIterable {
     /// One row along the bottom, wrapping onto two rows on a narrow display.
@@ -123,15 +140,14 @@ struct ToolbarView: View {
     private var toolsSegment: some View {
         segmentLayout {
             ForEach(ToolType.allCases, id: \.self) { tool in
-                toolbarButton(identifier: "toolbar.tool.\(tool.rawValue)", action: {
-                    perform(.tool(tool))
-                }) {
-                    let active = model.activeTool == tool
-                    chip(symbol: tool.symbolName, keycap: shortcut(for: tool.shortcutKey), active: active)
+                let active = model.activeTool == tool
+                toolbarButton(.tool(tool), identifier: "toolbar.tool.\(tool.rawValue)") {
+                    chip(symbol: tool.symbolName, keycap: keycapText(for: .tool(tool)), active: active)
                         .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
                             active ? $0 : nil
                         }
                 }
+                .accessibilityAddTraits(active ? .isSelected : [])
             }
         }
         .backgroundPreferenceValue(SelectedToolBounds.self) { anchor in
@@ -150,22 +166,23 @@ struct ToolbarView: View {
 
     private var stateSegment: some View {
         segment {
-            toolbarButton(identifier: "toolbar.color", action: { perform(.colorPicker) }) {
+            toolbarButton(.colorPicker, identifier: "toolbar.color") {
                 HStack(spacing: 6) {
                     iconSlot {
                         SwiftUI.Circle()
                             .fill(Color(nsColor: model.currentColor))
                             .frame(width: 14, height: 14)
                     }
-                    keycap(shortcut(for: .colorPicker), lit: true)
+                    keycap(keycapText(for: .colorPicker), lit: true)
                 }
                 .chipWidth(filling: isVertical)
                 .chipPadding()
             }
-            // Without its keycap the chip is only a dot, so give VoiceOver a name for it.
-            .accessibilityLabel("Color")
+            .accessibilityValue(model.currentColor.accessibilityName)
 
-            toolbarButton(identifier: "toolbar.width", action: { perform(.widthPicker) }) {
+            // No value: the picker this chip opens (line width, font size, or counter size)
+            // depends on the tool, so a width alone would be wrong for some of them.
+            toolbarButton(.widthPicker, identifier: "toolbar.width") {
                 HStack(spacing: 6) {
                     iconSlot {
                         SwiftUI.Circle()
@@ -173,34 +190,34 @@ struct ToolbarView: View {
                             .frame(width: model.widthDotDiameter, height: model.widthDotDiameter)
                             .frame(width: 14, height: 14)
                     }
-                    keycap(shortcut(for: .lineWidthPicker), lit: true)
+                    keycap(keycapText(for: .widthPicker), lit: true)
                 }
                 .chipWidth(filling: isVertical)
                 .chipPadding()
             }
-            .accessibilityLabel("Line Width")
 
-            toolbarButton(identifier: "toolbar.fade", action: { perform(.toggleFade) }) {
-                chip(symbol: Self.fadeSymbol, keycap: shortcut(for: .toggleFade), active: model.fadeMode)
+            toolbarButton(.toggleFade, identifier: "toolbar.fade") {
+                chip(symbol: Self.fadeSymbol, keycap: keycapText(for: .toggleFade), active: model.fadeMode)
                     .background {
                         if model.fadeMode {
                             ToolbarSelectionLens()
                         }
                     }
             }
+            .accessibilityValue(model.fadeMode ? "On" : "Off")
         }
     }
 
     private var actionsSegment: some View {
         segment {
-            toolbarButton(identifier: "toolbar.deleteLast", action: { perform(.deleteLast) }) {
-                chip(symbol: Self.deleteLastSymbol, keycap: "⌫")
+            toolbarButton(.deleteLast, identifier: "toolbar.deleteLast") {
+                chip(symbol: Self.deleteLastSymbol, keycap: keycapText(for: .deleteLast))
             }
-            toolbarButton(identifier: "toolbar.clearAll", action: { perform(.clearAll) }) {
-                chip(symbol: Self.clearAllSymbol, keycap: shortcut(for: .clearAll))
+            toolbarButton(.clearAll, identifier: "toolbar.clearAll") {
+                chip(symbol: Self.clearAllSymbol, keycap: keycapText(for: .clearAll))
             }
-            toolbarButton(identifier: "toolbar.undo", action: { perform(.undo) }) {
-                chip(symbol: Self.undoSymbol, keycap: "⌘Z")
+            toolbarButton(.undo, identifier: "toolbar.undo") {
+                chip(symbol: Self.undoSymbol, keycap: keycapText(for: .undo))
             }
         }
     }
@@ -210,13 +227,17 @@ struct ToolbarView: View {
             .toolbarSegment(vertical: isVertical)
     }
 
+    /// Every chip is built here, so none can miss its VoiceOver name. The label names the
+    /// action, never the keycap, and the shortcut is the hint whether or not keycaps are shown.
     private func toolbarButton<Label: View>(
+        _ action: ToolbarAction,
         identifier: String,
-        action: @escaping () -> Void,
         @ViewBuilder label: @escaping () -> Label
     ) -> some View {
-        HoverScaleButton(action: action, label: label)
+        HoverScaleButton(action: { perform(action) }, label: label)
             .accessibilityIdentifier(identifier)
+            .accessibilityLabel(action.accessibilityLabel)
+            .accessibilityHint(shortcutHint(for: action))
     }
 
     private func chip(symbol: String, keycap text: String, active: Bool = false) -> some View {
@@ -264,7 +285,8 @@ struct ToolbarView: View {
     private func keycapLabel(_ text: String, lit: Bool) -> some View {
         Text(keycap: text.uppercased())
             .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .accessibilityLabel(ShortcutBinding.spokenLabel(for: text))
+            // The chip's hint speaks the shortcut, so the keycap stays out of its label.
+            .accessibilityHidden(true)
             .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
             .fixedSize()
             .padding(.horizontal, 4)
@@ -277,6 +299,25 @@ struct ToolbarView: View {
 
     private func shortcut(for key: ShortcutKey) -> String {
         model.shortcuts[key] ?? key.defaultBinding.displayValue
+    }
+
+    /// The keycap a chip shows. Its VoiceOver hint is built from the same text.
+    private func keycapText(for action: ToolbarAction) -> String {
+        switch action {
+        case .tool(let tool): return shortcut(for: tool.shortcutKey)
+        case .colorPicker: return shortcut(for: .colorPicker)
+        case .widthPicker: return shortcut(for: .lineWidthPicker)
+        case .toggleFade: return shortcut(for: .toggleFade)
+        case .deleteLast: return "⌫"
+        case .clearAll: return shortcut(for: .clearAll)
+        case .undo: return "⌘Z"
+        }
+    }
+
+    /// Empty for a cleared binding, so VoiceOver has no shortcut to announce.
+    private func shortcutHint(for action: ToolbarAction) -> String {
+        let keys = keycapText(for: action)
+        return keys.isEmpty ? "" : "Shortcut: \(ShortcutBinding.spokenLabel(for: keys))"
     }
 }
 
