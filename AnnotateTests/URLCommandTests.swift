@@ -202,6 +202,20 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(appDelegate.toolbarVisible)
     }
 
+    /// The focus tests' clock. Frozen, so a slow CI pass between the activation and the links
+    /// can't push them out of the handoff's time windows. `LinkFocusHandoffTests` covers those.
+    private static let frozenNow = Date(timeIntervalSinceReferenceDate: 0)
+
+    /// Runs the run loop until the links queued during launch have run. Polls with a deadline
+    /// instead of waiting a fixed time, since CI can stall a single run-loop pass for seconds.
+    private func waitForLaunchLinks(timeout: TimeInterval = 10) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !appDelegate.pendingCommandURLs.isEmpty && Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
+        }
+        XCTAssertTrue(appDelegate.pendingCommandURLs.isEmpty, "The queued links never ran")
+    }
+
     /// Installs a handoff that sees Launch Services activate Annotate for the next link, and
     /// returns the apps it gave focus to.
     private func activateForNextLink() -> () -> [NSRunningApplication] {
@@ -212,6 +226,7 @@ final class URLCommandTests: XCTestCase {
             workspaceCenter: workspaceCenter,
             appCenter: appCenter,
             ownProcessIdentifier: -1,
+            now: { Self.frozenNow },
             isActive: { true },
             activate: { activated.append($0) })
         workspaceCenter.post(
@@ -307,6 +322,7 @@ final class URLCommandTests: XCTestCase {
             workspaceCenter: NotificationCenter(),
             appCenter: appCenter,
             ownProcessIdentifier: -1,
+            now: { Self.frozenNow },
             isActive: { isActive },
             activate: { activated.append($0) })
         handoff.noteLaunch(frontmostApp: NSRunningApplication.current)
@@ -322,7 +338,7 @@ final class URLCommandTests: XCTestCase {
         let launchHandoff = prepareLaunchHandoff()
         try open("annotate-debug://color/green")
         launch()
-        wait(for: 0.05)
+        waitForLaunchLinks()
         XCTAssertEqual(appDelegate.currentColor, .systemGreen)
         XCTAssertTrue(launchHandoff.activated().isEmpty, "Not active yet, so nothing to hand back")
 
@@ -336,7 +352,7 @@ final class URLCommandTests: XCTestCase {
         try open("annotate-debug://color/green")
         launchHandoff.activate()
         launch()
-        wait(for: 0.05)
+        waitForLaunchLinks()
 
         XCTAssertEqual(launchHandoff.activated(), [NSRunningApplication.current])
     }
@@ -345,7 +361,7 @@ final class URLCommandTests: XCTestCase {
         let launchHandoff = prepareLaunchHandoff()
         try open("annotate-debug://tool/arrow")
         launch()
-        wait(for: 0.05)
+        waitForLaunchLinks()
         launchHandoff.activate()
 
         XCTAssertEqual(overlay?.isVisible, true)
@@ -358,7 +374,7 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(appDelegate.overlayWindows.isEmpty)
 
         launch()
-        wait(for: 0.05)
+        waitForLaunchLinks()
 
         let overlay = try XCTUnwrap(overlay)
         XCTAssertTrue(overlay.isVisible)
@@ -373,7 +389,7 @@ final class URLCommandTests: XCTestCase {
         try open("annotate-debug://tool/arrow")
         XCTAssertNotEqual(overlay?.isVisible, true)
 
-        wait(for: 0.05)
+        waitForLaunchLinks()
 
         XCTAssertEqual(overlay?.overlayView.currentTool, .arrow, "The later link runs last")
     }
