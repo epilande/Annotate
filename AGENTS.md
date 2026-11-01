@@ -24,6 +24,8 @@ xcodebuild -project Annotate.xcodeproj -scheme Annotate -configuration Debug \
 
 Neither needs any interaction. Tests create real AppKit windows, so run them from a logged-in desktop session. SSH into a logged-in Mac should work too, but no run over SSH is on record. Xcode runs the tests inside `Annotate.app`, so they use your real Annotate preferences, and `SettingsViewTests` resets four of them. Prefer `swift test` locally. If `xcodebuild test` sits idle after `Test Suite 'All tests' passed` while other `xcodebuild test` runs share the Mac, add `-enableCodeCoverage NO` and a separate `-derivedDataPath`. This hang was seen once, with five runs at the same time, and the two flags were only tried together.
 
+Testing Shortcuts actions end to end needs a build signed with an Apple Development certificate. In the #135 live check, an ad-hoc signed Debug build (Xcode's Sign to Run Locally) listed the actions in Shortcuts, but each one failed with "Shortcuts couldn't communicate with the app". Quit the installed Annotate first, since Shortcuts finds the app by bundle ID.
+
 SwiftLint runs in CI through the SwiftLintPlugins package. With `strict: true`, any violation that isn't recorded in `.swiftlint-baseline.json` fails the run, warnings included:
 
 ```sh

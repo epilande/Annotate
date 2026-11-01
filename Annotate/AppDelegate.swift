@@ -29,6 +29,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Links that arrive before launch finishes, run once it does.
     var pendingCommandURLs: [URL] = []
     private(set) var hasFinishedLaunching = false
+    /// Created as launch starts, before launch or any link can activate the app.
+    var linkFocusHandoff: LinkFocusHandoff?
 
     override init() {
         self.settings = .standard
@@ -38,6 +40,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     init(userDefaults: UserDefaults) {
         self.settings = SettingsStore(defaults: userDefaults)
         super.init()
+    }
+
+    /// Runs before launch activates the app and before any link that launched it arrives.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let handoff = LinkFocusHandoff()
+        // By now macOS has made this process frontmost, so `frontmostApplication` names Annotate.
+        handoff.noteLaunch(previousApp: LinkFocusHandoff.appOwningTopmostWindow())
+        linkFocusHandoff = handoff
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -97,6 +107,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         setupGlobalMouseMonitors()
         setupCursorHighlightObservers()
 
+        if linkFocusHandoff == nil {
+            linkFocusHandoff = LinkFocusHandoff()
+        }
         hasFinishedLaunching = true
         runPendingCommandURLs()
     }
@@ -551,6 +564,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         if alwaysOnMode || !overlayWindows.values.contains(where: \.isVisible) {
             toggleOverlay()
         }
+    }
+
+    /// Whether an overlay that takes input is open. Always-On overlays are read-only.
+    var isInteractiveOverlayOpen: Bool {
+        !alwaysOnMode && overlayWindows.values.contains(where: \.isVisible)
     }
 
     /// Closes every open overlay, wherever the pointer is, and leaves Always-On.

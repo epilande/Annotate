@@ -366,7 +366,7 @@ Annotate adds these actions to the Shortcuts app, so you can run them from a sho
 | Hide Overlay      | Closes the overlay on every display. Leaves Always-On Mode.                      |
 | Select Tool       | Selects a tool and opens the overlay.                                            |
 | Set Color         | Sets the annotation color from the palette. Doesn't open the overlay.            |
-| Clear Annotations | Clears every open overlay. Undo brings the annotations back.                     |
+| Clear Annotations | Clears every open overlay. Undo on each display brings its annotations back.     |
 | Set Toolbar       | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.              |
 | Set Fade Mode     | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit.    |
 | Set Board         | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.           |
@@ -388,7 +388,7 @@ open "annotate://tool/arrow"
 | `annotate://hide`                      | Closes the overlay on every display. Leaves Always-On Mode.                   |
 | `annotate://tool/<tool>`               | Selects a tool and opens the overlay.                                         |
 | `annotate://color/<color>`             | Sets the annotation color from the palette. Doesn't open the overlay.         |
-| `annotate://clear`                     | Clears every open overlay. Undo brings the annotations back.                  |
+| `annotate://clear`                     | Clears every open overlay. Undo on each display brings its annotations back.  |
 | `annotate://toolbar/<on\|off\|toggle>` | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.           |
 | `annotate://fade/<on\|off\|toggle>`    | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit. |
 | `annotate://board/<on\|off\|toggle>`   | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.        |
@@ -396,7 +396,7 @@ open "annotate://tool/arrow"
 - **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
 
-Opening a link brings Annotate to the front. To set a color or switch the toolbar without leaving the app you're in, open the link in the background with `open -g`.
+Opening a link with plain `open` brings Annotate to the front for a moment. Once the link runs, focus goes back to the app you were in, unless an interactive overlay is still open, as it is after a tool or show link. When you open several links at once, that's decided after the last one. To keep a running Annotate in the background the whole time, open the link with `open -g`.
 
 Links show the same on-screen messages as the Shortcuts actions. Matching ignores case. A link Annotate doesn't recognize, including one with a query string, does nothing. Turn links off with **Allow URL commands** in Settings → General.
 
