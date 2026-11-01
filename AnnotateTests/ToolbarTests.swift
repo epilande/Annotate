@@ -820,8 +820,12 @@ final class ToolbarTests: XCTestCase {
         )
         window.overlayView.currentTool = .pen
         window.overlayView.paths.append(path)
+        // Delete Last means the current tool's newest item, not the newest item overall.
+        window.overlayView.arrows.append(TestFactory.createArrow())
         window.performToolbarAction(.deleteLast)
         XCTAssertTrue(window.overlayView.paths.isEmpty)
+        XCTAssertEqual(window.overlayView.arrows.count, 1, "The newer arrow belongs to another tool")
+        window.overlayView.arrows.removeAll()
 
         window.overlayView.paths.append(path)
         window.performToolbarAction(.clearAll)

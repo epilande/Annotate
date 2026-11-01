@@ -27,9 +27,9 @@ final class ToolbarAccessibilityTests: XCTestCase {
         ("toolbar.tool.select", "Select", "Shortcut: v"),
         ("toolbar.tool.eraser", "Eraser", "Shortcut: e"),
         ("toolbar.color", "Color", "Shortcut: c"),
-        ("toolbar.width", "Line Width", "Shortcut: w"),
+        ("toolbar.width", "Size", "Shortcut: w"),
         ("toolbar.fade", "Fade Mode", "Shortcut: Space"),
-        ("toolbar.deleteLast", "Delete", "Shortcut: ⌫"),
+        ("toolbar.deleteLast", "Delete Last", "Shortcut: ⌫"),
         ("toolbar.clearAll", "Clear All", "Shortcut: ⌥⌫"),
         ("toolbar.undo", "Undo", "Shortcut: ⌘Z")
     ]
@@ -170,10 +170,14 @@ final class ToolbarAccessibilityTests: XCTestCase {
         XCTAssertEqual(try chips(on: window)["toolbar.fade"]?.value, "Off")
     }
 
-    func testColorChipReportsTheCurrentColorByName() throws {
+    func testColorChipReadsEveryPaletteColorByItsPaletteName() throws {
         let window = makeOverlay()
-        window.overlayView.currentColor = .systemBlue
+        let names = ["Red", "Orange", "Yellow", "Green", "Cyan", "Indigo", "Magenta", "White", "Black"]
+        XCTAssertEqual(PaletteColor.allCases.map(\.displayName), names, "The names the color picker uses")
 
-        XCTAssertEqual(try chips(on: window)["toolbar.color"]?.value, NSColor.systemBlue.accessibilityName)
+        for color in PaletteColor.allCases {
+            window.overlayView.currentColor = color.nsColor
+            XCTAssertEqual(try chips(on: window)["toolbar.color"]?.value, color.displayName)
+        }
     }
 }

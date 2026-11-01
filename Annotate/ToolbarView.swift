@@ -19,10 +19,11 @@ extension ToolbarAction {
         switch self {
         case .tool(let tool): return tool.displayName
         case .colorPicker: return "Color"
-        case .widthPicker: return "Line Width"
+        // It opens the line width, font size, or counter size picker, depending on the tool.
+        case .widthPicker: return "Size"
         case .toggleFade: return "Fade Mode"
-        // Matches the Delete row in Settings › Shortcuts: the selection, else the newest item.
-        case .deleteLast: return "Delete"
+        // Removes the newest item drawn with the current tool (the selection, with Select).
+        case .deleteLast: return "Delete Last"
         case .clearAll: return "Clear All"
         case .undo: return "Undo"
         }
@@ -178,10 +179,13 @@ struct ToolbarView: View {
                 .chipWidth(filling: isVertical)
                 .chipPadding()
             }
-            .accessibilityValue(model.currentColor.accessibilityName)
+            // The palette's own names. AppKit's `accessibilityName` calls Yellow "vibrant amber".
+            // A stored color from outside the palette still gets AppKit's name.
+            .accessibilityValue(
+                PaletteColor(matching: model.currentColor)?.displayName ?? model.currentColor.accessibilityName)
 
-            // No value: the picker this chip opens (line width, font size, or counter size)
-            // depends on the tool, so a width alone would be wrong for some of them.
+            // No value: what the size means (line width, font size, or counter size) depends
+            // on the tool, so a width alone would be wrong for some of them.
             toolbarButton(.widthPicker, identifier: "toolbar.width") {
                 HStack(spacing: 6) {
                     iconSlot {

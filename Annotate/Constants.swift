@@ -30,6 +30,12 @@ enum PaletteColor: String, CaseIterable, Sendable {
     var displayName: String {
         rawValue.capitalized
     }
+
+    /// The entry `color` was picked from, matched as the color picker matches its selection.
+    init?(matching color: NSColor) {
+        guard let match = Self.allCases.first(where: { $0.nsColor.isClose(to: color) }) else { return nil }
+        self = match
+    }
 }
 
 let colorPalette: [NSColor] = PaletteColor.allCases.map(\.nsColor)
