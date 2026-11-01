@@ -85,14 +85,17 @@ extension AppDelegate {
         openCommandURLs(urls)
     }
 
-    /// Runs a batch of links in order, then decides focus once from where the batch left the
-    /// overlay: if opening the links activated Annotate and no interactive overlay is open at the
-    /// end, focus goes back to the previous app. Deciding per link would hand focus back after a
-    /// color link that a tool link in the same batch then needs, and keep it after show then hide.
-    /// Ignored links count too, since a link that did nothing shouldn't take focus.
+    /// Runs one `application(_:open:)` call's links in order, then lets the focus handoff decide
+    /// focus once the burst settles: if opening the links activated Annotate and no interactive
+    /// overlay is open after the last one, focus goes back to the previous app. `open` delivers
+    /// each link of one call separately, so deciding per call would hand focus back after a color
+    /// link that a tool link then needs, and keep it after show then hide. Ignored links count
+    /// too, since a link that did nothing shouldn't take focus.
     func openCommandURLs(_ urls: [URL], launched: Bool = false) {
         urls.forEach { openCommandURL($0) }
-        linkFocusHandoff?.linksDidRun(keepsFocus: isInteractiveOverlayOpen, launched: launched)
+        linkFocusHandoff?.linksDidRun(launched: launched) { [weak self] in
+            self?.isInteractiveOverlayOpen ?? false
+        }
     }
 
     /// Runs a link's command and shows its HUD. Returns nil without doing anything when URL

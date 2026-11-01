@@ -45,7 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Runs before launch activates the app and before any link that launched it arrives.
     func applicationWillFinishLaunching(_ notification: Notification) {
         let handoff = LinkFocusHandoff()
-        handoff.noteLaunch(frontmostApp: NSWorkspace.shared.frontmostApplication)
+        // By now macOS has made this process frontmost, so `frontmostApplication` names Annotate.
+        handoff.noteLaunch(previousApp: LinkFocusHandoff.appOwningTopmostWindow())
         linkFocusHandoff = handoff
     }
 

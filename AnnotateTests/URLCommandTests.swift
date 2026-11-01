@@ -202,10 +202,6 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(appDelegate.toolbarVisible)
     }
 
-    /// The focus tests' clock. Frozen, so a slow CI pass between the activation and the links
-    /// can't push them out of the handoff's time windows. `LinkFocusHandoffTests` covers those.
-    private static let frozenNow = Date(timeIntervalSinceReferenceDate: 0)
-
     /// Runs the run loop until the links queued during launch have run. Polls with a deadline
     /// instead of waiting a fixed time, since CI can stall a single run-loop pass for seconds.
     private func waitForLaunchLinks(timeout: TimeInterval = 10) {
@@ -216,156 +212,219 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(appDelegate.pendingCommandURLs.isEmpty, "The queued links never ran")
     }
 
-    /// Installs a handoff that sees Launch Services activate Annotate for the next link, and
-    /// returns the apps it gave focus to.
-    private func activateForNextLink() -> () -> [NSRunningApplication] {
-        let workspaceCenter = NotificationCenter()
+    // MARK: - Focus
+
+    /// A focus handoff with a clock and scheduler the test drives, so no time window depends on
+    /// how fast CI runs. `LinkFocusHandoffTests` covers the windows themselves.
+    @MainActor
+    private struct FocusHarness {
+        let scheduler: ManualScheduler
+        let appCenter: NotificationCenter
+        let workspaceCenter: NotificationCenter
+        let activated: () -> [NSRunningApplication]
+        let setActive: (Bool) -> Void
+
+        /// What Launch Services does before delivering a link opened with plain `open`.
+        func activateAnnotate(from app: NSRunningApplication = .current) {
+            workspaceCenter.post(
+                name: NSWorkspace.didDeactivateApplicationNotification,
+                object: nil,
+                userInfo: [NSWorkspace.applicationUserInfoKey: app])
+            becomeActive()
+        }
+
+        func becomeActive() {
+            setActive(true)
+            appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        }
+
+        /// Lets the burst settle so the handoff decides.
+        func settle() {
+            scheduler.advance(by: LinkFocusHandoff.settleDelay)
+        }
+    }
+
+    private func installFocusHarness(active: Bool) -> FocusHarness {
+        let scheduler = ManualScheduler()
         let appCenter = NotificationCenter()
+        let workspaceCenter = NotificationCenter()
         var activated: [NSRunningApplication] = []
+        var isActive = active
         appDelegate.linkFocusHandoff = LinkFocusHandoff(
             workspaceCenter: workspaceCenter,
             appCenter: appCenter,
             ownProcessIdentifier: -1,
-            now: { Self.frozenNow },
-            isActive: { true },
-            activate: { activated.append($0) })
-        workspaceCenter.post(
-            name: NSWorkspace.didDeactivateApplicationNotification,
-            object: nil,
-            userInfo: [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
-        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-        return { activated }
+            now: { scheduler.now },
+            isActive: { isActive },
+            activate: { activated.append($0) },
+            schedule: scheduler.schedule)
+        return FocusHarness(
+            scheduler: scheduler,
+            appCenter: appCenter,
+            workspaceCenter: workspaceCenter,
+            activated: { activated },
+            setActive: { isActive = $0 })
+    }
+
+    /// Opens links the way `open` with several links delivers them: one `application(_:open:)`
+    /// call per link, a few tens of milliseconds apart.
+    private func openOneAtATime(_ strings: String..., harness: FocusHarness) throws {
+        for (index, string) in strings.enumerated() {
+            if index > 0 { harness.scheduler.advance(by: 0.04) }
+            appDelegate.application(NSApplication.shared, open: [try link(string)])
+        }
     }
 
     func testAColorLinkHandsFocusBackToThePreviousApp() throws {
         launch()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
 
         try open("annotate-debug://color/green")
+        XCTAssertTrue(focus.activated().isEmpty, "Waits in case another link follows")
+        focus.settle()
 
-        XCTAssertEqual(activated(), [NSRunningApplication.current])
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
     }
 
     func testALinkThatOpensTheOverlayKeepsFocus() throws {
         launch()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
 
         try open("annotate-debug://tool/arrow")
+        focus.settle()
 
         XCTAssertEqual(overlay?.isVisible, true)
-        XCTAssertTrue(activated().isEmpty)
+        XCTAssertTrue(focus.activated().isEmpty)
     }
 
     func testAColorLinkInAlwaysOnHandsFocusBack() throws {
         launch()
         appDelegate.toggleAlwaysOnMode()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
 
         try open("annotate-debug://color/green")
+        focus.settle()
 
-        XCTAssertEqual(activated(), [NSRunningApplication.current], "Always-On overlays take no input")
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "Always-On overlays take no input")
     }
 
     func testAnIgnoredLinkHandsFocusBackToo() throws {
         launch()
-        var activated = activateForNextLink()
+        var focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
         try open("annotate-debug://tool/brush")
-        XCTAssertEqual(activated(), [NSRunningApplication.current], "Rejected link")
+        focus.settle()
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "Rejected link")
 
         testDefaults.settings[.urlCommandsEnabled] = false
-        activated = activateForNextLink()
+        focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
         try open("annotate-debug://color/green")
-        XCTAssertEqual(activated(), [NSRunningApplication.current], "URL commands off")
+        focus.settle()
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "URL commands off")
     }
 
-    // MARK: - Focus for a batch of links
-
-    func testShowThenHideInOneOpenHandsFocusBack() throws {
+    func testABackgroundLinkLeavesFocusAlone() throws {
+        // `open -g` delivers the link without activating Annotate.
         launch()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
 
-        try open("annotate-debug://show", "annotate-debug://hide")
+        try open("annotate-debug://color/green")
+        focus.settle()
+
+        XCTAssertTrue(focus.activated().isEmpty)
+    }
+
+    // MARK: - Focus for several links from one `open`
+
+    func testShowThenHideFromOneOpenHandsFocusBack() throws {
+        launch()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
+
+        try openOneAtATime("annotate-debug://show", "annotate-debug://hide", harness: focus)
+        focus.settle()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
-        XCTAssertEqual(activated(), [NSRunningApplication.current], "Decided after the last link, not the first")
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "Decided after the last link, not the first")
     }
 
-    func testColorThenToolInOneOpenKeepsFocus() throws {
+    func testColorThenToolFromOneOpenKeepsFocus() throws {
         launch()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
 
-        try open("annotate-debug://color/green", "annotate-debug://tool/arrow")
+        try openOneAtATime("annotate-debug://color/green", "annotate-debug://tool/arrow", harness: focus)
+        focus.settle()
 
         XCTAssertEqual(overlay?.isVisible, true)
+        XCTAssertEqual(overlay?.overlayView.currentTool, .arrow)
         XCTAssertEqual(appDelegate.currentColor, .systemGreen)
-        XCTAssertTrue(activated().isEmpty, "The tool link's overlay needs focus")
+        XCTAssertTrue(focus.activated().isEmpty, "The tool link's overlay needs focus")
     }
 
-    func testABatchDecidesFocusOnce() throws {
+    func testLinksInOneCallDecideFocusOnce() throws {
         launch()
-        let activated = activateForNextLink()
+        let focus = installFocusHarness(active: false)
+        focus.activateAnnotate()
 
         try open("annotate-debug://color/green", "annotate-debug://toolbar/off", "annotate-debug://fade/off")
+        focus.settle()
 
-        XCTAssertEqual(activated(), [NSRunningApplication.current])
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
     }
 
     // MARK: - Focus for links that launch the app
 
-    /// A handoff as `applicationWillFinishLaunching` makes one, with the launch activation still
-    /// to come. Returns a way to post that activation and the apps given focus.
-    private func prepareLaunchHandoff() -> (activate: () -> Void, activated: () -> [NSRunningApplication]) {
-        let appCenter = NotificationCenter()
-        var isActive = false
-        var activated: [NSRunningApplication] = []
-        let handoff = LinkFocusHandoff(
-            workspaceCenter: NotificationCenter(),
-            appCenter: appCenter,
-            ownProcessIdentifier: -1,
-            now: { Self.frozenNow },
-            isActive: { isActive },
-            activate: { activated.append($0) })
-        handoff.noteLaunch(frontmostApp: NSRunningApplication.current)
-        appDelegate.linkFocusHandoff = handoff
-        let activateApp = {
-            isActive = true
-            appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-        }
-        return (activateApp, { activated })
+    /// A handoff as `applicationWillFinishLaunching` makes one, with the previous app read from
+    /// the window list and the launch activation still to come.
+    private func installLaunchFocusHarness() -> FocusHarness {
+        let focus = installFocusHarness(active: false)
+        appDelegate.linkFocusHandoff?.noteLaunch(previousApp: NSRunningApplication.current)
+        return focus
+    }
+
+    /// Runs launch and its queued links, then lets them settle.
+    private func launchAndSettle(_ focus: FocusHarness) {
+        launch()
+        waitForLaunchLinks()
+        focus.settle()
     }
 
     func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatesIt() throws {
-        let launchHandoff = prepareLaunchHandoff()
+        let focus = installLaunchFocusHarness()
         try open("annotate-debug://color/green")
-        launch()
-        waitForLaunchLinks()
+        launchAndSettle(focus)
         XCTAssertEqual(appDelegate.currentColor, .systemGreen)
-        XCTAssertTrue(launchHandoff.activated().isEmpty, "Not active yet, so nothing to hand back")
+        XCTAssertTrue(focus.activated().isEmpty, "Not active yet, so nothing to hand back")
 
-        launchHandoff.activate()
+        focus.becomeActive()
 
-        XCTAssertEqual(launchHandoff.activated(), [NSRunningApplication.current])
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
     }
 
     func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatedItFirst() throws {
-        let launchHandoff = prepareLaunchHandoff()
+        // What a live cold launch does: active before any delegate code, with no workspace
+        // notification naming the previous app.
+        let focus = installLaunchFocusHarness()
+        focus.becomeActive()
         try open("annotate-debug://color/green")
-        launchHandoff.activate()
-        launch()
-        waitForLaunchLinks()
+        launchAndSettle(focus)
 
-        XCTAssertEqual(launchHandoff.activated(), [NSRunningApplication.current])
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
     }
 
     func testAToolLinkThatLaunchesTheAppKeepsFocus() throws {
-        let launchHandoff = prepareLaunchHandoff()
+        let focus = installLaunchFocusHarness()
         try open("annotate-debug://tool/arrow")
-        launch()
-        waitForLaunchLinks()
-        launchHandoff.activate()
+        launchAndSettle(focus)
+        focus.becomeActive()
 
         XCTAssertEqual(overlay?.isVisible, true)
-        XCTAssertTrue(launchHandoff.activated().isEmpty)
+        XCTAssertTrue(focus.activated().isEmpty)
     }
 
     func testALinkThatLaunchesTheAppRunsOnceLaunchFinishes() throws {
