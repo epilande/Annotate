@@ -239,6 +239,9 @@ final class AnnotateCommandTests: XCTestCase {
     func testClearCommitsANewLabelBeingTypedSoUndoRestoresIt() throws {
         run(.show)
         let view = try XCTUnwrap(overlay.overlayView)
+        // Committing stamps the label with the current time, and Undo drops annotations past
+        // their fade. A CI stall longer than the 1.25 s fade would leave nothing to restore.
+        view.fadeMode = false
         let point = NSPoint(x: 100, y: 100)
         view.currentTextAnnotation = TextAnnotation(
             text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
@@ -258,6 +261,9 @@ final class AnnotateCommandTests: XCTestCase {
     func testClearCommitsAnEditInProgressSoUndoRestoresTheNewText() throws {
         run(.show)
         let view = try XCTUnwrap(overlay.overlayView)
+        // Committing stamps the label with the current time, and Undo drops annotations past
+        // their fade. A CI stall longer than the 1.25 s fade would leave nothing to restore.
+        view.fadeMode = false
         let label = TextAnnotation(
             text: "Before",
             position: NSPoint(x: 100, y: 100),
