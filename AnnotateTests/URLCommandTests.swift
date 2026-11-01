@@ -97,6 +97,29 @@ final class URLCommandTests: XCTestCase {
         }
     }
 
+    func testRejectedLinksReportWhy() throws {
+        let cases: [(String, AnnotateCommand.LinkRejection)] = [
+            ("https://show", .otherScheme),
+            ("annotatex://show", .otherScheme),
+            ("annotate://", .missingCommand),
+            ("annotate:show", .missingCommand),
+            ("annotate://show?token=s3cret", .extraParts),
+            ("annotate://show#top", .extraParts),
+            ("annotate://me:hunter2@show", .extraParts),
+            ("annotate://show:80", .extraParts),
+            ("annotate://nope", .unknownCommand),
+            ("annotate://tool/brush", .unknownCommand),
+            ("annotate://tool/arrow/extra", .unknownCommand),
+        ]
+        for (string, reason) in cases {
+            guard case .failure(let rejection) = AnnotateCommand.parse(url: try link(string), scheme: "annotate") else {
+                XCTFail("\(string) parsed as a command")
+                continue
+            }
+            XCTAssertEqual(rejection, reason, string)
+        }
+    }
+
     // MARK: - Logging
 
     func testLogDescriptionKeepsOnlyTheSchemeAndCommand() throws {
