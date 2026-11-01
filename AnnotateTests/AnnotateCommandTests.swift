@@ -210,6 +210,32 @@ final class AnnotateCommandTests: XCTestCase {
         }
     }
 
+    func testUndoAfterClearOnTwoDisplaysRestoresTheOneUnderThePointer() throws {
+        // The status menu sits in every display's menu bar, so its Undo follows the pointer
+        // (#122). ⌘Z and the toolbar act on their own overlay. Each overlay keeps its own undo
+        // stack, so a Clear that emptied two displays takes one Undo on each.
+        let screens = NSScreen.screens
+        try XCTSkipUnless(screens.count > 1, "Needs a second display")
+        appDelegate.toggleAlwaysOnMode()
+        let first = try XCTUnwrap(appDelegate.overlayWindows[screens[0]])
+        let second = try XCTUnwrap(appDelegate.overlayWindows[screens[1]])
+        for window in [first, second] {
+            window.overlayView.arrows.append(TestFactory.createArrow())
+        }
+        endEvent()
+
+        run(.clear)
+        endEvent()
+        appDelegate.pointerLocationOverride = NSPoint(x: screens[1].frame.midX, y: screens[1].frame.midY)
+        appDelegate.undo()
+
+        XCTAssertEqual(second.overlayView.arrows.count, 1, "The display under the pointer is restored")
+        XCTAssertTrue(first.overlayView.arrows.isEmpty, "The other display keeps its own Undo step")
+
+        first.overlayView.undo()
+        XCTAssertEqual(first.overlayView.arrows.count, 1)
+    }
+
     func testClearCommitsANewLabelBeingTypedSoUndoRestoresIt() throws {
         run(.show)
         let view = try XCTUnwrap(overlay.overlayView)
