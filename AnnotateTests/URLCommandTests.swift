@@ -263,6 +263,95 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(activated(), [NSRunningApplication.current], "URL commands off")
     }
 
+    // MARK: - Focus for a batch of links
+
+    func testShowThenHideInOneOpenHandsFocusBack() throws {
+        launch()
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://show", "annotate-debug://hide")
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
+        XCTAssertEqual(activated(), [NSRunningApplication.current], "Decided after the last link, not the first")
+    }
+
+    func testColorThenToolInOneOpenKeepsFocus() throws {
+        launch()
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://color/green", "annotate-debug://tool/arrow")
+
+        XCTAssertEqual(overlay?.isVisible, true)
+        XCTAssertEqual(appDelegate.currentColor, .systemGreen)
+        XCTAssertTrue(activated().isEmpty, "The tool link's overlay needs focus")
+    }
+
+    func testABatchDecidesFocusOnce() throws {
+        launch()
+        let activated = activateForNextLink()
+
+        try open("annotate-debug://color/green", "annotate-debug://toolbar/off", "annotate-debug://fade/off")
+
+        XCTAssertEqual(activated(), [NSRunningApplication.current])
+    }
+
+    // MARK: - Focus for links that launch the app
+
+    /// A handoff as `applicationWillFinishLaunching` makes one, with the launch activation still
+    /// to come. Returns a way to post that activation and the apps given focus.
+    private func prepareLaunchHandoff() -> (activate: () -> Void, activated: () -> [NSRunningApplication]) {
+        let appCenter = NotificationCenter()
+        var isActive = false
+        var activated: [NSRunningApplication] = []
+        let handoff = LinkFocusHandoff(
+            workspaceCenter: NotificationCenter(),
+            appCenter: appCenter,
+            ownProcessIdentifier: -1,
+            isActive: { isActive },
+            activate: { activated.append($0) })
+        handoff.noteLaunch(frontmostApp: NSRunningApplication.current)
+        appDelegate.linkFocusHandoff = handoff
+        let activateApp = {
+            isActive = true
+            appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        }
+        return (activateApp, { activated })
+    }
+
+    func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatesIt() throws {
+        let launchHandoff = prepareLaunchHandoff()
+        try open("annotate-debug://color/green")
+        launch()
+        wait(for: 0.05)
+        XCTAssertEqual(appDelegate.currentColor, .systemGreen)
+        XCTAssertTrue(launchHandoff.activated().isEmpty, "Not active yet, so nothing to hand back")
+
+        launchHandoff.activate()
+
+        XCTAssertEqual(launchHandoff.activated(), [NSRunningApplication.current])
+    }
+
+    func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatedItFirst() throws {
+        let launchHandoff = prepareLaunchHandoff()
+        try open("annotate-debug://color/green")
+        launchHandoff.activate()
+        launch()
+        wait(for: 0.05)
+
+        XCTAssertEqual(launchHandoff.activated(), [NSRunningApplication.current])
+    }
+
+    func testAToolLinkThatLaunchesTheAppKeepsFocus() throws {
+        let launchHandoff = prepareLaunchHandoff()
+        try open("annotate-debug://tool/arrow")
+        launch()
+        wait(for: 0.05)
+        launchHandoff.activate()
+
+        XCTAssertEqual(overlay?.isVisible, true)
+        XCTAssertTrue(launchHandoff.activated().isEmpty)
+    }
+
     func testALinkThatLaunchesTheAppRunsOnceLaunchFinishes() throws {
         // Launch Services can deliver the link that launched the app before launch finishes.
         try open("annotate-debug://tool/rectangle")

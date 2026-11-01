@@ -81,20 +81,27 @@ extension AppDelegate {
             pendingCommandURLs += urls
             return
         }
-        urls.forEach { openCommandURL($0) }
+        openCommandURLs(urls)
     }
 
-    /// Runs a link's command and shows its HUD. Then, if opening the link activated Annotate and
-    /// left no interactive overlay open, hands focus back to the previous app. Returns nil without doing anything when URL
-    /// commands are off in Settings or the link isn't a command.
+    /// Runs a batch of links in order, then decides focus once from where the batch left the
+    /// overlay: if opening the links activated Annotate and no interactive overlay is open at the
+    /// end, focus goes back to the previous app. Deciding per link would hand focus back after a
+    /// color link that a tool link in the same batch then needs, and keep it after show then hide.
+    /// Ignored links count too, since a link that did nothing shouldn't take focus.
+    func openCommandURLs(_ urls: [URL], launched: Bool = false) {
+        urls.forEach { openCommandURL($0) }
+        linkFocusHandoff?.linksDidRun(keepsFocus: isInteractiveOverlayOpen, launched: launched)
+    }
+
+    /// Runs a link's command and shows its HUD. Returns nil without doing anything when URL
+    /// commands are off in Settings or the link isn't a command. Focus is up to the caller, see
+    /// `openCommandURLs(_:launched:)`.
     ///
     /// A rejected link is logged with a fixed reason in the clear and the link itself as private,
     /// so `log stream` shows why a link was ignored without showing what it held.
     @discardableResult
     func openCommandURL(_ url: URL) -> AnnotateCommand.Outcome? {
-        // After the command, so a link that opens the overlay keeps focus. A link that does
-        // nothing hands focus back too.
-        defer { linkFocusHandoff?.linkDidRun(keepsFocus: isInteractiveOverlayOpen) }
         guard settings[.urlCommandsEnabled] else {
             let link = AnnotateCommand.logDescription(of: url)
             log.info("Ignored a link because URL commands are off: \(link, privacy: .private)")
@@ -118,7 +125,7 @@ extension AppDelegate {
         let urls = pendingCommandURLs
         pendingCommandURLs = []
         DispatchQueue.main.async {
-            urls.forEach { self.openCommandURL($0) }
+            self.openCommandURLs(urls, launched: true)
         }
     }
 }

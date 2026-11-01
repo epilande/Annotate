@@ -50,31 +50,31 @@ final class LinkFocusHandoffTests: XCTestCase {
         activateAnnotate(from: previousApp)
         clock += 0.02
 
-        XCTAssertEqual(handoff.linkDidRun(keepsFocus: false), previousApp)
+        XCTAssertEqual(handoff.linksDidRun(keepsFocus: false), previousApp)
         XCTAssertEqual(activated, [previousApp])
     }
 
     func testALinkThatLeavesAnOverlayOpenKeepsFocus() {
         activateAnnotate(from: previousApp)
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: true))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: true))
         XCTAssertTrue(activated.isEmpty)
     }
 
     func testOneActivationHandsBackOnce() {
         activateAnnotate(from: previousApp)
-        handoff.linkDidRun(keepsFocus: false)
+        handoff.linksDidRun(keepsFocus: false)
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
         XCTAssertEqual(activated.count, 1)
     }
 
     func testAnOverlayLinkUsesUpTheActivation() {
         // A tool link opens the overlay; a color link right after must not send focus away.
         activateAnnotate(from: previousApp)
-        handoff.linkDidRun(keepsFocus: true)
+        handoff.linksDidRun(keepsFocus: true)
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
     }
 
     func testAnOlderActivationIsLeftAlone() {
@@ -82,24 +82,24 @@ final class LinkFocusHandoffTests: XCTestCase {
         activateAnnotate(from: previousApp)
         clock += LinkFocusHandoff.activationWindow + 0.1
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
     }
 
     func testABackgroundLinkHasNothingToHandBack() {
         // `open -g` delivers the link without activating Annotate.
         isActive = false
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
         activateAnnotate(from: previousApp)
         isActive = false
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
     }
 
     func testResigningActiveDropsTheActivation() {
         activateAnnotate(from: previousApp)
         appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
     }
 
     func testAnnotatesOwnDeactivationIsNotAPreviousApp() {
@@ -114,6 +114,65 @@ final class LinkFocusHandoffTests: XCTestCase {
 
         activateAnnotate(from: ownApp)
 
-        XCTAssertNil(handoff.linkDidRun(keepsFocus: false))
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false))
+    }
+
+    // MARK: - Links that launched the app
+
+    func testLaunchLinksHandBackWhenTheLaunchActivationLandsAfterThem() {
+        handoff.noteLaunch(frontmostApp: previousApp)
+        isActive = false
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false, launched: true))
+
+        clock += 0.3
+        isActive = true
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+
+        XCTAssertEqual(activated, [previousApp])
+    }
+
+    func testALateLaunchActivationIsLeftAlone() {
+        handoff.noteLaunch(frontmostApp: previousApp)
+        isActive = false
+        handoff.linksDidRun(keepsFocus: false, launched: true)
+
+        clock += LinkFocusHandoff.launchActivationWindow + 0.1
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testLaunchLinksHandBackAfterAnEarlierLaunchActivation() {
+        // Launch can activate the app well before the queued links run. No workspace
+        // notification arrived, so the app frontmost during launch is the one to go back to.
+        handoff.noteLaunch(frontmostApp: previousApp)
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        clock += LinkFocusHandoff.activationWindow + 0.5
+
+        XCTAssertEqual(handoff.linksDidRun(keepsFocus: false, launched: true), previousApp)
+    }
+
+    func testLaunchLinksThatOpenTheOverlayKeepFocus() {
+        handoff.noteLaunch(frontmostApp: previousApp)
+        isActive = false
+        handoff.linksDidRun(keepsFocus: true, launched: true)
+        isActive = true
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+
+        XCTAssertTrue(activated.isEmpty)
+    }
+
+    func testLaunchingFromAnnotateItselfRecordsNoPreviousApp() {
+        let handoff = LinkFocusHandoff(
+            workspaceCenter: workspaceCenter,
+            appCenter: appCenter,
+            ownProcessIdentifier: previousApp.processIdentifier,
+            now: { [unowned self] in clock },
+            isActive: { true },
+            activate: { [unowned self] in activated.append($0) })
+        handoff.noteLaunch(frontmostApp: previousApp)
+        appCenter.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+
+        XCTAssertNil(handoff.linksDidRun(keepsFocus: false, launched: true))
     }
 }

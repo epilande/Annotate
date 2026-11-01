@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Links that arrive before launch finishes, run once it does.
     var pendingCommandURLs: [URL] = []
     private(set) var hasFinishedLaunching = false
-    /// Created at launch, before any link can activate the app.
+    /// Created as launch starts, before launch or any link can activate the app.
     var linkFocusHandoff: LinkFocusHandoff?
 
     override init() {
@@ -40,6 +40,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     init(userDefaults: UserDefaults) {
         self.settings = SettingsStore(defaults: userDefaults)
         super.init()
+    }
+
+    /// Runs before launch activates the app and before any link that launched it arrives.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let handoff = LinkFocusHandoff()
+        handoff.noteLaunch(frontmostApp: NSWorkspace.shared.frontmostApplication)
+        linkFocusHandoff = handoff
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
