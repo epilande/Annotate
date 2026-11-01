@@ -456,6 +456,9 @@ final class URLCommandTests: XCTestCase {
         try open("annotate-debug://tool/arrow")
         launchAndSettle(focus)
         focus.becomeActive()
+        XCTAssertEqual(
+            appDelegate.linkFocusHandoff?.isSettling, false, "The overlay kept focus, so nothing settles again")
+        focus.settle()
 
         XCTAssertEqual(overlay?.isVisible, true)
         XCTAssertTrue(focus.activated().isEmpty)

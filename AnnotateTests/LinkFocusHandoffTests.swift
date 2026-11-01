@@ -412,6 +412,8 @@ final class LinkFocusHandoffTests: XCTestCase {
 
         scheduler.advance(by: LinkFocusHandoff.launchActivationWindow + 0.1)
         becomeActive()
+        XCTAssertFalse(handoff.isSettling, "Past the window, so nothing settles again")
+        settle()
 
         XCTAssertTrue(activated.isEmpty)
     }
@@ -434,6 +436,8 @@ final class LinkFocusHandoffTests: XCTestCase {
         deliver(leavingOverlayOpen: true, launched: true)
         settle()
         becomeActive()
+        XCTAssertFalse(handoff.isSettling, "The overlay kept focus, so nothing settles again")
+        settle()
 
         XCTAssertTrue(activated.isEmpty)
     }
