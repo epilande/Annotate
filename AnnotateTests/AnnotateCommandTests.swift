@@ -774,6 +774,25 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(SystemPrivacyPrompt.hasWindow(ownedBy: [42], in: []))
     }
 
+    func testDeniedCaptureKeepsDrawingsWithClearDrawingsOnStart() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        appDelegate.openSettingsPane = { _, _, _ in }
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        run(.show)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.screen))
+        runLoop { !self.appDelegate.isInteractiveOverlayOpen }
+        run(.show)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "The app closed the overlay, not the user")
+
+        // The exemption is used up: a close by the user clears on the next open as usual.
+        run(.hide)
+        run(.show)
+        XCTAssertTrue(overlay.overlayView.paths.isEmpty)
+    }
+
     func testCaptureMenuItemTakesTheShortcut() throws {
         let item = try XCTUnwrap(
             appDelegate.statusItem.menu?.items.first { $0.action == #selector(AppDelegate.captureScreen) })

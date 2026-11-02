@@ -110,12 +110,14 @@ extension AppDelegate {
         }
     }
 
-    /// Closes the interactive overlay. Always-On overlays sit above every normal window, so their annotations would cover
+    /// Closes the interactive overlay, keeping its drawings for the next time it opens.
+    /// Always-On overlays sit above every normal window, so their annotations would cover
     /// Settings and the system prompt; they are ordered out instead, to come back later.
     private func moveOverlaysAsideForPermission() {
         let visible = overlayWindows.values.filter(\.isVisible)
         guard alwaysOnMode else {
             guard isInteractiveOverlayOpen else { return }
+            overlaysKeepingDrawings.formUnion(visible.map(ObjectIdentifier.init))
             hideAllOverlays()
             return
         }
@@ -148,6 +150,13 @@ extension AppDelegate {
         guard !restored.isEmpty else { return }
         restored.forEach { $0.orderFront(nil) }
         CursorHighlightManager.shared.overlayVisibilityChanged()
+    }
+
+    /// Whether `overlay` was closed by the app and keeps its drawings this time it opens.
+    /// Any opening uses the exemption up, so a later close by the user clears as usual.
+    @discardableResult
+    func consumeKeptDrawings(of overlay: OverlayWindow) -> Bool {
+        overlaysKeepingDrawings.remove(ObjectIdentifier(overlay)) != nil
     }
 }
 

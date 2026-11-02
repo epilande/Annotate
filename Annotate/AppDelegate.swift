@@ -51,6 +51,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Whether a Settings window opened for Screen Recording is still open.
     var isSettingsOpenForPermission = false
     var isPollingForPrivacyPrompt = false
+    /// Overlays closed by the app rather than the user, which keep their drawings the next
+    /// time they open even with Clear Drawings on Start.
+    var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
     /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
     /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
     /// Settings window opens.
@@ -618,7 +621,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     private func activateOverlay(_ overlayWindow: OverlayWindow, on screen: NSScreen) {
         configureWindowForNormalMode(overlayWindow)
 
-        if settings[.clearDrawingsOnStart] {
+        if settings[.clearDrawingsOnStart] && !consumeKeptDrawings(of: overlayWindow) {
             overlayWindow.overlayView.clearAll()
         }
 
@@ -652,6 +655,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             if alwaysOnMode {
+                consumeKeptDrawings(of: overlayWindow)
                 configureWindowForAlwaysOnMode(overlayWindow)
             } else {
                 configureWindowForNormalMode(overlayWindow)
@@ -696,6 +700,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             !overlayWindow.isVisible
         {
             configureWindowForNormalMode(overlayWindow)
+            consumeKeptDrawings(of: overlayWindow)
             updateStatusBarIcon(with: currentColor)
             SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
