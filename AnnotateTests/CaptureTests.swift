@@ -21,6 +21,36 @@ final class StubDisplayCapturing: DisplayCapturing {
     }
 }
 
+/// Returns `images` in turn, one per capture. The first capture waits until `open()`, so a
+/// test can hold it while a later capture is asked for.
+@MainActor
+final class GatedDisplayCapturing: DisplayCapturing {
+    let canCapture = true
+    private var images: [CGImage]
+    private var isOpen = false
+    private var waiting: CheckedContinuation<Void, Never>?
+    private(set) var captureCount = 0
+
+    init(images: [CGImage]) {
+        self.images = images
+    }
+
+    func open() {
+        isOpen = true
+        waiting?.resume()
+        waiting = nil
+    }
+
+    func captureDisplay(_ display: DisplayInfo) async -> DisplaySnapshot? {
+        captureCount += 1
+        let image = images.isEmpty ? nil : images.removeFirst()
+        if captureCount == 1, !isOpen {
+            await withCheckedContinuation { waiting = $0 }
+        }
+        return image.map { DisplaySnapshot(image: $0, displayFrame: display.frame) }
+    }
+}
+
 /// An RGBA color with 0-255 components.
 struct RGBA: Equatable, CustomStringConvertible {
     var r: Int, g: Int, b: Int, a: Int

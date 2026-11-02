@@ -38,8 +38,14 @@ extension AppDelegate {
             hostTime: CACurrentMediaTime(),
             date: Date())
 
+        // Each capture waits for the one before it, so captures finish in the order they were
+        // asked for: an older image never replaces a newer one on the clipboard or in the HUD,
+        // and every capture still gets its own file. The scene above is already taken, so the
+        // annotations are the ones on screen when this capture was asked for.
         let service = captureService
+        let previous = captureTask
         captureTask = Task { @MainActor [weak self] in
+            await previous?.value
             do {
                 let result = try await service.capture(request)
                 self?.reportCapture(result, on: overlay)

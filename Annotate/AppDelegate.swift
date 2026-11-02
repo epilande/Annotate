@@ -37,7 +37,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     lazy var captureService = CaptureService(
         source: ScreenSampler.shared,
         sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
-    /// The capture in flight, if any, so tests can wait for it.
+    /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5

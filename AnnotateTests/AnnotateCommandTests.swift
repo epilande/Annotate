@@ -473,8 +473,11 @@ final class AnnotateCommandTests: XCTestCase {
     // MARK: - Capture
 
     /// Points the app's captures at a stub source, a temporary folder, and a private pasteboard.
+    /// Without a `source`, every capture is a solid blue screen.
     @discardableResult
-    private func useStubCapture(canCapture: Bool = true) throws -> (folder: URL, pasteboard: NSPasteboard) {
+    private func useStubCapture(
+        canCapture: Bool = true, source: DisplayCapturing? = nil
+    ) throws -> (folder: URL, pasteboard: NSPasteboard) {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)", isDirectory: true)
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("AnnotateCommandTests-\(UUID().uuidString)"))
@@ -487,7 +490,7 @@ final class AnnotateCommandTests: XCTestCase {
         let snapshot = CaptureTestImages.solid(
             width: Int(pixelSize.width), height: Int(pixelSize.height), RGBA(r: 0, g: 0, b: 255, a: 255))
         appDelegate.captureService = CaptureService(
-            source: StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
+            source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
             sinks: [FileSink(folder: folder), ClipboardSink(pasteboard: pasteboard)])
         return (folder, pasteboard)
     }
@@ -555,6 +558,42 @@ final class AnnotateCommandTests: XCTestCase {
         let image = try XCTUnwrap(NSBitmapImageRep(data: try Data(contentsOf: file))?.cgImage)
         let corner = CaptureTestImages.pixel(image, x: 4, y: image.height - 4)
         XCTAssertTrue(corner.isClose(to: RGBA(r: 0, g: 0, b: 255, a: 255)), "\(corner)")
+    }
+
+    func testOverlappingCapturesFinishInTheOrderTheyWereAskedFor() async throws {
+        let red = RGBA(r: 255, g: 0, b: 0, a: 255)
+        let blue = RGBA(r: 0, g: 0, b: 255, a: 255)
+        // Small snapshots keep the newer capture quick, so without ordering it would land first.
+        let source = GatedDisplayCapturing(images: [
+            CaptureTestImages.solid(width: 32, height: 20, red),
+            CaptureTestImages.solid(width: 32, height: 20, blue),
+        ])
+        let (folder, pasteboard) = try useStubCapture(source: source)
+        run(.show)
+
+        run(.capture(.screen))
+        run(.capture(.screen))
+        // Give the second capture time to overtake the held first one if nothing orders them.
+        try await Task.sleep(for: .milliseconds(500))
+        source.open()
+        await appDelegate.captureTask?.value
+        // Unordered, the held capture would still be running here; let it finish too, so the
+        // assertions below see where it lands.
+        var files: [URL] = []
+        for _ in 0..<300 {
+            files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            if files.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(source.captureCount, 2)
+        XCTAssertEqual(files.count, 2, "Each capture keeps its own file")
+        let png = try XCTUnwrap(pasteboard.data(forType: .png))
+        let image = try XCTUnwrap(NSBitmapImageRep(data: png)?.cgImage)
+        let pixel = CaptureTestImages.pixel(image, x: 16, y: 10)
+        XCTAssertTrue(pixel.isClose(to: blue), "The newer capture must end up on the clipboard: \(pixel)")
+        let newest = try XCTUnwrap(files.first { (try? Data(contentsOf: $0)) == png })
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(newest.lastPathComponent)")
     }
 
     /// Runs the run loop until `condition` holds or `timeout` passes. Synchronous on purpose:
