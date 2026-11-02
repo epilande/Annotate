@@ -337,6 +337,17 @@ class OverlayWindow: NSPanel {
         return cleared
     }
 
+    /// Clears every window in `windows` without a sound and returns whether any had something to
+    /// clear. When several did, one Undo or Redo on any of them steps them all (`LinkedClear`).
+    static func performClearAll(on windows: [OverlayWindow]) -> Bool {
+        var cleared: [OverlayView] = []
+        for window in windows where window.performClearAll(playsSound: false) {
+            cleared.append(window.overlayView)
+        }
+        LinkedClear.link(cleared)
+        return !cleared.isEmpty
+    }
+
     private var toolbarActionAnchor: NSPoint {
         let windowPoint = convertPoint(fromScreen: NSEvent.mouseLocation)
         return overlayView.convert(windowPoint, from: nil)
