@@ -41,6 +41,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
+    /// Reports a capture problem when no overlay is open to show it on. Tests replace it.
+    var showCaptureProblemAlert: (_ message: String) -> Void = { message in
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = "Annotate couldn't finish the capture. Try again in a moment."
+        alert.runModal()
+    }
     /// Whether a macOS privacy prompt is on screen. Tests replace it.
     var isPrivacyPromptOnScreen: () -> Bool = { SystemPrivacyPrompt.isOnScreen }
     /// How often Always-On overlays waiting on a privacy prompt check whether it has closed.

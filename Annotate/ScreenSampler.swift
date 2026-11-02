@@ -221,17 +221,23 @@ final class ScreenSampler: RedactionSampling {
         }
     }
 
+    /// Whether the shareable content query lists only apps with a window on screen. Off: with
+    /// the overlay closed Annotate has no window on screen, so it would be missing from the
+    /// list and a capture from the status menu would have nothing to exclude it by.
+    nonisolated static let listsOnScreenWindowsOnly = false
+
     /// The whole display without Annotate's windows, or nil when that can't be guaranteed.
     /// Screenshots and any later frame stream share this filter and `configuration(for:)`.
     nonisolated static func contentFilter(displayID: CGDirectDisplayID) async throws -> SCContentFilter? {
         let content = try await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true)
+            false, onScreenWindowsOnly: listsOnScreenWindowsOnly)
         guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
             log.error("No shareable display matches id \(displayID)")
             return nil
         }
         // Excluding our own process is what keeps the overlay, placeholders, board and toolbar
-        // out of the pixels. Without a match there is no safe capture, so bail.
+        // out of the pixels, whether or not they are on screen when the content is listed.
+        // Without a match there is no safe capture, so bail.
         let bundleID = Bundle.main.bundleIdentifier
         let ownApps = content.applications.filter { $0.bundleIdentifier == bundleID }
         guard !ownApps.isEmpty else {

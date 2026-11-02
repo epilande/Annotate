@@ -11,6 +11,8 @@ final class AnnotateCommandTests: XCTestCase {
     var overlay: OverlayWindow!
     /// Stands in for the macOS privacy prompt in capture tests.
     var privacyPromptUp = false
+    /// Messages a capture reported in an alert, which tests record instead of showing.
+    var captureProblemAlerts: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -493,6 +495,8 @@ final class AnnotateCommandTests: XCTestCase {
             width: Int(pixelSize.width), height: Int(pixelSize.height), RGBA(r: 0, g: 0, b: 255, a: 255))
         privacyPromptUp = false
         appDelegate.isPrivacyPromptOnScreen = { [unowned self] in self.privacyPromptUp }
+        captureProblemAlerts = []
+        appDelegate.showCaptureProblemAlert = { [unowned self] in self.captureProblemAlerts.append($0) }
         appDelegate.privacyPromptPollInterval = 0.02
         appDelegate.captureService = CaptureService(
             source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
@@ -791,6 +795,54 @@ final class AnnotateCommandTests: XCTestCase {
         run(.hide)
         run(.show)
         XCTAssertTrue(overlay.overlayView.paths.isEmpty)
+    }
+
+    func testCaptureFailureWithTheOverlayClosedIsReported() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        XCTAssertTrue(visibleOverlays.isEmpty)
+
+        // The status menu item, as in the live check.
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+    }
+
+    func testCaptureFailureWithTheOverlayOpenStaysOnTheOverlay() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(feedbackText(on: overlay), "⚠️ Capture Failed")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
+    }
+
+    func testFailedSaveWithTheOverlayClosedIsReported() async throws {
+        try useStubCapture()
+        // A regular file where the folder should be makes the save fail; the copy still works.
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)")
+        try Data().write(to: blocker)
+        addTeardownBlock { try? FileManager.default.removeItem(at: blocker) }
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("AnnotateCommandTests-\(UUID().uuidString)"))
+        addTeardownBlock { @MainActor in pasteboard.releaseGlobally() }
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: blocker), ClipboardSink(pasteboard: pasteboard)])
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertNotNil(pasteboard.data(forType: .png))
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
+    }
+
+    func testShareableContentListsAppsWhoseWindowsAreOffScreen() {
+        // With the overlay closed Annotate has no window on screen. Listing only on-screen
+        // windows left it out, so the filter had nothing to exclude and refused to capture.
+        XCTAssertFalse(ScreenSampler.listsOnScreenWindowsOnly)
     }
 
     func testCaptureMenuItemTakesTheShortcut() throws {

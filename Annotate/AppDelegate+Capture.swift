@@ -53,7 +53,7 @@ extension AppDelegate {
                 self?.showScreenRecordingOff(on: overlay)
             } catch {
                 log.error("Capture failed: \(error.localizedDescription)")
-                overlay?.showToggleFeedback("Capture Failed", icon: "⚠️")
+                self?.reportCaptureProblem("Capture Failed", icon: "⚠️", on: overlay)
             }
         }
     }
@@ -75,11 +75,21 @@ extension AppDelegate {
     }
 
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
-        guard let overlay, overlay.isVisible else { return }
         if let file = result.savedFile {
+            guard let overlay, overlay.isVisible else { return }
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
-            overlay.showToggleFeedback("Couldn't Save. Copied to Clipboard", icon: "📋")
+            reportCaptureProblem("Couldn't Save. Copied to Clipboard", icon: "📋", on: overlay)
+        }
+    }
+
+    /// On the overlay when it is open. Otherwise, as from the status menu with the overlay
+    /// closed, an alert, so a failed capture is never silent.
+    private func reportCaptureProblem(_ message: String, icon: String, on overlay: OverlayWindow?) {
+        if let overlay, overlay.isVisible {
+            overlay.showToggleFeedback(message, icon: icon)
+        } else {
+            showCaptureProblemAlert(message)
         }
     }
 
