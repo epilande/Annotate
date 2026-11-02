@@ -21,12 +21,23 @@ final class SettingsWindowManager {
     /// The pane the open window shows. Each new window starts fresh, on General.
     private(set) var navigation = SettingsNavigation()
 
+    /// Run once when the window closes.
+    private var closeHandlers: [@MainActor () -> Void] = []
+
     private init() {}
 
     /// Shows the settings window, creating it on first use and re-fronting
     /// the existing one on subsequent calls. With a `pane`, switches to it.
     /// `requestingScreenRecording` has the Capture pane ask for Screen Recording access.
-    func show(pane: SettingsPane? = nil, requestingScreenRecording: Bool = false) {
+    /// `onClose` runs when the window closes, including a window that was already open.
+    func show(
+        pane: SettingsPane? = nil,
+        requestingScreenRecording: Bool = false,
+        onClose: (@MainActor () -> Void)? = nil
+    ) {
+        if let onClose {
+            closeHandlers.append(onClose)
+        }
         if settingsWindow == nil {
             navigation = SettingsNavigation()
         }
@@ -67,13 +78,20 @@ final class SettingsWindowManager {
         windowDelegate = SettingsWindowDelegate()
         window.delegate = windowDelegate
     }
+
+    fileprivate func windowWillClose() {
+        settingsWindow = nil
+        windowDelegate = nil
+        let handlers = closeHandlers
+        closeHandlers = []
+        handlers.forEach { $0() }
+    }
 }
 
 /// Clears the manager's references when the window closes so the next
 /// `show()` builds a fresh window.
 private final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
     func windowWillClose(_: Notification) {
-        SettingsWindowManager.shared.settingsWindow = nil
-        SettingsWindowManager.shared.windowDelegate = nil
+        SettingsWindowManager.shared.windowWillClose()
     }
 }

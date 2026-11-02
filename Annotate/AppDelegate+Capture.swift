@@ -84,18 +84,45 @@ extension AppDelegate {
     }
 
     /// Never asks from here: the system prompt would open under the overlay. Says so on the
-    /// overlay, then closes the interactive overlay and opens Settings to Capture, which asks.
-    /// Annotations stay for when the overlay opens again.
+    /// overlay, then gets every overlay out of the way and opens Settings to Capture, which
+    /// asks. Annotations stay for when the overlay opens again.
     private func showScreenRecordingOff(on overlay: OverlayWindow?) {
         let showsNotice = overlay?.isVisible == true && !settings[.hideToolFeedback]
         overlay?.showToggleFeedback("Screen Recording is off. Opening Settings…", icon: "🔒")
         DispatchQueue.main.asyncAfter(deadline: .now() + (showsNotice ? screenRecordingNoticeDelay : 0)) {
             [weak self] in
             guard let self else { return }
-            if self.isInteractiveOverlayOpen {
-                self.hideAllOverlays()
+            let suspended = self.clearOverlaysForSettings()
+            self.openSettingsPane(.capture, true) { [weak self] in
+                self?.restoreAlwaysOnOverlays(suspended)
             }
-            self.openSettingsPane(.capture, true)
         }
+    }
+
+    /// Closes the interactive overlay. Always-On overlays sit above every normal window, so
+    /// their annotations would cover Settings and the system prompt; they are ordered out
+    /// instead, and returned so they can come back once Settings closes.
+    private func clearOverlaysForSettings() -> [OverlayWindow] {
+        guard alwaysOnMode else {
+            if isInteractiveOverlayOpen {
+                hideAllOverlays()
+            }
+            return []
+        }
+        let visible = overlayWindows.values.filter(\.isVisible)
+        visible.forEach { $0.orderOut(nil) }
+        CursorHighlightManager.shared.overlayVisibilityChanged()
+        return visible
+    }
+
+    /// Brings back the Always-On overlays `clearOverlaysForSettings` ordered out, unless
+    /// Always-On has ended or the display is gone since.
+    private func restoreAlwaysOnOverlays(_ windows: [OverlayWindow]) {
+        guard alwaysOnMode else { return }
+        let current = Set(overlayWindows.values.map(ObjectIdentifier.init))
+        let restored = windows.filter { current.contains(ObjectIdentifier($0)) && !$0.isVisible }
+        guard !restored.isEmpty else { return }
+        restored.forEach { $0.orderFront(nil) }
+        CursorHighlightManager.shared.overlayVisibilityChanged()
     }
 }

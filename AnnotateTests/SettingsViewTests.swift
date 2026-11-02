@@ -131,6 +131,23 @@ final class SettingsViewTests: XCTestCase {
         firstWindow?.close()
     }
 
+    func testCloseHandlersRunOnceWhenTheWindowCloses() throws {
+        var closed = 0
+        SettingsWindowManager.shared.show(pane: .capture) { closed += 1 }
+        // A handler added while the window is already open waits for that window too.
+        SettingsWindowManager.shared.show { closed += 1 }
+        let window = try XCTUnwrap(SettingsWindowManager.shared.settingsWindow)
+        XCTAssertEqual(SettingsWindowManager.shared.navigation.selection, .capture)
+        XCTAssertEqual(closed, 0)
+
+        window.close()
+        XCTAssertEqual(closed, 2)
+
+        SettingsWindowManager.shared.show()
+        SettingsWindowManager.shared.settingsWindow?.close()
+        XCTAssertEqual(closed, 2, "Handlers run once")
+    }
+
     // MARK: - Dock Icon Tests
 
     func testHideDockIconToggle() {

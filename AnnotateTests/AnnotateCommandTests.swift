@@ -609,7 +609,7 @@ final class AnnotateCommandTests: XCTestCase {
         let (folder, _) = try useStubCapture(canCapture: false)
         appDelegate.screenRecordingNoticeDelay = 0.3
         var opened: [(SettingsPane, Bool)] = []
-        appDelegate.openSettingsPane = { opened.append(($0, $1)) }
+        appDelegate.openSettingsPane = { pane, request, _ in opened.append((pane, request)) }
         run(.show)
         overlay.overlayView.paths.append(TestFactory.createDrawingPath())
 
@@ -625,6 +625,49 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(opened.map(\.1), [true])
         XCTAssertEqual(overlay.overlayView.paths.count, 1, "Annotations survive the close")
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// Opens Always-On, asks for a capture without Screen Recording, and returns the overlays
+    /// that were up, the ones still up when Settings opened, and the Settings close handler.
+    private func denyCaptureInAlwaysOn() throws -> (
+        alwaysOn: Set<ObjectIdentifier>, visibleAtOpen: Set<ObjectIdentifier>, closeSettings: @MainActor () -> Void
+    ) {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var visibleAtOpen: Set<ObjectIdentifier>?
+        var closeSettings: (@MainActor () -> Void)?
+        appDelegate.openSettingsPane = { _, _, onClose in
+            visibleAtOpen = Set(self.visibleOverlays.map(ObjectIdentifier.init))
+            closeSettings = onClose
+        }
+        appDelegate.toggleAlwaysOnMode()
+        let alwaysOn = Set(visibleOverlays.map(ObjectIdentifier.init))
+        XCTAssertFalse(alwaysOn.isEmpty)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        runLoop { closeSettings != nil }
+        return (alwaysOn, try XCTUnwrap(visibleAtOpen), try XCTUnwrap(closeSettings))
+    }
+
+    func testCaptureWithoutScreenRecordingInAlwaysOnClearsOverlaysUntilSettingsCloses() throws {
+        let (alwaysOn, visibleAtOpen, closeSettings) = try denyCaptureInAlwaysOn()
+
+        XCTAssertTrue(visibleAtOpen.isEmpty, "Always-On annotations must not cover Settings or the prompt")
+        XCTAssertTrue(appDelegate.alwaysOnMode, "Always-On stays on")
+
+        closeSettings()
+        XCTAssertEqual(Set(visibleOverlays.map(ObjectIdentifier.init)), alwaysOn)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "Annotations survive")
+    }
+
+    func testOverlaysStayHiddenWhenAlwaysOnEndsBeforeSettingsCloses() throws {
+        let (_, _, closeSettings) = try denyCaptureInAlwaysOn()
+
+        appDelegate.toggleAlwaysOnMode()
+        closeSettings()
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
     }
 
     func testCaptureMenuItemTakesTheShortcut() throws {

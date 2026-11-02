@@ -42,10 +42,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
     /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
-    /// shows. Tests replace it so no Settings window opens.
-    var openSettingsPane: (SettingsPane, _ requestingScreenRecording: Bool) -> Void = { pane, request in
-        SettingsWindowManager.shared.show(pane: pane, requestingScreenRecording: request)
-    }
+    /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
+    /// Settings window opens.
+    var openSettingsPane:
+        (SettingsPane, _ requestingScreenRecording: Bool, _ onClose: @escaping @MainActor () -> Void) -> Void = {
+            SettingsWindowManager.shared.show(pane: $0, requestingScreenRecording: $1, onClose: $2)
+        }
 
     override init() {
         self.settings = .standard
