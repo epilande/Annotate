@@ -422,6 +422,24 @@ final class URLCommandTests: XCTestCase {
         XCTAssertTrue(focus.activated().isEmpty)
     }
 
+    func testAColorLinkBeforeTheLaunchActivationStillHandsFocusBack() throws {
+        // Regression: a second color link arrives after the launch link settled but before the
+        // launch activation lands.
+        let focus = installLaunchFocusHarness()
+        try open("annotate-debug://color/green")
+        launchAndSettle(focus)
+
+        try open("annotate-debug://color/red")
+        focus.settle()
+        XCTAssertTrue(focus.activated().isEmpty, "Not active yet, so nothing to hand back")
+
+        focus.becomeActive()
+        focus.settle()
+
+        XCTAssertEqual(appDelegate.currentColor, .systemRed)
+        XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
+    }
+
     func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatedItFirst() throws {
         // What a live cold launch does: active before any delegate code, with no workspace
         // notification naming the previous app.
@@ -438,6 +456,9 @@ final class URLCommandTests: XCTestCase {
         try open("annotate-debug://tool/arrow")
         launchAndSettle(focus)
         focus.becomeActive()
+        XCTAssertEqual(
+            appDelegate.linkFocusHandoff?.isSettling, false, "The overlay kept focus, so nothing settles again")
+        focus.settle()
 
         XCTAssertEqual(overlay?.isVisible, true)
         XCTAssertTrue(focus.activated().isEmpty)
