@@ -1000,13 +1000,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.performClearAll()
     }
 
-    /// Clears every open overlay, key or not, which in Always-On is every display's. Returns
-    /// whether there was anything to clear.
+    /// Clears every open overlay, key or not, which in Always-On is every display's. One Undo
+    /// on any display brings back everything this cleared. Returns whether there was anything
+    /// to clear.
     @discardableResult
     func clearVisibleOverlays() -> Bool {
-        let cleared = overlayWindows.values.filter(\.isVisible)
-            .map { $0.performClearAll(playsSound: false) }
-            .contains(true)
+        let cleared = OverlayWindow.performClearAll(on: overlayWindows.values.filter(\.isVisible))
         if cleared {
             SoundPlayer.shared.playClearAll()
         }

@@ -412,21 +412,46 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return window?.undoManager
     }
 
+    /// This display's step in a Clear All that emptied several displays, while that step can
+    /// still be undone and redone together with theirs. See `LinkedClear`.
+    var clearLink: ClearLink?
+
+    /// Undoes this display's last step. When that step is its part of a Clear All that emptied
+    /// several displays, the others get theirs back too.
     func undo() {
+        undoOnThisDisplay()?.undo(besides: self)
+    }
+
+    /// Redoes this display's last undone step, and a linked Clear All on the other displays.
+    func redo() {
+        redoOnThisDisplay()?.redo(besides: self)
+    }
+
+    /// Undoes this display's last step alone. Returns the linked clear when the step was this
+    /// display's part of one.
+    @discardableResult
+    func undoOnThisDisplay() -> LinkedClear? {
         // A resize still in progress becomes its own step first, so this undoes it.
         endTextResize()
         // An undone object leaves its index behind in the selection, which would draw a
         // selection box over an object that is no longer there.
         clearSelectionForHistoryStep()
+        let linkedClear = undoManager?.canUndo == true ? clearLink?.recordUndo() : nil
         undoManager?.undo()
         startFadeLoopIfNeeded()
+        return linkedClear
     }
 
-    func redo() {
+    /// Redoes this display's last undone step alone. Returns the linked clear when the step was
+    /// this display's part of one.
+    @discardableResult
+    func redoOnThisDisplay() -> LinkedClear? {
         endTextResize()
         clearSelectionForHistoryStep()
+        let linkedClear = undoManager?.canRedo == true ? clearLink?.recordRedo() : nil
         undoManager?.redo()
         startFadeLoopIfNeeded()
+        return linkedClear
     }
 
     /// Drops the selection before an undo or redo reshuffles the annotation arrays.
@@ -456,6 +481,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func registerUndo(action: DrawingAction) {
         let manager = undoManager
+        // A new step of this display's own ends its part in a linked Clear All. Steps registered
+        // while undoing or redoing only record how to reverse the step being taken.
+        if let manager, manager.isUndoRegistrationEnabled, !manager.isUndoing, !manager.isRedoing {
+            clearLink = nil
+        }
         switch action {
         case .addPath(let path):
             manager?.registerUndo(withTarget: self) { target in
