@@ -54,24 +54,13 @@ class BoardManager: @unchecked Sendable {
         NotificationCenter.default.post(name: .boardStateChanged, object: nil)
     }
 
+    /// The board as the renderer sees it right now.
+    var appearance: BoardAppearance {
+        BoardAppearance(isVisible: isEnabled, type: currentBoardType)
+    }
+
     func adaptColor(_ color: NSColor, forBoardType boardType: BoardView.BoardType) -> NSColor {
-        guard isEnabled else { return color }
-
-        if boardType == .blackboard && color.isEqual(NSColor.black) {
-            return NSColor.white
-        } else if boardType == .whiteboard && color.isEqual(NSColor.white) {
-            return NSColor.black
-        }
-
-        if boardType == .blackboard && color.contrastingColor() == .white {
-            return color.blended(withFraction: 0.1, of: NSColor.white) ?? color
-        }
-
-        if boardType == .whiteboard && color.contrastingColor() == .black {
-            return color.blended(withFraction: 0.1, of: NSColor.black) ?? color
-        }
-
-        return color
+        BoardAppearance(isVisible: isEnabled, type: boardType).adapt(color)
     }
 }
 

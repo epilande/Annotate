@@ -103,7 +103,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         _modify { yield &document.arrows }
     }
     var currentArrow: Arrow? {
-        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentArrow.map(redrawBounds)) }
+        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentArrow.map(\.redrawBounds)) }
     }
 
     var lines: [Line] {
@@ -111,7 +111,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         _modify { yield &document.lines }
     }
     var currentLine: Line? {
-        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentLine.map(redrawBounds)) }
+        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentLine.map(\.redrawBounds)) }
     }
 
     var paths: [DrawingPath] {
@@ -133,7 +133,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         _modify { yield &document.rectangles }
     }
     var currentRectangle: Rectangle? {
-        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentRectangle.map(redrawBounds)) }
+        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentRectangle.map(\.redrawBounds)) }
     }
 
     /// Supplies pixels for pixelate/blur redactions. Tests swap in a stub so drawing a
@@ -168,7 +168,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         _modify { yield &document.circles }
     }
     var currentCircle: Circle? {
-        didSet { invalidateLivePreview(oldValue.map(redrawBounds), currentCircle.map(redrawBounds)) }
+        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentCircle.map(\.redrawBounds)) }
     }
 
     var textAnnotations: [TextAnnotation] {
@@ -305,6 +305,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
     let persistRestoreDuration: CFTimeInterval = 0.15
     /// When Persist began easing dimmed annotations back, or nil when nothing was dimmed.
     private var persistRestoreStart: CFTimeInterval?
+
+    /// The fade settings as one value, which the renderer and expiry both measure against.
+    var fade: FadePolicy {
+        FadePolicy(
+            isFadeMode: fadeMode,
+            delay: fadeDelay,
+            outDuration: fadeOutDuration,
+            persistRestoreStart: persistRestoreStart,
+            persistRestoreDuration: persistRestoreDuration)
+    }
 
     /// Test hook. Production always resolves through `AppDelegate.shared` or `.standard`.
     var pickerUserDefaultsOverride: UserDefaults?
@@ -792,7 +802,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func beginFreehandStroke(_ stroke: DrawingPath, tool: ToolType) {
         var stroke = stroke
-        stroke.bezierPath = makeBezierPath(points: stroke.points)
+        stroke.bezierPath = AnnotationRenderer.makeBezierPath(points: stroke.points)
         stroke.recacheBounds()
         switch tool {
         case .pen:
@@ -804,7 +814,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         default:
             preconditionFailure("Freehand strokes require pen or highlighter")
         }
-        invalidateLivePreview(nil, dirtyBounds(for: stroke, tool: tool))
+        invalidateLivePreview(nil, stroke.redrawBounds(tool: tool))
     }
 
     // Drops the point when the stroke was already cancelled mid-drag.
@@ -831,7 +841,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         // Pad with the stroke's own width. The picker width can change mid-drag.
         let padding = lineWidth * tool.strokeWidthMultiplier / 2 + 6
-        invalidateLivePreview(nil, boundsForLine(previous?.point ?? point.point, point.point, padding: padding))
+        invalidateLivePreview(
+            nil, AnnotationRenderer.paddedBounds(previous?.point ?? point.point, point.point, padding: padding))
     }
 
     func rebuildCurrentFreehandStroke(tool: ToolType) {
@@ -893,34 +904,38 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func rebuildPathGeometry(_ path: inout DrawingPath) {
-        path.bezierPath = makeBezierPath(points: path.points)
+        path.bezierPath = AnnotationRenderer.makeBezierPath(points: path.points)
         path.recacheBounds()
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let now = fadeClock()
-
-        for step in document.paintOrder() {
-            switch step {
-            case .content(let content, let layer, let includesLive):
-                draw(content, in: layer, includingLive: includesLive, now: now, dirtyRect: dirtyRect)
-            case .redaction(let index):
-                let rectangle = rectangles[index]
-                if intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) {
-                    drawRectangle(rectangle, alpha: 1)
-                }
-            case .liveRedaction:
-                if let rectangle = currentRectangle, rectangle.isRedaction,
-                    intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-                {
-                    drawRectangle(rectangle, alpha: 1)
-                }
-            case .selection:
-                drawSelection(dirtyRect: dirtyRect)
-            }
+        if let context = NSGraphicsContext.current?.cgContext {
+            renderer(dirtyRect: dirtyRect).draw(in: context)
         }
+        // Chrome is not part of the picture the renderer makes, so it paints over it here.
+        drawSelection(dirtyRect: dirtyRect)
         updateRedactionSamples()
+    }
+
+    /// Paints this overlay's document as it stands, live previews included.
+    func renderer(dirtyRect: NSRect = .infinite) -> AnnotationRenderer {
+        AnnotationRenderer(
+            document: document,
+            live: LivePreviews(
+                arrow: currentArrow,
+                line: currentLine,
+                path: currentPath,
+                pathBezier: currentPathBezier,
+                highlight: currentHighlight,
+                highlightBezier: currentHighlightBezier,
+                rectangle: currentRectangle,
+                circle: currentCircle),
+            board: BoardManager.shared.appearance,
+            fade: fade,
+            now: fadeClock(),
+            canvas: bounds,
+            dirtyRect: dirtyRect)
     }
 
     private func drawSelection(dirtyRect: NSRect) {
@@ -959,123 +974,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
     
-    /// Paints the committed `content` created within `layer`. `includingLive` adds the item
-    /// of that kind still being drawn, which belongs on top.
-    private func draw(
-        _ content: OverlayContent, in layer: RedactionLayer, includingLive: Bool, now: CFTimeInterval,
-        dirtyRect: NSRect
-    ) {
-        switch content {
-        case .arrows:
-            for arrow in arrows where layer.contains(arrow.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: arrow.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(redrawBounds(for: arrow), dirtyRect) else { continue }
-                drawArrow(
-                    from: arrow.startPoint,
-                    to: arrow.endPoint,
-                    color: arrow.color.withAlphaComponent(alpha),
-                    lineWidth: arrow.lineWidth
-                )
-            }
-
-            if includingLive, let arrow = currentArrow, intersectsDirtyRect(redrawBounds(for: arrow), dirtyRect) {
-                drawArrow(
-                    from: arrow.startPoint,
-                    to: arrow.endPoint,
-                    color: arrow.color,
-                    lineWidth: arrow.lineWidth
-                )
-            }
-
-        case .lines:
-            for line in lines where layer.contains(line.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: line.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(redrawBounds(for: line), dirtyRect) else { continue }
-                drawLine(
-                    from: line.startPoint,
-                    to: line.endPoint,
-                    color: line.color.withAlphaComponent(alpha),
-                    lineWidth: line.lineWidth
-                )
-            }
-
-            if includingLive, let line = currentLine, intersectsDirtyRect(redrawBounds(for: line), dirtyRect) {
-                drawLine(
-                    from: line.startPoint,
-                    to: line.endPoint,
-                    color: line.color,
-                    lineWidth: line.lineWidth
-                )
-            }
-
-        case .penStrokes:
-            for path in paths where layer.contains(path.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: path.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect) else { continue }
-                drawPath(path, tool: .pen, alpha: alpha, bezierPath: path.bezierPath)
-            }
-
-            if includingLive, let path = currentPath,
-                intersectsDirtyRect(dirtyBounds(for: path, tool: .pen), dirtyRect)
-            {
-                drawPath(path, tool: .pen, alpha: 1, bezierPath: currentPathBezier)
-            }
-
-        case .highlights:
-            for path in highlightPaths where layer.contains(path.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: path.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(dirtyBounds(for: path, tool: .highlighter), dirtyRect) else { continue }
-                drawPath(path, tool: .highlighter, alpha: alpha, bezierPath: path.bezierPath)
-            }
-
-            if includingLive, let highlight = currentHighlight,
-                intersectsDirtyRect(dirtyBounds(for: highlight, tool: .highlighter), dirtyRect)
-            {
-                drawPath(highlight, tool: .highlighter, alpha: 1, bezierPath: currentHighlightBezier)
-            }
-
-        case .outlines:
-            for rectangle in rectangles where !rectangle.isRedaction && layer.contains(rectangle.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(for: rectangle, now: now) else { continue }
-                guard intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect) else { continue }
-                drawRectangle(rectangle, alpha: alpha)
-            }
-
-            if includingLive, let rectangle = currentRectangle, !rectangle.isRedaction,
-                intersectsDirtyRect(redrawBounds(for: rectangle), dirtyRect)
-            {
-                drawRectangle(rectangle, alpha: 1)
-            }
-
-        case .circles:
-            for circle in circles where layer.contains(circle.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: circle.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(redrawBounds(for: circle), dirtyRect) else { continue }
-                drawCircle(circle, alpha: alpha)
-            }
-
-            if includingLive, let circle = currentCircle, intersectsDirtyRect(redrawBounds(for: circle), dirtyRect) {
-                drawCircle(circle, alpha: 1)
-            }
-
-        case .labels:
-            for (index, annotation) in textAnnotations.enumerated() where layer.contains(annotation.creationTime) {
-                if index == editingTextAnnotationIndex { continue }
-                guard let alpha = fadeAlphaIfVisible(creationTime: annotation.creationTime, now: now) else { continue }
-                let textRect = getTextRect(for: annotation)
-                guard intersectsDirtyRect(textRect, dirtyRect) else { continue }
-                drawText(annotation, alpha: alpha, bounds: textRect)
-            }
-
-        case .counters:
-            for counter in counterAnnotations where layer.contains(counter.creationTime) {
-                guard let alpha = fadeAlphaIfVisible(creationTime: counter.creationTime, now: now) else { continue }
-                guard intersectsDirtyRect(counter.badgeRect, dirtyRect) else { continue }
-                drawCounter(counter, alpha: alpha)
-            }
-        }
-    }
-
     // MARK: - Selection Bounding Box
     
     func calculateSelectionBoundingBox() -> NSRect {
@@ -1344,14 +1242,6 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return boundingBox.contains(point)
     }
 
-    private func fadeAlphaIfVisible(creationTime: CFTimeInterval?, now: CFTimeInterval) -> CGFloat? {
-        guard let creationTime else { return 1 }
-        guard fadeMode else { return persistRestoreAlpha(creationTime: creationTime, now: now) }
-        let age = now - creationTime
-        guard age < fadeDuration else { return nil }
-        return alphaForAge(age)
-    }
-
     private typealias RedactionLayer = OverlayDocument.RedactionLayer
 
     var redactionIndicesByCreation: [Int] { document.redactionIndicesByCreation }
@@ -1376,80 +1266,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
-    /// Redactions never fade: a hidden secret that reappears on its own defeats the point.
-    /// They still go away with Clear All, delete, the eraser and undo like everything else.
-    private func fadeAlphaIfVisible(for rectangle: Rectangle, now: CFTimeInterval) -> CGFloat? {
-        if rectangle.isRedaction { return 1 }
-        return fadeAlphaIfVisible(creationTime: rectangle.creationTime, now: now)
-    }
-
     private func intersectsDirtyRect(_ bounds: NSRect, _ dirtyRect: NSRect) -> Bool {
         if bounds.isNull { return false }
         return bounds.intersects(dirtyRect)
     }
 
-    private func boundsForLine(_ start: NSPoint, _ end: NSPoint, padding: CGFloat) -> NSRect {
-        NSRect(
-            x: min(start.x, end.x),
-            y: min(start.y, end.y),
-            width: abs(end.x - start.x),
-            height: abs(end.y - start.y)
-        ).insetBy(dx: -padding, dy: -padding)
-    }
-
-    private func boundsForRect(_ start: NSPoint, _ end: NSPoint, padding: CGFloat) -> NSRect {
-        boundsForLine(start, end, padding: padding)
-    }
-
-    private func redrawBounds(for rectangle: Rectangle) -> NSRect {
-        boundsForRect(rectangle.startPoint, rectangle.endPoint, padding: rectangle.lineWidth / 2 + 6)
-    }
-
-    private func redrawBounds(for arrow: Arrow) -> NSRect {
-        boundsForLine(arrow.startPoint, arrow.endPoint, padding: max(arrow.lineWidth * 4, 30))
-    }
-
-    private func redrawBounds(for line: Line) -> NSRect {
-        boundsForLine(line.startPoint, line.endPoint, padding: line.lineWidth / 2 + 6)
-    }
-
-    private func redrawBounds(for circle: Circle) -> NSRect {
-        boundsForRect(circle.startPoint, circle.endPoint, padding: circle.lineWidth / 2 + 6)
-    }
-
     private func redrawBounds(forTextBoxDraft rect: NSRect) -> NSRect {
         let padding = Self.textBoxDraftLineWidth / 2 + 6
         return rect.insetBy(dx: -padding, dy: -padding)
-    }
-
-    private func dirtyBounds(for path: DrawingPath, tool: ToolType) -> NSRect {
-        let padding = path.lineWidth * tool.strokeWidthMultiplier / 2 + 6
-        let bounds = path.cachedBounds.isNull ? DrawingPath.bounds(of: path.points) : path.cachedBounds
-        guard !bounds.isNull else { return .null }
-        return bounds.insetBy(dx: -padding, dy: -padding)
-    }
-
-    /// Full opacity through the hold, then an eased fade from 1 to 0 over `fadeOutDuration`.
-    /// The curve leaves 1 with zero slope, so the fade never starts with a visible step.
-    private func alphaForAge(_ age: CFTimeInterval) -> CGFloat {
-        guard age > fadeDelay else { return 1 }
-        let progress = min(1, (age - fadeDelay) / fadeOutDuration)
-        return CGFloat(1 - Self.smoothstep(progress))
-    }
-
-    /// In Persist, eases an annotation from the alpha it had when Fade Mode turned off back
-    /// to full strength over `persistRestoreDuration`.
-    private func persistRestoreAlpha(creationTime: CFTimeInterval, now: CFTimeInterval) -> CGFloat {
-        guard let start = persistRestoreStart else { return 1 }
-        let progress = (now - start) / persistRestoreDuration
-        guard progress < 1 else { return 1 }
-        let from = alphaForAge(start - creationTime)
-        return from + (1 - from) * CGFloat(Self.smoothstep(max(0, progress)))
-    }
-
-    private var isRestoringFromFade: Bool {
-        guard let start = persistRestoreStart else { return false }
-        return fadeClock() - start < persistRestoreDuration
     }
 
     /// Whether anything that fades is past its hold at `now`, so it draws below full strength.
@@ -1464,42 +1288,38 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
 
-    /// 0 at 0 and 1 at 1, with zero slope at both ends.
-    private static func smoothstep(_ progress: Double) -> Double {
-        progress * progress * (3 - 2 * progress)
-    }
-
     func compactExpiredAnnotations() {
         guard fadeMode else { return }
         let now = fadeClock()
+        let fade = fade
 
         compactItems(
             \.arrows,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .arrow(let index) = $0 { return index }; return nil },
             make: { .arrow(index: $0) }
         )
         compactItems(
             \.lines,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .line(let index) = $0 { return index }; return nil },
             make: { .line(index: $0) }
         )
         compactItems(
             \.rectangles,
-            keep: { fadeAlphaIfVisible(for: $0, now: now) != nil },
+            keep: { fade.alpha(for: $0, at: now) != nil },
             extractIndex: { if case .rectangle(let index) = $0 { return index }; return nil },
             make: { .rectangle(index: $0) }
         )
         compactItems(
             \.circles,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .circle(let index) = $0 { return index }; return nil },
             make: { .circle(index: $0) }
         )
         compactItems(
             \.counterAnnotations,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .counter(let index) = $0 { return index }; return nil },
             make: { .counter(index: $0) }
         )
@@ -1510,7 +1330,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 .compactMap { $0 })
         let textIndexMap = compactItems(
             \.textAnnotations,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             protectedIndices: protectedTextIndices,
             extractIndex: { if case .text(let index) = $0 { return index }; return nil },
             make: { .text(index: $0) }
@@ -1521,13 +1341,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         compactItems(
             \.paths,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .path(let index) = $0 { return index }; return nil },
             make: { .path(index: $0) }
         )
         compactItems(
             \.highlightPaths,
-            keep: { fadeAlphaIfVisible(creationTime: $0.creationTime, now: now) != nil },
+            keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
             extractIndex: { if case .highlight(let index) = $0 { return index }; return nil },
             make: { .highlight(index: $0) }
         )
@@ -1585,131 +1405,15 @@ class OverlayView: NSView, NSTextFieldDelegate {
         selectionOriginalData = remappedOriginal
     }
 
-    private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
-        let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
-
-        // Calculate arrow head dimensions for equilateral triangle
-        // Scale arrowhead size relative to line width, with a minimum and reasonable multiplier
-        let sideLength: CGFloat = max(10.0, lineWidth * 4.0)
-
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let angle = atan2(dy, dx)
-
-        // For an equilateral triangle, the height is (sqrt(3)/2) * side_length
-        // and the base width is equal to side_length
-        let height = sideLength * sqrt(3.0) / 2.0
-        let halfBase = sideLength / 2.0
-
-        // Calculate the base center of the equilateral triangle
-        let baseCenter = NSPoint(
-            x: end.x - height * cos(angle),
-            y: end.y - height * sin(angle)
-        )
-
-        // Calculate the two base corners perpendicular to the arrow direction
-        let perpAngle = angle + .pi / 2
-        let p1 = NSPoint(
-            x: baseCenter.x + halfBase * cos(perpAngle),
-            y: baseCenter.y + halfBase * sin(perpAngle)
-        )
-        let p2 = NSPoint(
-            x: baseCenter.x - halfBase * cos(perpAngle),
-            y: baseCenter.y - halfBase * sin(perpAngle)
-        )
-
-        // Draw the line from start to the base center of the triangle
-        let linePath = NSBezierPath()
-        linePath.move(to: start)
-        linePath.line(to: baseCenter)
-        adaptedColor.setStroke()
-        linePath.lineWidth = lineWidth
-        linePath.stroke()
-
-        // Draw filled equilateral triangle
-        let trianglePath = NSBezierPath()
-        trianglePath.move(to: end)
-        trianglePath.line(to: p1)
-        trianglePath.line(to: p2)
-        trianglePath.close()
-        adaptedColor.setFill()
-        trianglePath.fill()
-    }
-
-    private func drawLine(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
-        let adaptedColor = adaptColorForBoard(color, boardType: currentBoardType)
-
-        let path = NSBezierPath()
-        path.move(to: start)
-        path.line(to: end)
-
-        adaptedColor.setStroke()
-        path.lineWidth = lineWidth
-        path.stroke()
-    }
-
-    private func drawRectangle(_ rectangle: Rectangle, alpha: CGFloat) {
-        let rect = rectangle.bounds
-        guard rectangle.style == .outline else {
-            drawRedaction(rectangle, in: rect)
-            return
-        }
-
-        let adaptedColor = adaptColorForBoard(rectangle.color, boardType: currentBoardType)
-        let path = NSBezierPath(rect: rect)
-        adaptedColor.withAlphaComponent(alpha).setStroke()
-        path.lineWidth = rectangle.lineWidth
-        path.stroke()
-    }
-
-    /// Fill used for solid redactions and as the stand-in while a sample is missing. Plain
-    /// black everywhere except on a visible blackboard, where a dark gray keeps the
-    /// redaction distinguishable from the board itself.
+    /// Fill solid redactions draw with on the current board. See `BoardAppearance`.
     var redactionPlaceholderColor: NSColor {
-        isBoardVisible && currentBoardType == .blackboard ? NSColor(white: 0.25, alpha: 1) : .black
+        BoardManager.shared.appearance.redactionPlaceholderColor
     }
 
     /// Whether the board currently covers the screen. Sampling behind our own app while a
     /// board is up would reveal what the board hides, so redactions draw solid then.
     private var isBoardVisible: Bool {
         BoardManager.shared.isEnabled
-    }
-
-    /// Always lays down the opaque placeholder first so nothing shows through, then paints
-    /// the filtered pixels over it when they are available and safe to show. Solid stays
-    /// solid: wherever a solid redaction overlaps, the placeholder goes back on top, even
-    /// over an older one, since the sample shows filtered real screen content.
-    private func drawRedaction(_ rectangle: Rectangle, in rect: NSRect) {
-        redactionPlaceholderColor.setFill()
-        rect.fill()
-
-        guard rectangle.needsSample, let sample = rectangle.sample,
-            sample.key.style == rectangle.style, !isBoardVisible,
-            let context = NSGraphicsContext.current?.cgContext
-        else { return }
-        let visible = rect.intersection(bounds)
-        guard !visible.isEmpty else { return }
-        context.saveGState()
-        // The sample paints where its pixels came from. Mid-drag it can lag behind the
-        // rectangle, so clipping leaves any part it does not cover on the placeholder.
-        context.clip(to: visible)
-        // Pixelate is stored one pixel per block and blur at reduced resolution, so both
-        // scale up here: hard edges keep the blocks, smooth interpolation keeps the blur soft.
-        context.interpolationQuality = rectangle.style == .pixelate ? .none : .high
-        context.draw(sample.image, in: sample.bounds)
-        context.restoreGState()
-
-        redactionPlaceholderColor.setFill()
-        func fillOverlap(with solid: Rectangle) {
-            let overlap = rect.intersection(solid.bounds)
-            if !overlap.isEmpty { overlap.fill() }
-        }
-        for solid in rectangles where solid.style == .solid {
-            fillOverlap(with: solid)
-        }
-        if let solid = currentRectangle, solid.style == .solid {
-            fillOverlap(with: solid)
-        }
     }
 
     // MARK: - Redaction sampling
@@ -1856,10 +1560,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     private func setNeedsDisplayForSampledRedactions() {
         for rectangle in rectangles where rectangle.needsSample {
-            setNeedsDisplay(redrawBounds(for: rectangle))
+            setNeedsDisplay(rectangle.redrawBounds)
         }
         if let rectangle = currentRectangle, rectangle.needsSample {
-            setNeedsDisplay(redrawBounds(for: rectangle))
+            setNeedsDisplay(rectangle.redrawBounds)
         }
     }
 
@@ -1911,123 +1615,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return convert(window.convertFromScreen(rect), from: nil)
     }
 
-    private func drawCircle(_ circle: Circle, alpha: CGFloat) {
-        let adaptedColor = adaptColorForBoard(circle.color, boardType: currentBoardType)
-
-        let rect = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
-        )
-
-        let path = NSBezierPath(ovalIn: rect)
-        adaptedColor.withAlphaComponent(alpha).setStroke()
-        path.lineWidth = circle.lineWidth
-        path.stroke()
-    }
-
     func clearArrows() {
         arrows.removeAll()
         currentArrow = nil
-    }
-
-    private func makeBezierPath(points: [TimedPoint]) -> NSBezierPath {
-        let bezierPath = NSBezierPath()
-        guard let firstPoint = points.first else { return bezierPath }
-
-        bezierPath.move(to: firstPoint.point)
-        for timedPoint in points.dropFirst() {
-            bezierPath.line(to: timedPoint.point)
-        }
-        return bezierPath
-    }
-
-    private func drawPath(
-        _ path: DrawingPath,
-        tool: ToolType,
-        alpha: CGFloat,
-        bezierPath: NSBezierPath? = nil
-    ) {
-        guard !path.points.isEmpty else { return }
-
-        let adaptedColor = adaptColorForBoard(path.color, boardType: currentBoardType)
-        let renderedPath = bezierPath ?? makeBezierPath(points: path.points)
-
-        adaptedColor.withAlphaComponent(tool.laydownAlpha * alpha).setStroke()
-        renderedPath.lineWidth = path.lineWidth * tool.strokeWidthMultiplier
-        renderedPath.lineJoinStyle = .round
-        renderedPath.lineCapStyle = .round
-        renderedPath.stroke()
-    }
-
-    /// Draws a label. `bounds` is the rect the caller already measured with `getTextRect`,
-    /// which for a label with a background is exactly the pill.
-    private func drawText(_ annotation: TextAnnotation, alpha: CGFloat, bounds: NSRect) {
-        let adaptedColor = adaptColorForBoard(annotation.color, boardType: currentBoardType)
-
-        if annotation.hasBackground {
-            let pill = NSBezierPath(
-                roundedRect: bounds,
-                xRadius: TextAnnotation.pillCornerRadius,
-                yRadius: TextAnnotation.pillCornerRadius
-            )
-            adaptedColor.contrastingColor()
-                .withAlphaComponent(TextAnnotation.pillFillAlpha * alpha)
-                .setFill()
-            pill.fill()
-        }
-
-        // The same layout `textSize()` measures, so wrapped lines break where the box
-        // expects them and where the editor showed them.
-        let layout = annotation.textLayout(color: adaptedColor.withAlphaComponent(alpha))
-        layout.draw(
-            topLeft: NSPoint(x: annotation.position.x, y: annotation.position.y + layout.size.height))
-    }
-
-    private func drawCounter(_ counter: CounterAnnotation, alpha: CGFloat) {
-        let adaptedColor = adaptColorForBoard(counter.color, boardType: currentBoardType)
-
-        let circlePath = NSBezierPath(ovalIn: counter.badgeRect)
-
-        let numberColor: NSColor
-        switch counter.style {
-        case .bordered:
-            let backgroundColor = adaptedColor.contrastingColor()
-            backgroundColor.withAlphaComponent(0.7 * alpha).setFill()
-            circlePath.fill()
-
-            adaptedColor.withAlphaComponent(alpha).setStroke()
-            circlePath.lineWidth = counter.strokeWidth
-            circlePath.stroke()
-            numberColor = adaptedColor
-        case .filled:
-            adaptedColor.withAlphaComponent(alpha).setFill()
-            circlePath.fill()
-            numberColor = CounterAnnotation.filledNumberColor(on: adaptedColor)
-        }
-
-        // Draw the number
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: numberColor.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: counter.fontSize, weight: .heavy),
-            .paragraphStyle: paragraphStyle,
-        ]
-
-        let numberString = "\(counter.number)"
-        let textSize = numberString.size(withAttributes: attributes)
-
-        // Center the text in the circle
-        let textRect = NSRect(
-            x: counter.position.x - textSize.width / 2,
-            y: counter.position.y - textSize.height / 2,
-            width: textSize.width,
-            height: textSize.height
-        )
-
-        numberString.draw(in: textRect, withAttributes: attributes)
     }
 
     /// Resets the counter number back to 1 without clearing existing counter annotations.
@@ -2909,7 +2499,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     func isAnythingFading() -> Bool {
         guard fadeMode else {
-            return isRestoringFromFade
+            return fade.isRestoring(at: fadeClock())
         }
 
         let now = fadeClock()
@@ -2990,31 +2580,32 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func isFadedOut(_ object: SelectedObject) -> Bool {
         guard fadeMode else { return false }
         let now = fadeClock()
+        let fade = fade
         switch object {
         case .arrow(let index):
             guard index < arrows.count else { return true }
-            return fadeAlphaIfVisible(creationTime: arrows[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: arrows[index].creationTime, at: now) == nil
         case .line(let index):
             guard index < lines.count else { return true }
-            return fadeAlphaIfVisible(creationTime: lines[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: lines[index].creationTime, at: now) == nil
         case .rectangle(let index):
             guard index < rectangles.count else { return true }
-            return fadeAlphaIfVisible(for: rectangles[index], now: now) == nil
+            return fade.alpha(for: rectangles[index], at: now) == nil
         case .circle(let index):
             guard index < circles.count else { return true }
-            return fadeAlphaIfVisible(creationTime: circles[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: circles[index].creationTime, at: now) == nil
         case .counter(let index):
             guard index < counterAnnotations.count else { return true }
-            return fadeAlphaIfVisible(creationTime: counterAnnotations[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: counterAnnotations[index].creationTime, at: now) == nil
         case .path(let index):
             guard index < paths.count else { return true }
-            return fadeAlphaIfVisible(creationTime: paths[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: paths[index].creationTime, at: now) == nil
         case .highlight(let index):
             guard index < highlightPaths.count else { return true }
-            return fadeAlphaIfVisible(creationTime: highlightPaths[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: highlightPaths[index].creationTime, at: now) == nil
         case .text(let index):
             guard index < textAnnotations.count else { return true }
-            return fadeAlphaIfVisible(creationTime: textAnnotations[index].creationTime, now: now) == nil
+            return fade.alpha(creationTime: textAnnotations[index].creationTime, at: now) == nil
         case .none:
             return false
         }
@@ -3373,16 +2964,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return textRect.contains(point)
     }
     
-    /// Slop added to a label that draws without a background, so hit testing, erasing and
-    /// marquee selection stay as forgiving as they were before background pills existed.
-    static var plainLabelSlop: NSEdgeInsets { NSEdgeInsets(top: 4, left: 0, bottom: 0, right: 4) }
+    static var plainLabelSlop: NSEdgeInsets { AnnotationRenderer.plainLabelSlop }
 
     /// Space between a selected label's text and the dashed box (and its side handles) drawn
     /// on it. Kept in one place so drawing and the resize math agree on where the edges are.
     static let selectionPadding: CGFloat = 5.0
 
     private func getTextRect(for annotation: TextAnnotation) -> NSRect {
-        annotation.bounds(fallbackInsets: Self.plainLabelSlop)
+        AnnotationRenderer.textRect(for: annotation)
     }
     
     private func hitTestCounter(_ counter: CounterAnnotation, point: NSPoint) -> Bool {
