@@ -36,13 +36,19 @@ final class LinkedClearTests: XCTestCase {
             defer: false)
         // Undo drops annotations past their fade, and a CI stall could outlast it.
         window.overlayView.fadeMode = false
+        // One undo group per step, as one event makes in the app. AppKit's per-event groups
+        // don't fit tests: when the tests run inside the app (xcodebuild), only the running
+        // NSApplication closes them, at the end of an event, so a run-loop wait leaves the group
+        // open and the next step joins it.
+        window.undoManager?.groupsByEvent = false
         return window
     }
 
-    /// Ends the run-loop pass, which closes the undo group AppKit opens per event, so each
-    /// call below is a step of its own.
-    private func endEvent() {
-        wait(for: 0.01)
+    /// Runs `body` as one undoable step on each window.
+    private func asOneStep<Result>(on windows: [OverlayWindow], _ body: () -> Result) -> Result {
+        windows.forEach { $0.undoManager?.beginUndoGrouping() }
+        defer { windows.forEach { $0.undoManager?.endUndoGrouping() } }
+        return body()
     }
 
     /// Draws an arrow as one undoable step.
@@ -50,16 +56,15 @@ final class LinkedClearTests: XCTestCase {
     private func draw(on window: OverlayWindow, x: CGFloat = 10) -> Arrow {
         let arrow = TestFactory.createArrow(
             start: NSPoint(x: x, y: 10), end: NSPoint(x: x + 50, y: 60))
-        window.overlayView.arrows.append(arrow)
-        window.overlayView.registerUndo(action: .addArrow(arrow))
-        endEvent()
+        asOneStep(on: [window]) {
+            window.overlayView.arrows.append(arrow)
+            window.overlayView.registerUndo(action: .addArrow(arrow))
+        }
         return arrow
     }
 
     private func clear(_ windows: [OverlayWindow]) -> Bool {
-        let cleared = OverlayWindow.performClearAll(on: windows)
-        endEvent()
-        return cleared
+        asOneStep(on: windows) { OverlayWindow.performClearAll(on: windows) }
     }
 
     private func arrows(on window: OverlayWindow) -> [Arrow] {
@@ -91,16 +96,13 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertTrue(clear([first, second]))
 
         first.overlayView.undo()
-        endEvent()
         second.overlayView.redo()
-        endEvent()
 
         XCTAssertTrue(arrows(on: first).isEmpty)
         XCTAssertTrue(arrows(on: second).isEmpty)
 
         // The link holds for more rounds.
         second.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: first), [firstArrow])
         XCTAssertEqual(arrows(on: second), [secondArrow])
         first.overlayView.redo()
@@ -115,30 +117,25 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertTrue(clear([first, second]))
 
         first.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: first), [firstArrow])
         XCTAssertEqual(arrows(on: second), [older, newer])
 
         // Past the clear, Undo steps through one display's own history.
         first.overlayView.undo()
-        endEvent()
         XCTAssertTrue(arrows(on: first).isEmpty)
         XCTAssertEqual(arrows(on: second), [older, newer])
 
         second.overlayView.undo()
-        endEvent()
         XCTAssertTrue(arrows(on: first).isEmpty)
         XCTAssertEqual(arrows(on: second), [older])
 
         // Redo walks back up. Each display's own step comes back alone, then the clear's
         // empties both.
         second.overlayView.redo()
-        endEvent()
         XCTAssertEqual(arrows(on: second), [older, newer])
         XCTAssertTrue(arrows(on: first).isEmpty)
 
         first.overlayView.redo()
-        endEvent()
         XCTAssertEqual(arrows(on: first), [firstArrow])
         XCTAssertEqual(arrows(on: second), [older, newer])
 
@@ -154,22 +151,17 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertTrue(clear([first, second]))
 
         first.overlayView.undo()
-        endEvent()
         second.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: second), [older])
 
         // The second display's next Redo is its own arrow, so the clear's Redo leaves it be.
         first.overlayView.redo()
-        endEvent()
         XCTAssertTrue(arrows(on: first).isEmpty)
         XCTAssertEqual(arrows(on: second), [older])
 
         second.overlayView.redo()
-        endEvent()
         XCTAssertEqual(arrows(on: second), [older, newer])
         second.overlayView.redo()
-        endEvent()
         XCTAssertTrue(arrows(on: second).isEmpty)
         XCTAssertTrue(arrows(on: first).isEmpty, "The first display had already redone its clear")
 
@@ -188,15 +180,12 @@ final class LinkedClearTests: XCTestCase {
         let drawnAfter = draw(on: second, x: 200)
 
         first.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: first), [firstArrow])
         XCTAssertEqual(arrows(on: second), [drawnAfter], "Undo must not reach under a newer step")
 
         second.overlayView.undo()
-        endEvent()
         XCTAssertTrue(arrows(on: second).isEmpty)
         second.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: second), [cleared])
         XCTAssertEqual(arrows(on: first), [firstArrow], "The first display was restored once")
     }
@@ -207,11 +196,9 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertTrue(clear([first, second]))
 
         first.overlayView.undo()
-        endEvent()
         let drawnAfter = draw(on: second, x: 200)
 
         first.overlayView.redo()
-        endEvent()
         XCTAssertTrue(arrows(on: first).isEmpty)
         XCTAssertEqual(arrows(on: second), [secondArrow, drawnAfter])
 
@@ -230,8 +217,7 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertTrue(clear([first, second]))
 
         let firstArrow = draw(on: first, x: 300)
-        XCTAssertTrue(first.performClearAll())
-        endEvent()
+        XCTAssertTrue(asOneStep(on: [first]) { first.performClearAll(playsSound: false) })
 
         first.overlayView.undo()
         XCTAssertEqual(arrows(on: first), [firstArrow])
@@ -262,16 +248,13 @@ final class LinkedClearTests: XCTestCase {
         XCTAssertFalse(manager.canRedo)
 
         first.overlayView.undo()
-        endEvent()
         XCTAssertEqual(arrows(on: first), [arrow])
         XCTAssertTrue(manager.canRedo)
 
         first.overlayView.redo()
-        endEvent()
         XCTAssertTrue(arrows(on: first).isEmpty)
 
         first.overlayView.undo()
-        endEvent()
         first.overlayView.undo()
         XCTAssertTrue(arrows(on: first).isEmpty, "The step before the clear drew the arrow")
         XCTAssertFalse(manager.canUndo)
