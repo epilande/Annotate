@@ -124,10 +124,9 @@ final class ScreenSampler: RedactionSampling {
             completion(nil)
             return
         }
-        let displayFrame = screen.frame
+        let display = DisplayInfo(id: displayID, frame: screen.frame, scale: screen.backingScaleFactor)
         Task { @MainActor in
-            let image = await Self.capture(displayID: displayID)
-            completion(image.map { DisplaySnapshot(image: $0, displayFrame: displayFrame) })
+            completion(await self.captureDisplay(display))
         }
     }
 
@@ -213,35 +212,44 @@ final class ScreenSampler: RedactionSampling {
     /// happens in `makeSample`, in pixel coordinates we control.
     nonisolated private static func capture(displayID: CGDirectDisplayID) async -> CGImage? {
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: true)
-            guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
-                log.error("No shareable display matches id \(displayID)")
-                return nil
-            }
-            // Excluding our own process is what keeps the placeholder, board and toolbar out
-            // of the snapshot. Without a match there is no safe capture, so bail.
-            let bundleID = Bundle.main.bundleIdentifier
-            let ownApps = content.applications.filter { $0.bundleIdentifier == bundleID }
-            guard !ownApps.isEmpty else {
-                log.error("Own app not in shareable content; refusing to sample")
-                return nil
-            }
-
-            let filter = SCContentFilter(
-                display: display, excludingApplications: ownApps, exceptingWindows: [])
-            let configuration = SCStreamConfiguration()
-            let pixelScale = CGFloat(filter.pointPixelScale)
-            configuration.width = max(1, Int((filter.contentRect.width * pixelScale).rounded()))
-            configuration.height = max(1, Int((filter.contentRect.height * pixelScale).rounded()))
-            configuration.showsCursor = false
-            configuration.captureResolution = .best
+            guard let filter = try await contentFilter(displayID: displayID) else { return nil }
             return try await SCScreenshotManager.captureImage(
-                contentFilter: filter, configuration: configuration)
+                contentFilter: filter, configuration: configuration(for: filter))
         } catch {
             log.error("Capture failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// The whole display without Annotate's windows, or nil when that can't be guaranteed.
+    /// Screenshots and any later frame stream share this filter and `configuration(for:)`.
+    nonisolated static func contentFilter(displayID: CGDirectDisplayID) async throws -> SCContentFilter? {
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true)
+        guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
+            log.error("No shareable display matches id \(displayID)")
+            return nil
+        }
+        // Excluding our own process is what keeps the overlay, placeholders, board and toolbar
+        // out of the pixels. Without a match there is no safe capture, so bail.
+        let bundleID = Bundle.main.bundleIdentifier
+        let ownApps = content.applications.filter { $0.bundleIdentifier == bundleID }
+        guard !ownApps.isEmpty else {
+            log.error("Own app not in shareable content; refusing to capture")
+            return nil
+        }
+        return SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
+    }
+
+    /// Native pixel size, best resolution, no cursor.
+    nonisolated static func configuration(for filter: SCContentFilter) -> SCStreamConfiguration {
+        let configuration = SCStreamConfiguration()
+        let pixelScale = CGFloat(filter.pointPixelScale)
+        configuration.width = max(1, Int((filter.contentRect.width * pixelScale).rounded()))
+        configuration.height = max(1, Int((filter.contentRect.height * pixelScale).rounded()))
+        configuration.showsCursor = false
+        configuration.captureResolution = .best
+        return configuration
     }
 
     // MARK: - Filters
@@ -331,6 +339,15 @@ final class ScreenSampler: RedactionSampling {
         return CIImage(cgImage: piece).transformed(
             by: CGAffineTransform(
                 translationX: region.minX - rect.minX, y: rect.maxY - region.maxY))
+    }
+}
+
+extension ScreenSampler: DisplayCapturing {
+    var canCapture: Bool { hasScreenCaptureAccess }
+
+    func captureDisplay(_ display: DisplayInfo) async -> DisplaySnapshot? {
+        let image = await Self.capture(displayID: display.id)
+        return image.map { DisplaySnapshot(image: $0, displayFrame: display.frame) }
     }
 }
 

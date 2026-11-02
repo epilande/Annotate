@@ -18,11 +18,24 @@ final class SettingsWindowManager {
     /// Strong reference to the delegate; `NSWindow.delegate` is weak.
     fileprivate var windowDelegate: SettingsWindowDelegate?
 
+    /// The pane the open window shows. Each new window starts fresh, on General.
+    private(set) var navigation = SettingsNavigation()
+
     private init() {}
 
     /// Shows the settings window, creating it on first use and re-fronting
-    /// the existing one on subsequent calls.
-    func show() {
+    /// the existing one on subsequent calls. With a `pane`, switches to it.
+    /// `requestingScreenRecording` has the Capture pane ask for Screen Recording access.
+    func show(pane: SettingsPane? = nil, requestingScreenRecording: Bool = false) {
+        if settingsWindow == nil {
+            navigation = SettingsNavigation()
+        }
+        if let pane {
+            navigation.selection = pane
+        }
+        if requestingScreenRecording {
+            navigation.requestsScreenRecording = true
+        }
         if let window = settingsWindow {
             NSApp.activate(ignoringOtherApps: true)
             window.deminiaturize(nil)
@@ -42,7 +55,7 @@ final class SettingsWindowManager {
         window.titlebarAppearsTransparent = true
         window.toolbar = NSToolbar()
         window.toolbarStyle = .unified
-        window.contentView = NSHostingView(rootView: SettingsView())
+        window.contentView = NSHostingView(rootView: SettingsView(navigation: navigation))
         window.center()
         window.isReleasedWhenClosed = false
         window.level = .normal

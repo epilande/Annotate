@@ -32,6 +32,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Created as launch starts, before launch or any link can activate the app.
     var linkFocusHandoff: LinkFocusHandoff?
 
+    /// Makes Capture Screen's images. Tests swap in one with a stub source, a temporary
+    /// folder, and a private pasteboard.
+    lazy var captureService = CaptureService(
+        source: ScreenSampler.shared,
+        sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
+    /// The capture in flight, if any, so tests can wait for it.
+    var captureTask: Task<Void, Never>?
+    /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
+    var screenRecordingNoticeDelay: TimeInterval = 1.5
+    /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
+    /// shows. Tests replace it so no Settings window opens.
+    var openSettingsPane: (SettingsPane, _ requestingScreenRecording: Bool) -> Void = { pane, request in
+        SettingsWindowManager.shared.show(pane: pane, requestingScreenRecording: request)
+    }
+
     override init() {
         self.settings = .standard
         super.init()
@@ -350,6 +365,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 action: #selector(redo),
                 keyEquivalent: "Z")
             menu.addItem(redoItem)
+
+            menu.addItem(NSMenuItem.separator())
+
+            menu.addItem(
+                NSMenuItem(
+                    title: "Capture Screen",
+                    action: #selector(captureScreen),
+                    keyEquivalent: ""))
 
             menu.addItem(NSMenuItem.separator())
 
@@ -965,6 +988,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             case #selector(toggleFadeMode(_:)): action = .toggleFade
             case #selector(toggleToolbar): action = .toggleToolbar
             case #selector(clearAllAnnotations): action = .clearAll
+            case #selector(captureScreen): action = .captureScreen
             default:
                 continue
             }

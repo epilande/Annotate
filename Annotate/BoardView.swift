@@ -8,11 +8,17 @@ class BoardView: NSView {
 
         @MainActor
         var backgroundColor: NSColor {
+            backgroundColor(opacity: CGFloat(BoardManager.shared.opacity))
+        }
+
+        /// The board's fill at `opacity`. Captures paint it over the screen pixels with the
+        /// opacity the board had, so they never read the shared board state themselves.
+        func backgroundColor(opacity: CGFloat) -> NSColor {
             switch self {
             case .whiteboard:
-                return NSColor.white.withAlphaComponent(CGFloat(BoardManager.shared.opacity))
+                return NSColor.white.withAlphaComponent(opacity)
             case .blackboard:
-                return NSColor(calibratedWhite: 0.1, alpha: CGFloat(BoardManager.shared.opacity))
+                return NSColor(calibratedWhite: 0.1, alpha: opacity)
             }
         }
 

@@ -31,11 +31,11 @@ final class SettingsViewTests: XCTestCase {
 
     // MARK: - View Structure Tests
 
-    func testSettingsPaneHasFiveCases() {
-        XCTAssertEqual(SettingsPane.allCases.count, 5)
+    func testSettingsPaneHasSixCases() {
+        XCTAssertEqual(SettingsPane.allCases.count, 6)
         XCTAssertEqual(
             SettingsPane.allCases,
-            [.general, .tools, .board, .cursor, .shortcuts]
+            [.general, .tools, .board, .cursor, .capture, .shortcuts]
         )
     }
 
@@ -60,6 +60,11 @@ final class SettingsViewTests: XCTestCase {
 
     func testSettingsViewCanBeEmbeddedInHostingController() {
         let hostingController = NSHostingController(rootView: SettingsView())
+        XCTAssertNotNil(hostingController.view)
+    }
+
+    func testCaptureSettingsViewCanBeEmbeddedInHostingController() {
+        let hostingController = NSHostingController(rootView: CaptureSettingsView())
         XCTAssertNotNil(hostingController.view)
     }
 

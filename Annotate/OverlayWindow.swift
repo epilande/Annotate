@@ -892,6 +892,8 @@ class OverlayWindow: NSPanel {
         case .decreaseSize: stepActiveLadder(-1)
         case .increaseSize: stepActiveLadder(1)
         case .clearAll: performClearAll()
+        case .captureScreen:
+            if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
         }
         return true
     }
