@@ -9,6 +9,8 @@ final class AnnotateCommandTests: XCTestCase {
     var testDefaults: UserDefaults!
     var screen: NSScreen!
     var overlay: OverlayWindow!
+    /// Stands in for the macOS privacy prompt in capture tests.
+    var privacyPromptUp = false
 
     override func setUp() {
         super.setUp()
@@ -489,6 +491,9 @@ final class AnnotateCommandTests: XCTestCase {
             CGAffineTransform(scaleX: screen.backingScaleFactor, y: screen.backingScaleFactor))
         let snapshot = CaptureTestImages.solid(
             width: Int(pixelSize.width), height: Int(pixelSize.height), RGBA(r: 0, g: 0, b: 255, a: 255))
+        privacyPromptUp = false
+        appDelegate.isPrivacyPromptOnScreen = { [unowned self] in self.privacyPromptUp }
+        appDelegate.privacyPromptPollInterval = 0.02
         appDelegate.captureService = CaptureService(
             source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
             sinks: [FileSink(folder: folder), ClipboardSink(pasteboard: pasteboard)])
@@ -675,6 +680,9 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
+    /// How many times a capture opened Settings in the current test.
+    private var settingsOpenCount = 0
+
     /// Opens Always-On, asks for a capture without Screen Recording, and returns the overlays
     /// that were up, the ones still up when Settings opened, and the Settings close handler.
     private func denyCaptureInAlwaysOn() throws -> (
@@ -685,6 +693,7 @@ final class AnnotateCommandTests: XCTestCase {
         var visibleAtOpen: Set<ObjectIdentifier>?
         var closeSettings: (@MainActor () -> Void)?
         appDelegate.openSettingsPane = { _, _, onClose in
+            self.settingsOpenCount += 1
             visibleAtOpen = Set(self.visibleOverlays.map(ObjectIdentifier.init))
             closeSettings = onClose
         }
@@ -716,6 +725,53 @@ final class AnnotateCommandTests: XCTestCase {
         closeSettings()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
+    }
+
+    func testAlwaysOnOverlaysWaitForThePrivacyPromptToClose() throws {
+        let (alwaysOn, _, closeSettings) = try denyCaptureInAlwaysOn()
+        // Settings asked, and macOS put its prompt up.
+        privacyPromptUp = true
+
+        // A second capture while the prompt is up must leave Settings closed and the prompt on top.
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        wait(for: 0.1)
+        XCTAssertEqual(settingsOpenCount, 1, "Settings must not open over the prompt")
+
+        closeSettings()
+        wait(for: 0.1)
+        XCTAssertTrue(visibleOverlays.isEmpty, "Overlays must not come back over the prompt")
+
+        privacyPromptUp = false
+        runLoop { !self.visibleOverlays.isEmpty }
+        XCTAssertEqual(Set(visibleOverlays.map(ObjectIdentifier.init)), alwaysOn)
+    }
+
+    func testDeniedCaptureWhileThePromptIsUpLeavesSettingsClosed() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0.3
+        appDelegate.openSettingsPane = { _, _, _ in self.settingsOpenCount += 1 }
+        privacyPromptUp = true
+        run(.show)
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        runLoop { self.feedbackText(on: self.overlay) != nil }
+        XCTAssertEqual(feedbackText(on: overlay), "🔒 Screen Recording is off. Answer the macOS prompt")
+        // The overlay still closes, or it would cover the prompt.
+        runLoop { !self.appDelegate.isInteractiveOverlayOpen }
+        wait(for: 0.1)
+
+        XCTAssertFalse(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertEqual(settingsOpenCount, 0)
+    }
+
+    func testPrivacyPromptIsFoundByItsHelpersWindows() {
+        let windows: [[String: Any]] = [
+            [kCGWindowOwnerPID as String: NSNumber(value: 10)],
+            [kCGWindowOwnerPID as String: NSNumber(value: 42)],
+        ]
+        XCTAssertTrue(SystemPrivacyPrompt.hasWindow(ownedBy: [42], in: windows))
+        XCTAssertFalse(SystemPrivacyPrompt.hasWindow(ownedBy: [7], in: windows))
+        XCTAssertFalse(SystemPrivacyPrompt.hasWindow(ownedBy: [42], in: []))
     }
 
     func testCaptureMenuItemTakesTheShortcut() throws {

@@ -41,6 +41,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
+    /// Whether a macOS privacy prompt is on screen. Tests replace it.
+    var isPrivacyPromptOnScreen: () -> Bool = { SystemPrivacyPrompt.isOnScreen }
+    /// How often Always-On overlays waiting on a privacy prompt check whether it has closed.
+    var privacyPromptPollInterval: TimeInterval = 0.5
+    /// Always-On overlays ordered out so Settings and the Screen Recording prompt show above
+    /// them. They come back once both are gone.
+    var overlaysAwaitingPermission: [OverlayWindow] = []
+    /// Whether a Settings window opened for Screen Recording is still open.
+    var isSettingsOpenForPermission = false
+    var isPollingForPrivacyPrompt = false
     /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
     /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
     /// Settings window opens.
