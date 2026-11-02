@@ -861,8 +861,8 @@ class OverlayWindow: NSPanel {
     /// All editable overlay actions share exact key/modifier matching and the same focus guards.
     @discardableResult
     private func handleOverlayShortcut(_ chord: KeyChord) -> Bool {
-        guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
-            let action = ShortcutManager.shared.action(for: chord)
+        guard !overlayView.isReadOnlyMode, let action = ShortcutManager.shared.action(for: chord),
+            !isEditingAnnotationText || Self.firesWhileEditingText(action)
         else { return false }
 
         switch action {
@@ -896,6 +896,14 @@ class OverlayWindow: NSPanel {
             if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
         }
         return true
+    }
+
+    /// Whether `action`'s shortcut works while a label is being typed. Capture Screen does
+    /// when its binding has Command, which no typed character carries; it commits the label
+    /// and captures, as the menu item does. Every other shortcut, and a Capture Screen binding
+    /// without Command, types into the label instead.
+    static func firesWhileEditingText(_ action: ShortcutKey) -> Bool {
+        action == .captureScreen && ShortcutManager.shared.binding(for: action).modifiers.contains(.command)
     }
 
     private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {

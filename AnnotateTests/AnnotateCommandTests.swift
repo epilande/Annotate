@@ -546,6 +546,54 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
     }
 
+    /// Opens the overlay with a label being typed, as `testCaptureCommitsALabelBeingTyped` does.
+    private func startTypingALabel(_ text: String) throws -> OverlayView {
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        view.fadeMode = false
+        let point = NSPoint(x: 100, y: 100)
+        view.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        view.createTextField(at: point, withText: "")
+        try typeIntoActiveLabel(text, on: view)
+        endEvent()
+        return view
+    }
+
+    private func keyDown(_ key: String, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown,
+                keyCode: 1,
+                modifierFlags: modifiers,
+                characters: key,
+                windowNumber: overlay.windowNumber))
+    }
+
+    func testCommandSWhileTypingALabelCommitsItAndCaptures() async throws {
+        let (folder, _) = try useStubCapture()
+        let view = try startTypingALabel("Hello")
+
+        // AppKit offers a Command chord to the window as a key equivalent before the field editor.
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(view.activeTextField)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 1)
+    }
+
+    func testCaptureBoundToABareLetterStillTypesIntoALabel() throws {
+        try useStubCapture()
+        XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("q"), for: .captureScreen))
+        let view = try startTypingALabel("Hi")
+
+        overlay.sendEvent(try keyDown("q"))
+
+        XCTAssertNil(appDelegate.captureTask, "Only a Command binding fires while typing")
+        XCTAssertNotNil(view.activeTextField)
+    }
+
     func testCaptureWithTheOverlayHiddenSavesThePlainScreen() async throws {
         let (folder, _) = try useStubCapture()
         overlay.overlayView.rectangles = [solidRedactionInTheCorner]
