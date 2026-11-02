@@ -1983,6 +1983,24 @@ final class OverlayWindowTests: XCTestCase, Sendable {
 
         XCTAssertEqual(defaults.settings[.textFontSize], 30)
     }
+
+    func testUndoAfterRedoingAClearAllRestoresTheCanvasAgain() {
+        // Undo drops annotations past their fade, and a CI stall could outlast it.
+        window.overlayView.fadeMode = false
+        let arrow = TestFactory.createArrow()
+        window.overlayView.arrows = [arrow]
+        XCTAssertTrue(window.performClearAll(playsSound: false))
+        wait(for: 0.01)
+
+        for round in 1...2 {
+            window.overlayView.undo()
+            wait(for: 0.01)
+            XCTAssertEqual(window.overlayView.arrows, [arrow], "Undo in round \(round)")
+            window.overlayView.redo()
+            wait(for: 0.01)
+            XCTAssertTrue(window.overlayView.arrows.isEmpty, "Redo in round \(round)")
+        }
+    }
 }
 
 @MainActor

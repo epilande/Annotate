@@ -703,7 +703,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.counterAnnotations = counterAnnotations
                     target.nextCounterNumber =
                         counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
-                    target.registerUndo(action: .clearAll([], [], [], [], [], [], [], []))
+                    // Redo clears through the same path as Clear All, so the Undo after it has
+                    // what Redo removed to restore.
+                    target.undoManager?.registerUndo(withTarget: target) { target in
+                        MainActor.assumeIsolated { target.clearContents() }
+                    }
                 }
             }
         case .pasteObjects(_):
@@ -2018,49 +2022,61 @@ class OverlayView: NSView, NSTextFieldDelegate {
             || !rectangles.isEmpty
             || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
         if hasContent {
-            let oldPaths = paths
-            let oldArrows = arrows
-            let oldLines = lines
-            let oldHighlights = highlightPaths
-            // Undo resamples instead of restoring an old capture.
-            let oldRectangles = rectangles.map { rectangle -> Rectangle in
-                var rectangle = rectangle
-                rectangle.sample = nil
-                return rectangle
-            }
-            let oldCircles = circles
-            let oldTextAnnotations = textAnnotations
-            let oldCounterAnnotations = counterAnnotations
-            registerUndo(
-                action: .clearAll(
-                    oldPaths, oldArrows, oldLines, oldHighlights, oldRectangles, oldCircles,
-                    oldTextAnnotations, oldCounterAnnotations))
-
-            paths.removeAll()
-            arrows.removeAll()
-            lines.removeAll()
-            highlightPaths.removeAll()
-            rectangles.removeAll()
-            circles.removeAll()
-            textAnnotations.removeAll()
-            counterAnnotations.removeAll()
-            nextCounterNumber = 1
-            currentArrow = nil
-            currentLine = nil
-            currentRectangle = nil
-            currentCircle = nil
-            currentTextAnnotation = nil
-
-            selectedObjects.removeAll()
-            selectionRectStart = nil
-            selectionRectEnd = nil
-            isDrawingSelectionRect = false
-            selectionDragOffset = nil
-            selectionOriginalData = [:]
+            clearContents()
         }
         failedSampleKeys.removeAll()
 
         return hasContent
+    }
+
+    /// Empties the canvas as one undoable step, even when it is already empty, so a Redo that
+    /// clears again always leaves an Undo step behind.
+    private func clearContents() {
+        let oldPaths = paths
+        let oldArrows = arrows
+        let oldLines = lines
+        let oldHighlights = highlightPaths
+        // Undo resamples instead of restoring an old capture.
+        let oldRectangles = rectangles.map { rectangle -> Rectangle in
+            var rectangle = rectangle
+            rectangle.sample = nil
+            return rectangle
+        }
+        let oldCircles = circles
+        let oldTextAnnotations = textAnnotations
+        let oldCounterAnnotations = counterAnnotations
+        registerUndo(
+            action: .clearAll(
+                oldPaths,
+                oldArrows,
+                oldLines,
+                oldHighlights,
+                oldRectangles,
+                oldCircles,
+                oldTextAnnotations,
+                oldCounterAnnotations))
+
+        paths.removeAll()
+        arrows.removeAll()
+        lines.removeAll()
+        highlightPaths.removeAll()
+        rectangles.removeAll()
+        circles.removeAll()
+        textAnnotations.removeAll()
+        counterAnnotations.removeAll()
+        nextCounterNumber = 1
+        currentArrow = nil
+        currentLine = nil
+        currentRectangle = nil
+        currentCircle = nil
+        currentTextAnnotation = nil
+
+        selectedObjects.removeAll()
+        selectionRectStart = nil
+        selectionRectEnd = nil
+        isDrawingSelectionRect = false
+        selectionDragOffset = nil
+        selectionOriginalData = [:]
     }
 
     func deleteLastItem() {
