@@ -1321,7 +1321,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     @objc func cursorHighlightStateChanged() {
         updateAllCursorHighlightWindows()
         CursorHighlightManager.shared.updateCursorVisibility()
-        overlayWindows.values.forEach { window in
+        // Every overlay sets the one system cursor, whichever display it is on, so the last
+        // one wins. An overlay with a cursor override, as Capture Area's picker sets, goes
+        // last: otherwise another display's I-beam or hidden cursor would replace the crosshair.
+        let windows = Array(overlayWindows.values)
+        let overriding = windows.filter { $0.overlayView.cursorOverride != nil }
+        for window in windows.filter({ $0.overlayView.cursorOverride == nil }) + overriding {
             window.overlayView.updateCursor()
             window.overlayView.window?.invalidateCursorRects(for: window.overlayView)
         }

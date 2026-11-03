@@ -1195,6 +1195,7 @@ final class AnnotateCommandTests: XCTestCase {
         for style in ActiveCursorStyle.allCases {
             manager.activeCursorStyle = style
             run(.capture(.area))
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) as the picker opens")
             NSCursor.arrow.set()
 
             // AppKit asks again on every move across the overlay; each answer must be the crosshair.
@@ -1203,11 +1204,40 @@ final class AnnotateCommandTests: XCTestCase {
             view.updateCursor()
             XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) after the canvas refreshes its cursor")
             XCTAssertFalse(manager.isCursorHidden, "\(style)")
+            // A move over the overlay leaves the system cursor showing.
+            manager.cursorPosition = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+            manager.updateCursorVisibility()
+            XCTAssertFalse(manager.isCursorHidden, "\(style) after a move")
 
             try pressEscape()
             try deliverCursorUpdate()
             XCTAssertFalse(NSCursor.current === NSCursor.crosshair, "\(style): the tool's cursor is back")
             XCTAssertEqual(manager.isCursorHidden, style != .none, "\(style)")
+        }
+    }
+
+    func testAnotherDisplaysOverlayLeavesThePickersCrosshair() throws {
+        // Every overlay's refresh sets the one system cursor. With the Text tool, the hidden
+        // overlay on the other display sets the I-beam, so the picking overlay has to go last.
+        // Picking on each display in turn covers both orders the overlays can refresh in.
+        let screens = NSScreen.screens
+        try XCTSkipUnless(screens.count > 1, "Needs a second display")
+        try useStubCapture()
+        run(.tool(.text))
+        run(.hide)
+
+        for target in screens.prefix(2) {
+            appDelegate.pointerLocationOverride = NSPoint(x: target.frame.midX, y: target.frame.midY)
+            run(.capture(.area))
+            let picking = try XCTUnwrap(appDelegate.overlayWindows[target])
+            XCTAssertTrue(picking.isRegionPickerOpen, "\(target.localizedName)")
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(target.localizedName) as the picker opens")
+
+            appDelegate.cursorHighlightStateChanged()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(target.localizedName) after every overlay refreshes")
+
+            picking.cancelRegionPicker()
+            run(.hide)
         }
     }
 
