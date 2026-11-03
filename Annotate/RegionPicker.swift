@@ -14,6 +14,13 @@ final class RegionPicker: NSView {
     /// How dark the area outside the rectangle gets.
     static let dimOpacity: Float = 0.35
 
+    /// The picker's layers, by name, so tests can find them without relying on their order.
+    enum LayerName {
+        static let dim = "regionPicker.dim"
+        static let border = "regionPicker.border"
+        static let sizeLabel = "regionPicker.sizeLabel"
+    }
+
     /// Called with the picked rectangle in this view's coordinates.
     var onPick: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
@@ -30,6 +37,9 @@ final class RegionPicker: NSView {
         wantsLayer = true
         autoresizingMask = [.width, .height]
 
+        dimLayer.name = LayerName.dim
+        borderLayer.name = LayerName.border
+        sizeLabel.name = LayerName.sizeLabel
         dimLayer.fillRule = .evenOdd
         dimLayer.fillColor = NSColor.black.withAlphaComponent(CGFloat(Self.dimOpacity)).cgColor
         borderLayer.fillColor = nil
