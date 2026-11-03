@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The five settings panes shown in the sidebar.
+/// The six settings panes shown in the sidebar.
 ///
 /// Drives the sidebar list, the colored icon tiles, and each pane's header.
 enum SettingsPane: String, CaseIterable, Identifiable {
@@ -8,6 +8,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case tools = "Tools"
     case board = "Board"
     case cursor = "Cursor"
+    case capture = "Capture"
     case shortcuts = "Shortcuts"
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .tools: "pencil.and.outline"
         case .board: "rectangle.on.rectangle"
         case .cursor: "cursorarrow.rays"
+        case .capture: "camera.viewfinder"
         case .shortcuts: "keyboard"
         }
     }
@@ -33,6 +35,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .tools: .orange
         case .board: .indigo
         case .cursor: .purple
+        case .capture: .teal
         case .shortcuts: .blue
         }
     }
@@ -44,6 +47,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .tools: "Default sizes for text and counter annotations"
         case .board: "Board background appearance and visibility"
         case .cursor: "Cursor style, spotlight, and click effects"
+        case .capture: "Where screenshots go and Screen Recording access"
         case .shortcuts: "Keyboard shortcuts for tools and utilities"
         }
     }
@@ -66,19 +70,34 @@ struct PaneHeader: View {
     }
 }
 
-/// Main settings window: a `NavigationSplitView` sidebar of the five panes
+/// Which pane the settings window shows. `SettingsWindowManager` owns one, so the app can
+/// open the window to a pane. Used on the main thread only; not actor-isolated so views can
+/// make one as a default argument.
+@Observable
+final class SettingsNavigation {
+    var selection: SettingsPane? = .general
+    /// Set when a capture found Screen Recording off. The Capture pane asks for access as it
+    /// shows, then clears it.
+    var requestsScreenRecording = false
+}
+
+/// Main settings window: a `NavigationSplitView` sidebar of the six panes
 /// with a grouped `Form` detail, mirroring the System Settings layout.
 struct SettingsView: View {
-    @State private var selection: SettingsPane? = .general
+    @Bindable var navigation: SettingsNavigation
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     private var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
+    init(navigation: SettingsNavigation = SettingsNavigation()) {
+        self.navigation = navigation
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(selection: $selection) {
+            List(selection: $navigation.selection) {
                 ForEach(SettingsPane.allCases) { pane in
                     Label {
                         Text(pane.title)
@@ -109,11 +128,12 @@ struct SettingsView: View {
             }
         } detail: {
             Group {
-                switch selection ?? .general {
+                switch navigation.selection ?? .general {
                 case .general: GeneralSettingsView()
-                case .tools: ToolsSettingsView()
+                case .tools: ToolsSettingsView { navigation.selection = .capture }
                 case .board: BoardSettingsView()
                 case .cursor: CursorSettingsView()
+                case .capture: CaptureSettingsView(navigation: navigation)
                 case .shortcuts: ShortcutsSettingsView()
                 }
             }

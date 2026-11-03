@@ -250,6 +250,13 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .captureScreen,
+                    label: ShortcutKey.captureScreen.displayName,
+                    description: "Save the display with its annotations and copy it",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "slider.horizontal.3",

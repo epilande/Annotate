@@ -9,6 +9,10 @@ final class AnnotateCommandTests: XCTestCase {
     var testDefaults: UserDefaults!
     var screen: NSScreen!
     var overlay: OverlayWindow!
+    /// Stands in for the macOS privacy prompt in capture tests.
+    var privacyPromptUp = false
+    /// Messages a capture reported in an alert, which tests record instead of showing.
+    var captureProblemAlerts: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -433,6 +437,7 @@ final class AnnotateCommandTests: XCTestCase {
         + ToolType.allCases.map(AnnotateCommand.tool)
         + PaletteColor.allCases.map(AnnotateCommand.color)
         + CommandSwitch.allCases.flatMap { [.toolbar($0), .fade($0), .board($0)] }
+        + CaptureScope.allCases.map(AnnotateCommand.capture)
 
     func testEveryCommandRoundTripsThroughItsPath() {
         for command in Self.everyCommand {
@@ -448,6 +453,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(AnnotateCommand.toolbar(.off).path, "/toolbar/off")
         XCTAssertEqual(AnnotateCommand.fade(.toggle).path, "/fade/toggle")
         XCTAssertEqual(AnnotateCommand.board(.on).path, "/board/on")
+        XCTAssertEqual(AnnotateCommand.capture(.screen).path, "/capture/screen")
     }
 
     func testPathParsingIsLenientAboutSlashesAndCase() {
@@ -461,11 +467,390 @@ final class AnnotateCommandTests: XCTestCase {
         let invalid = [
             "", "/", "//", "/nope", "/tool", "/tool/", "/tool/brush", "/color/purple",
             "/toolbar", "/toolbar/maybe", "/show/now", "/clear/all", "/tool/arrow/extra",
-            "//show", "/fade//on",
+            "//show", "/fade//on", "/capture", "/capture/window",
         ]
         for path in invalid {
             XCTAssertNil(AnnotateCommand(path: path), path)
         }
+    }
+
+    // MARK: - Capture
+
+    /// Points the app's captures at a stub source, a temporary folder, and a private pasteboard.
+    /// Without a `source`, every capture is a solid blue screen.
+    @discardableResult
+    private func useStubCapture(
+        canCapture: Bool = true, source: DisplayCapturing? = nil
+    ) throws -> (folder: URL, pasteboard: NSPasteboard) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)", isDirectory: true)
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("AnnotateCommandTests-\(UUID().uuidString)"))
+        addTeardownBlock { @MainActor in
+            try? FileManager.default.removeItem(at: folder)
+            pasteboard.releaseGlobally()
+        }
+        let pixelSize = screen.frame.size.applying(
+            CGAffineTransform(scaleX: screen.backingScaleFactor, y: screen.backingScaleFactor))
+        let snapshot = CaptureTestImages.solid(
+            width: Int(pixelSize.width), height: Int(pixelSize.height), RGBA(r: 0, g: 0, b: 255, a: 255))
+        privacyPromptUp = false
+        appDelegate.isPrivacyPromptOnScreen = { [unowned self] in self.privacyPromptUp }
+        captureProblemAlerts = []
+        appDelegate.showCaptureProblemAlert = { [unowned self] in self.captureProblemAlerts.append($0) }
+        appDelegate.privacyPromptPollInterval = 0.02
+        appDelegate.captureService = CaptureService(
+            source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
+            sinks: [FileSink(folder: folder), ClipboardSink(pasteboard: pasteboard)])
+        return (folder, pasteboard)
+    }
+
+    /// A 40 point solid redaction at the display's bottom-left corner.
+    private var solidRedactionInTheCorner: Rectangle {
+        Rectangle(
+            startPoint: .zero,
+            endPoint: NSPoint(x: 40, y: 40),
+            color: .black,
+            lineWidth: 1,
+            style: .solid)
+    }
+
+    func testCaptureSavesAndCopiesTheDisplayWithItsAnnotations() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        run(.show)
+        overlay.overlayView.rectangles = [solidRedactionInTheCorner]
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        await appDelegate.captureTask?.value
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        XCTAssertEqual(files.count, 1)
+        let file = try XCTUnwrap(files.first)
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(file)")
+        let png = try XCTUnwrap(pasteboard.data(forType: .png))
+        let image = try XCTUnwrap(NSBitmapImageRep(data: png)?.cgImage)
+        // The solid redaction at the display's bottom-left corner.
+        let corner = CaptureTestImages.pixel(image, x: 4, y: image.height - 4)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 0, g: 0, b: 0, a: 255)), "\(corner)")
+        let middle = CaptureTestImages.pixel(image, x: image.width / 2, y: image.height / 2)
+        XCTAssertTrue(middle.isClose(to: RGBA(r: 0, g: 0, b: 255, a: 255)), "\(middle)")
+    }
+
+    func testCaptureCommitsALabelBeingTyped() async throws {
+        try useStubCapture()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        // Committing stamps the label with the current time; keep it from fading mid-test.
+        view.fadeMode = false
+        let point = NSPoint(x: 100, y: 100)
+        view.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        view.createTextField(at: point, withText: "")
+        try typeIntoActiveLabel("Hello", on: view)
+        endEvent()
+
+        run(.capture(.screen))
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(view.activeTextField)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
+    }
+
+    /// Opens the overlay with a label being typed, as `testCaptureCommitsALabelBeingTyped` does.
+    private func startTypingALabel(_ text: String) throws -> OverlayView {
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        view.fadeMode = false
+        let point = NSPoint(x: 100, y: 100)
+        view.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        view.createTextField(at: point, withText: "")
+        try typeIntoActiveLabel(text, on: view)
+        endEvent()
+        return view
+    }
+
+    private func keyDown(_ key: String, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try XCTUnwrap(
+            TestEvents.createKeyEvent(
+                type: .keyDown,
+                keyCode: 1,
+                modifierFlags: modifiers,
+                characters: key,
+                windowNumber: overlay.windowNumber))
+    }
+
+    func testCommandSWhileTypingALabelCommitsItAndCaptures() async throws {
+        let (folder, _) = try useStubCapture()
+        let view = try startTypingALabel("Hello")
+
+        // AppKit offers a Command chord to the window as a key equivalent before the field editor.
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(view.activeTextField)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 1)
+    }
+
+    func testCaptureBoundToABareLetterStillTypesIntoALabel() throws {
+        try useStubCapture()
+        XCTAssertTrue(ShortcutManager.shared.setShortcut(ShortcutBinding("q"), for: .captureScreen))
+        let view = try startTypingALabel("Hi")
+
+        overlay.sendEvent(try keyDown("q"))
+
+        XCTAssertNil(appDelegate.captureTask, "Only a Command binding fires while typing")
+        XCTAssertNotNil(view.activeTextField)
+    }
+
+    func testCaptureWithTheOverlayHiddenSavesThePlainScreen() async throws {
+        let (folder, _) = try useStubCapture()
+        overlay.overlayView.rectangles = [solidRedactionInTheCorner]
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        await appDelegate.captureTask?.value
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first)
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try Data(contentsOf: file))?.cgImage)
+        let corner = CaptureTestImages.pixel(image, x: 4, y: image.height - 4)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 0, g: 0, b: 255, a: 255)), "\(corner)")
+    }
+
+    func testOverlappingCapturesFinishInTheOrderTheyWereAskedFor() async throws {
+        let red = RGBA(r: 255, g: 0, b: 0, a: 255)
+        let blue = RGBA(r: 0, g: 0, b: 255, a: 255)
+        // Small snapshots keep the newer capture quick, so without ordering it would land first.
+        let source = GatedDisplayCapturing(images: [
+            CaptureTestImages.solid(width: 32, height: 20, red),
+            CaptureTestImages.solid(width: 32, height: 20, blue),
+        ])
+        let (folder, pasteboard) = try useStubCapture(source: source)
+        run(.show)
+
+        run(.capture(.screen))
+        run(.capture(.screen))
+        // Give the second capture time to overtake the held first one if nothing orders them.
+        try await Task.sleep(for: .milliseconds(500))
+        source.open()
+        await appDelegate.captureTask?.value
+        // Unordered, the held capture would still be running here; let it finish too, so the
+        // assertions below see where it lands.
+        var files: [URL] = []
+        for _ in 0..<300 {
+            files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            if files.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(source.captureCount, 2)
+        XCTAssertEqual(files.count, 2, "Each capture keeps its own file")
+        let png = try XCTUnwrap(pasteboard.data(forType: .png))
+        let image = try XCTUnwrap(NSBitmapImageRep(data: png)?.cgImage)
+        let pixel = CaptureTestImages.pixel(image, x: 16, y: 10)
+        XCTAssertTrue(pixel.isClose(to: blue), "The newer capture must end up on the clipboard: \(pixel)")
+        let newest = try XCTUnwrap(files.first { (try? Data(contentsOf: $0)) == png })
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(newest.lastPathComponent)")
+    }
+
+    /// Runs the run loop until `condition` holds or `timeout` passes. Synchronous on purpose:
+    /// an async test holds the main queue, so delayed main-queue work would never run.
+    private func runLoop(until condition: () -> Bool, timeout: TimeInterval = 3) {
+        let deadline = CACurrentMediaTime() + timeout
+        while !condition(), CACurrentMediaTime() < deadline {
+            wait(for: 0.01)
+        }
+    }
+
+    func testCaptureWithoutScreenRecordingClosesTheOverlayAndOpensCaptureSettings() throws {
+        let (folder, _) = try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0.3
+        var opened: [(SettingsPane, Bool)] = []
+        appDelegate.openSettingsPane = { pane, request, _ in opened.append((pane, request)) }
+        run(.show)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        runLoop { self.feedbackText(on: self.overlay) != nil }
+
+        XCTAssertEqual(feedbackText(on: overlay), "🔒 Screen Recording is off. Opening Settings…")
+        XCTAssertTrue(opened.isEmpty, "Settings waits for the notice")
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        runLoop { !opened.isEmpty }
+        XCTAssertFalse(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertEqual(opened.map(\.0), [.capture])
+        XCTAssertEqual(opened.map(\.1), [true])
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "Annotations survive the close")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// How many times a capture opened Settings in the current test.
+    private var settingsOpenCount = 0
+
+    /// Opens Always-On, asks for a capture without Screen Recording, and returns the overlays
+    /// that were up, the ones still up when Settings opened, and the Settings close handler.
+    private func denyCaptureInAlwaysOn() throws -> (
+        alwaysOn: Set<ObjectIdentifier>, visibleAtOpen: Set<ObjectIdentifier>, closeSettings: @MainActor () -> Void
+    ) {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var visibleAtOpen: Set<ObjectIdentifier>?
+        var closeSettings: (@MainActor () -> Void)?
+        appDelegate.openSettingsPane = { _, _, onClose in
+            self.settingsOpenCount += 1
+            visibleAtOpen = Set(self.visibleOverlays.map(ObjectIdentifier.init))
+            closeSettings = onClose
+        }
+        appDelegate.toggleAlwaysOnMode()
+        let alwaysOn = Set(visibleOverlays.map(ObjectIdentifier.init))
+        XCTAssertFalse(alwaysOn.isEmpty)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        runLoop { closeSettings != nil }
+        return (alwaysOn, try XCTUnwrap(visibleAtOpen), try XCTUnwrap(closeSettings))
+    }
+
+    func testCaptureWithoutScreenRecordingInAlwaysOnClearsOverlaysUntilSettingsCloses() throws {
+        let (alwaysOn, visibleAtOpen, closeSettings) = try denyCaptureInAlwaysOn()
+
+        XCTAssertTrue(visibleAtOpen.isEmpty, "Always-On annotations must not cover Settings or the prompt")
+        XCTAssertTrue(appDelegate.alwaysOnMode, "Always-On stays on")
+
+        closeSettings()
+        XCTAssertEqual(Set(visibleOverlays.map(ObjectIdentifier.init)), alwaysOn)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "Annotations survive")
+    }
+
+    func testOverlaysStayHiddenWhenAlwaysOnEndsBeforeSettingsCloses() throws {
+        let (_, _, closeSettings) = try denyCaptureInAlwaysOn()
+
+        appDelegate.toggleAlwaysOnMode()
+        closeSettings()
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
+    }
+
+    func testAlwaysOnOverlaysWaitForThePrivacyPromptToClose() throws {
+        let (alwaysOn, _, closeSettings) = try denyCaptureInAlwaysOn()
+        // Settings asked, and macOS put its prompt up.
+        privacyPromptUp = true
+
+        // A second capture while the prompt is up must leave Settings closed and the prompt on top.
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        wait(for: 0.1)
+        XCTAssertEqual(settingsOpenCount, 1, "Settings must not open over the prompt")
+
+        closeSettings()
+        wait(for: 0.1)
+        XCTAssertTrue(visibleOverlays.isEmpty, "Overlays must not come back over the prompt")
+
+        privacyPromptUp = false
+        runLoop { !self.visibleOverlays.isEmpty }
+        XCTAssertEqual(Set(visibleOverlays.map(ObjectIdentifier.init)), alwaysOn)
+    }
+
+    func testDeniedCaptureWhileThePromptIsUpLeavesSettingsClosed() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0.3
+        appDelegate.openSettingsPane = { _, _, _ in self.settingsOpenCount += 1 }
+        privacyPromptUp = true
+        run(.show)
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        runLoop { self.feedbackText(on: self.overlay) != nil }
+        XCTAssertEqual(feedbackText(on: overlay), "🔒 Screen Recording is off. Answer the macOS prompt")
+        // The overlay still closes, or it would cover the prompt.
+        runLoop { !self.appDelegate.isInteractiveOverlayOpen }
+        wait(for: 0.1)
+
+        XCTAssertFalse(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertEqual(settingsOpenCount, 0)
+    }
+
+    func testPrivacyPromptIsFoundByItsHelpersWindows() {
+        let windows: [[String: Any]] = [
+            [kCGWindowOwnerPID as String: NSNumber(value: 10)],
+            [kCGWindowOwnerPID as String: NSNumber(value: 42)],
+        ]
+        XCTAssertTrue(SystemPrivacyPrompt.hasWindow(ownedBy: [42], in: windows))
+        XCTAssertFalse(SystemPrivacyPrompt.hasWindow(ownedBy: [7], in: windows))
+        XCTAssertFalse(SystemPrivacyPrompt.hasWindow(ownedBy: [42], in: []))
+    }
+
+    func testDeniedCaptureKeepsDrawingsWithClearDrawingsOnStart() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        appDelegate.openSettingsPane = { _, _, _ in }
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        run(.show)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.screen))
+        runLoop { !self.appDelegate.isInteractiveOverlayOpen }
+        run(.show)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "The app closed the overlay, not the user")
+
+        // The exemption is used up: a close by the user clears on the next open as usual.
+        run(.hide)
+        run(.show)
+        XCTAssertTrue(overlay.overlayView.paths.isEmpty)
+    }
+
+    func testCaptureFailureWithTheOverlayClosedIsReported() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        XCTAssertTrue(visibleOverlays.isEmpty)
+
+        // The status menu item, as in the live check.
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+    }
+
+    func testCaptureFailureWithTheOverlayOpenStaysOnTheOverlay() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(feedbackText(on: overlay), "⚠️ Capture Failed")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
+    }
+
+    func testFailedSaveWithTheOverlayClosedIsReported() async throws {
+        try useStubCapture()
+        // A regular file where the folder should be makes the save fail; the copy still works.
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)")
+        try Data().write(to: blocker)
+        addTeardownBlock { try? FileManager.default.removeItem(at: blocker) }
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("AnnotateCommandTests-\(UUID().uuidString)"))
+        addTeardownBlock { @MainActor in pasteboard.releaseGlobally() }
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: blocker), ClipboardSink(pasteboard: pasteboard)])
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertNotNil(pasteboard.data(forType: .png))
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
+    }
+
+    func testShareableContentListsAppsWhoseWindowsAreOffScreen() {
+        // With the overlay closed Annotate has no window on screen. Listing only on-screen
+        // windows left it out, so the filter had nothing to exclude and refused to capture.
+        XCTAssertFalse(ScreenSampler.listsOnScreenWindowsOnly)
+    }
+
+    func testCaptureMenuItemTakesTheShortcut() throws {
+        let item = try XCTUnwrap(
+            appDelegate.statusItem.menu?.items.first { $0.action == #selector(AppDelegate.captureScreen) })
+        XCTAssertEqual(item.title, "Capture Screen")
+        XCTAssertEqual(item.keyEquivalent, "s")
+        XCTAssertEqual(item.keyEquivalentModifierMask, .command)
     }
 
     // MARK: - App Intents

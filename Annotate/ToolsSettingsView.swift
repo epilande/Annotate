@@ -11,13 +11,11 @@ struct ToolsSettingsView: View {
     private var counterStyle: CounterStyle
     @AppStorage(.redactionStyle)
     private var redactionStyle: RectangleStyle
-    @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
+    /// Switches the settings window to the Capture pane, which shows Screen Recording status.
+    var showCapturePane: (() -> Void)?
 
     /// The Redact tool's fills. `.outline` is the plain Rectangle tool, not a redaction.
     static let redactionStyles = RectangleStyle.allCases.filter { $0 != .outline }
-
-    static let screenCaptureSettingsURL = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
 
     var body: some View {
         let minTextSize = Double(textAnnotationFontSizeRange.lowerBound)
@@ -88,7 +86,7 @@ struct ToolsSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if redactionStyle != .solid {
-                    screenRecordingRow
+                    screenRecordingPointer
                 }
             } header: {
                 SettingsHeader(
@@ -101,40 +99,26 @@ struct ToolsSettingsView: View {
         }
         .formStyle(.grouped)
         .settingsScrollEdgeEffect()
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // The user comes back here after flipping the switch in System Settings.
-            hasScreenCaptureAccess = ScreenSampler.shared.refreshScreenCaptureAccess()
-        }
         .onChange(of: redactionStyle) { _, style in
             // Ask here, never from the overlay: the system prompt sits below the fullscreen
             // overlay window, so from there the user would never see it.
             guard style != .solid, !ScreenSampler.shared.refreshScreenCaptureAccess() else { return }
-            hasScreenCaptureAccess = ScreenSampler.shared.requestScreenCaptureAccess()
+            ScreenSampler.shared.requestScreenCaptureAccess()
         }
     }
 
     /// Pixelate and Blur read the screen under the rectangle, which macOS gates behind
-    /// Screen Recording. Until it is granted the tool falls back to a solid fill.
-    private var screenRecordingRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: hasScreenCaptureAccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(hasScreenCaptureAccess ? Color.green : Color.orange)
-                Text(hasScreenCaptureAccess
-                    ? "Screen Recording permission granted"
-                    : "Screen Recording permission not granted")
-                    .font(.subheadline)
-                Spacer()
-                if !hasScreenCaptureAccess {
-                    Button("Open System Settings") {
-                        NSWorkspace.shared.open(Self.screenCaptureSettingsURL)
-                    }
-                }
-            }
-            Text("Pixelate and Blur need Screen Recording access to read the pixels under the rectangle. Redactions use a solid fill until it is granted, and macOS may ask you to relaunch Annotate first.")
+    /// Screen Recording. Its status lives in the Capture pane, which Capture Screen shares.
+    private var screenRecordingPointer: some View {
+        HStack(spacing: 6) {
+            Text("Pixelate and Blur need Screen Recording access and use a solid fill until it is granted. Check its status in Capture.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if let showCapturePane {
+                Button("Show Capture Settings", action: showCapturePane)
+            }
         }
         .accessibilityIdentifier("tools.redact.screenRecording")
     }

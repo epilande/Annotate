@@ -37,7 +37,7 @@ Timestamps and ids: `creationTime` is `CACurrentMediaTime`, mach host time, and 
 **6. Edge cases.**
 
 - Fading strokes: full-screen capture renders what is on screen (current alpha, fully faded excluded). The area picker freezes `fadeClock` while open and captures at the frozen time. Fade resumes on dismiss.
-- Active text edit: commit it first, as `hideOverlays` does.
+- Active text edit: commit it first, as `hideOverlays` does. The capture shortcut works while a label is being typed when its binding has Command, which no typed character carries: it commits the label and captures, the same as the menu item. Every other overlay shortcut, and a capture binding without Command, still types into the label.
 - Redactions: in a file the pixels under a redaction are permanent and the fresh snapshot holds the raw screen, so the renderer always lays the opaque placeholder and then the sample, never at fade alpha. Pixelate and Blur samples come from the capture's own snapshot through `ScreenSampler.makeSample`, not the stored `Rectangle.sample`, which can be stale against the fresh pixels. The `RedactionTests` leak assertions run against renderer output.
 - Success HUD: respects `hideToolFeedback` like every other pill; the system notification is the channel for users who hide pills.
 - Picker keys: the picker consumes Escape before `OverlayWindow.keyDown`, which otherwise closes the overlay.

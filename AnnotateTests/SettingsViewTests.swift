@@ -31,11 +31,11 @@ final class SettingsViewTests: XCTestCase {
 
     // MARK: - View Structure Tests
 
-    func testSettingsPaneHasFiveCases() {
-        XCTAssertEqual(SettingsPane.allCases.count, 5)
+    func testSettingsPaneHasSixCases() {
+        XCTAssertEqual(SettingsPane.allCases.count, 6)
         XCTAssertEqual(
             SettingsPane.allCases,
-            [.general, .tools, .board, .cursor, .shortcuts]
+            [.general, .tools, .board, .cursor, .capture, .shortcuts]
         )
     }
 
@@ -60,6 +60,11 @@ final class SettingsViewTests: XCTestCase {
 
     func testSettingsViewCanBeEmbeddedInHostingController() {
         let hostingController = NSHostingController(rootView: SettingsView())
+        XCTAssertNotNil(hostingController.view)
+    }
+
+    func testCaptureSettingsViewCanBeEmbeddedInHostingController() {
+        let hostingController = NSHostingController(rootView: CaptureSettingsView())
         XCTAssertNotNil(hostingController.view)
     }
 
@@ -124,6 +129,23 @@ final class SettingsViewTests: XCTestCase {
         )
 
         firstWindow?.close()
+    }
+
+    func testCloseHandlersRunOnceWhenTheWindowCloses() throws {
+        var closed = 0
+        SettingsWindowManager.shared.show(pane: .capture) { closed += 1 }
+        // A handler added while the window is already open waits for that window too.
+        SettingsWindowManager.shared.show { closed += 1 }
+        let window = try XCTUnwrap(SettingsWindowManager.shared.settingsWindow)
+        XCTAssertEqual(SettingsWindowManager.shared.navigation.selection, .capture)
+        XCTAssertEqual(closed, 0)
+
+        window.close()
+        XCTAssertEqual(closed, 2)
+
+        SettingsWindowManager.shared.show()
+        SettingsWindowManager.shared.settingsWindow?.close()
+        XCTAssertEqual(closed, 2, "Handlers run once")
     }
 
     // MARK: - Dock Icon Tests

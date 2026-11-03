@@ -32,6 +32,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Created as launch starts, before launch or any link can activate the app.
     var linkFocusHandoff: LinkFocusHandoff?
 
+    /// Makes Capture Screen's images. Tests swap in one with a stub source, a temporary
+    /// folder, and a private pasteboard.
+    lazy var captureService = CaptureService(
+        source: ScreenSampler.shared,
+        sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
+    /// The latest capture. The next one waits for it, and tests await it.
+    var captureTask: Task<Void, Never>?
+    /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
+    var screenRecordingNoticeDelay: TimeInterval = 1.5
+    /// Reports a capture problem when no overlay is open to show it on. Tests replace it.
+    var showCaptureProblemAlert: (_ message: String) -> Void = { message in
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = "Annotate couldn't finish the capture. Try again in a moment."
+        alert.runModal()
+    }
+    /// Whether a macOS privacy prompt is on screen. Tests replace it.
+    var isPrivacyPromptOnScreen: () -> Bool = { SystemPrivacyPrompt.isOnScreen }
+    /// How often Always-On overlays waiting on a privacy prompt check whether it has closed.
+    var privacyPromptPollInterval: TimeInterval = 0.5
+    /// Always-On overlays ordered out so Settings and the Screen Recording prompt show above
+    /// them. They come back once both are gone.
+    var overlaysAwaitingPermission: [OverlayWindow] = []
+    /// Whether a Settings window opened for Screen Recording is still open.
+    var isSettingsOpenForPermission = false
+    var isPollingForPrivacyPrompt = false
+    /// Overlays closed by the app rather than the user, which keep their drawings the next
+    /// time they open even with Clear Drawings on Start.
+    var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
+    /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
+    /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
+    /// Settings window opens.
+    var openSettingsPane:
+        (SettingsPane, _ requestingScreenRecording: Bool, _ onClose: @escaping @MainActor () -> Void) -> Void = {
+            SettingsWindowManager.shared.show(pane: $0, requestingScreenRecording: $1, onClose: $2)
+        }
+
     override init() {
         self.settings = .standard
         super.init()
@@ -353,6 +392,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
             menu.addItem(NSMenuItem.separator())
 
+            menu.addItem(
+                NSMenuItem(
+                    title: "Capture Screen",
+                    action: #selector(captureScreen),
+                    keyEquivalent: ""))
+
+            menu.addItem(NSMenuItem.separator())
+
             let settingsItem = NSMenuItem(
                 title: "Settings...",
                 action: #selector(showSettings),
@@ -583,7 +630,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     private func activateOverlay(_ overlayWindow: OverlayWindow, on screen: NSScreen) {
         configureWindowForNormalMode(overlayWindow)
 
-        if settings[.clearDrawingsOnStart] {
+        if settings[.clearDrawingsOnStart] && !consumeKeptDrawings(of: overlayWindow) {
             overlayWindow.overlayView.clearAll()
         }
 
@@ -617,6 +664,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 overlayWindow.overlayView.finalizeTextAnnotation(activeField)
             }
             if alwaysOnMode {
+                consumeKeptDrawings(of: overlayWindow)
                 configureWindowForAlwaysOnMode(overlayWindow)
             } else {
                 configureWindowForNormalMode(overlayWindow)
@@ -661,6 +709,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             !overlayWindow.isVisible
         {
             configureWindowForNormalMode(overlayWindow)
+            consumeKeptDrawings(of: overlayWindow)
             updateStatusBarIcon(with: currentColor)
             SoundPlayer.shared.playOverlayOn()
             let screenFrame = currentScreen.frame
@@ -965,6 +1014,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             case #selector(toggleFadeMode(_:)): action = .toggleFade
             case #selector(toggleToolbar): action = .toggleToolbar
             case #selector(clearAllAnnotations): action = .clearAll
+            case #selector(captureScreen): action = .captureScreen
             default:
                 continue
             }

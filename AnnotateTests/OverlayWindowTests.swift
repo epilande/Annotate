@@ -889,6 +889,38 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertEqual(expectedY, 20, "Feedback should be 20pt from bottom")
     }
     
+    private var feedbackLabel: NSTextField? {
+        window.currentFeedbackView?.subviews.lazy.compactMap { $0 as? NSTextField }.first
+    }
+
+    func testFeedbackPillFitsALongMessage() throws {
+        window.overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
+        for (text, icon) in [
+            ("Saved Annotate 2026-11-02 at 10.23.45 (2).png", "📸"),
+            ("Screen Recording is off. Opening Settings…", "🔒"),
+        ] {
+            window.showToggleFeedback(text, icon: icon)
+
+            let label = try XCTUnwrap(feedbackLabel)
+            let container = try XCTUnwrap(window.currentFeedbackView)
+            let needed = try XCTUnwrap(label.cell?.cellSize.width)
+            XCTAssertGreaterThanOrEqual(label.frame.width, needed, "\(text) must not be clipped")
+            XCTAssertLessThanOrEqual(container.frame.maxX, window.frame.width)
+            XCTAssertGreaterThanOrEqual(container.frame.minX, 0)
+        }
+    }
+
+    func testFeedbackPillTruncatesTheMiddleOfAMessageWiderThanTheDisplay() throws {
+        window.overlayView.pickerUserDefaultsOverride = TestUserDefaults.create()
+        window.showToggleFeedback(String(repeating: "Annotate ", count: 30) + "(2).png", icon: "📸")
+
+        let label = try XCTUnwrap(feedbackLabel)
+        let container = try XCTUnwrap(window.currentFeedbackView)
+        XCTAssertLessThanOrEqual(container.frame.width, window.frame.width - 40)
+        XCTAssertEqual(label.lineBreakMode, .byTruncatingMiddle)
+        XCTAssertEqual(label.maximumNumberOfLines, 1)
+    }
+
     func testScrollWheelForLineWidth() {
         // Test that scroll wheel adjusts line width
         let initialWidth = window.overlayView.currentLineWidth

@@ -861,8 +861,8 @@ class OverlayWindow: NSPanel {
     /// All editable overlay actions share exact key/modifier matching and the same focus guards.
     @discardableResult
     private func handleOverlayShortcut(_ chord: KeyChord) -> Bool {
-        guard !isEditingAnnotationText, !overlayView.isReadOnlyMode,
-            let action = ShortcutManager.shared.action(for: chord)
+        guard !overlayView.isReadOnlyMode, let action = ShortcutManager.shared.action(for: chord),
+            !isEditingAnnotationText || Self.firesWhileEditingText(action)
         else { return false }
 
         switch action {
@@ -892,8 +892,18 @@ class OverlayWindow: NSPanel {
         case .decreaseSize: stepActiveLadder(-1)
         case .increaseSize: stepActiveLadder(1)
         case .clearAll: performClearAll()
+        case .captureScreen:
+            if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
         }
         return true
+    }
+
+    /// Whether `action`'s shortcut works while a label is being typed. Capture Screen does
+    /// when its binding has Command, which no typed character carries; it commits the label
+    /// and captures, as the menu item does. Every other shortcut, and a Capture Screen binding
+    /// without Command, types into the label instead.
+    static func firesWhileEditingText(_ action: ShortcutKey) -> Bool {
+        action == .captureScreen && ShortcutManager.shared.binding(for: action).modifiers.contains(.command)
     }
 
     private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {
@@ -2137,7 +2147,8 @@ class OverlayWindow: NSPanel {
         lineColor: NSColor?,
         lineWidth: CGFloat?
     ) -> NSView {
-        let containerWidth = calculateFeedbackContainerWidth(for: text)
+        let feedbackLabel = createFeedbackLabel(text: text)
+        let containerWidth = feedbackContainerWidth(fitting: feedbackLabel)
         let containerHeight: CGFloat = (lineWidth != nil) ? 80 : 50
         let containerFrame = calculateFeedbackContainerFrame(
             width: containerWidth,
@@ -2148,11 +2159,7 @@ class OverlayWindow: NSPanel {
         let containerView = NSView(frame: containerFrame)
         configureFeedbackContainerStyle(containerView)
 
-        let feedbackLabel = createFeedbackLabel(
-            text: text,
-            containerWidth: containerWidth,
-            containerHeight: containerHeight
-        )
+        layoutFeedbackLabel(feedbackLabel, containerWidth: containerWidth, containerHeight: containerHeight)
         containerView.addSubview(feedbackLabel)
         
         if let lineColor = lineColor, let lineWidth = lineWidth {
@@ -2167,17 +2174,19 @@ class OverlayWindow: NSPanel {
         return containerView
     }
     
-    private func calculateFeedbackContainerWidth(for text: String) -> CGFloat {
+    /// Wide enough for the whole message, so a file name or a sentence is never cut short.
+    /// Only a message wider than the display is capped, and its label truncates in the middle.
+    private func feedbackContainerWidth(fitting label: NSTextField) -> CGFloat {
         let labelPadding: CGFloat = 10
         let extraMargin: CGFloat = 40
-        let font = NSFont.boldSystemFont(ofSize: 24)
-        let textSize = text.size(withAttributes: [.font: font])
-        
-        // Container width = text width + horizontal padding + margins
+        let screenMargin: CGFloat = 20
+
         let minWidth: CGFloat = 150
-        let maxWidth: CGFloat = 400
-        let calculatedWidth = textSize.width + (labelPadding * 2) + extraMargin
-        
+        let maxWidth = max(minWidth, frame.width - screenMargin * 2)
+        // The cell's own size includes its text insets, which a bare string measurement misses.
+        let fittedWidth = (label.cell?.cellSize.width ?? label.fittingSize.width).rounded(.up)
+        let calculatedWidth = fittedWidth + (labelPadding * 2) + extraMargin
+
         return min(max(minWidth, calculatedWidth), maxWidth)
     }
     
@@ -2210,14 +2219,7 @@ class OverlayWindow: NSPanel {
         containerView.layer?.cornerRadius = 8
     }
     
-    private func createFeedbackLabel(
-        text: String,
-        containerWidth: CGFloat,
-        containerHeight: CGFloat
-    ) -> NSTextField {
-        let labelPadding: CGFloat = 10
-        let textVerticalPadding: CGFloat = 10
-
+    private func createFeedbackLabel(text: String) -> NSTextField {
         let feedbackLabel = NSTextField(labelWithString: text)
         feedbackLabel.font = NSFont.boldSystemFont(ofSize: 24)
         feedbackLabel.backgroundColor = .clear
@@ -2225,19 +2227,27 @@ class OverlayWindow: NSPanel {
         feedbackLabel.isEditable = false
         feedbackLabel.isSelectable = false
         feedbackLabel.alignment = .center
+        feedbackLabel.maximumNumberOfLines = 1
+        feedbackLabel.cell?.usesSingleLineMode = true
+        // Only reached when the message is wider than the display. The middle goes, so the
+        // start of the message and the end of a file name both stay readable.
+        feedbackLabel.lineBreakMode = .byTruncatingMiddle
 
         // Set text color based on system appearance
         feedbackLabel.textColor = isDarkModeActive() ? .white : .black
-
-        let textSize = text.size(withAttributes: [.font: feedbackLabel.font!])
-        feedbackLabel.frame = NSRect(
-            x: labelPadding,
-            y: containerHeight - textSize.height - textVerticalPadding,
-            width: containerWidth - (labelPadding * 2),
-            height: textSize.height
-        )
-
         return feedbackLabel
+    }
+
+    private func layoutFeedbackLabel(_ label: NSTextField, containerWidth: CGFloat, containerHeight: CGFloat) {
+        let labelPadding: CGFloat = 10
+        let textVerticalPadding: CGFloat = 10
+        let height = (label.cell?.cellSize.height ?? label.fittingSize.height).rounded(.up)
+        label.frame = NSRect(
+            x: labelPadding,
+            y: containerHeight - height - textVerticalPadding,
+            width: containerWidth - (labelPadding * 2),
+            height: height
+        )
     }
     
     private func createLinePreview(

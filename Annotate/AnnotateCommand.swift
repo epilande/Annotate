@@ -16,6 +16,8 @@ enum AnnotateCommand: Hashable, Sendable {
     case toolbar(CommandSwitch)
     case fade(CommandSwitch)
     case board(CommandSwitch)
+    /// Saves an image of the display with its annotations and copies it to the clipboard.
+    case capture(CaptureScope)
 
     /// Whether running a command changed anything.
     enum Outcome: Equatable, Sendable {
@@ -27,8 +29,8 @@ enum AnnotateCommand: Hashable, Sendable {
     // MARK: - Path form
 
     /// The command's stable string form, `/<command>[/<value>]`, such as `/show`, `/tool/arrow`,
-    /// or `/toolbar/off`. Values are the raw values of `ToolType`, `PaletteColor`, and
-    /// `CommandSwitch`.
+    /// or `/toolbar/off`. Values are the raw values of `ToolType`, `PaletteColor`,
+    /// `CommandSwitch`, and `CaptureScope`.
     var path: String {
         switch self {
         case .toggle: return "/toggle"
@@ -40,6 +42,7 @@ enum AnnotateCommand: Hashable, Sendable {
         case .toolbar(let target): return "/toolbar/\(target.rawValue)"
         case .fade(let target): return "/fade/\(target.rawValue)"
         case .board(let target): return "/board/\(target.rawValue)"
+        case .capture(let scope): return "/capture/\(scope.rawValue)"
         }
     }
 
@@ -74,6 +77,9 @@ enum AnnotateCommand: Hashable, Sendable {
         case ("board", let value?):
             guard let target = CommandSwitch(rawValue: value) else { return nil }
             self = .board(target)
+        case ("capture", let value?):
+            guard let scope = CaptureScope(rawValue: value) else { return nil }
+            self = .capture(scope)
         default:
             return nil
         }
@@ -135,6 +141,10 @@ enum AnnotateCommand: Hashable, Sendable {
                 "\(board.displayName) \(enabled ? "On" : "Off")",
                 icon: board.currentBoardType == .blackboard ? "⬛" : "⬜")
             return enabled == current ? .noOp : .ran
+        case .capture(let scope):
+            // The capture finishes later and reports itself on the overlay.
+            appDelegate.capture(scope)
+            return .ran
         }
     }
 

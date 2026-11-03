@@ -1,0 +1,197 @@
+import Cocoa
+import os
+
+private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
+
+/// Capture Screen from the menu, the overlay shortcut, and `AnnotateCommand.capture`: picks the
+/// display, reads what its overlay shows, and reports the result on that overlay.
+extension AppDelegate {
+    /// The display a capture saves: the key interactive overlay's, else the one under the
+    /// pointer, else the main display.
+    static func captureTarget<Display>(keyOverlay: Display?, pointer: Display?, main: Display?) -> Display? {
+        keyOverlay ?? pointer ?? main
+    }
+
+    var captureTargetScreen: NSScreen? {
+        let keyOverlay = alwaysOnMode
+            ? nil : overlayWindows.first { $0.value.isVisible && $0.value.isKeyWindow }?.key
+        return Self.captureTarget(keyOverlay: keyOverlay, pointer: getCurrentScreen(), main: NSScreen.main)
+    }
+
+    func capture(_ scope: CaptureScope) {
+        switch scope {
+        case .screen: captureScreen()
+        }
+    }
+
+    /// Saves the display with its board and annotations, as its overlay shows them, and copies
+    /// the image. With the overlay hidden it saves the plain screen.
+    @objc func captureScreen() {
+        guard let screen = captureTargetScreen, let display = DisplayInfo(screen: screen) else {
+            log.error("No display to capture")
+            return
+        }
+        let overlay = overlayWindows[screen]
+        let request = CaptureRequest(
+            display: display,
+            scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
+            hostTime: CACurrentMediaTime(),
+            date: Date())
+
+        // Each capture waits for the one before it, so captures finish in the order they were
+        // asked for: an older image never replaces a newer one on the clipboard or in the HUD,
+        // and every capture still gets its own file. The scene above is already taken, so the
+        // annotations are the ones on screen when this capture was asked for.
+        let service = captureService
+        let previous = captureTask
+        captureTask = Task { @MainActor [weak self] in
+            await previous?.value
+            do {
+                let result = try await service.capture(request)
+                self?.reportCapture(result, on: overlay)
+            } catch CaptureError.screenRecordingOff {
+                self?.showScreenRecordingOff(on: overlay)
+            } catch {
+                log.error("Capture failed: \(error.localizedDescription)")
+                self?.reportCaptureProblem("Capture Failed", icon: "⚠️", on: overlay)
+            }
+        }
+    }
+
+    /// The overlay's picture as it stands. Commits a label being typed first, as closing the
+    /// overlay does, so the capture holds what the user sees.
+    private func captureScene(of overlay: OverlayWindow) -> CaptureScene {
+        let view: OverlayView = overlay.overlayView
+        if let activeField = view.activeTextField {
+            view.finalizeTextAnnotation(activeField)
+        }
+        let board = BoardManager.shared
+        return CaptureScene(
+            document: view.document,
+            board: board.appearance,
+            boardOpacity: CGFloat(board.opacity),
+            fade: view.fade,
+            now: view.fadeClock())
+    }
+
+    private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
+        if let file = result.savedFile {
+            guard let overlay, overlay.isVisible else { return }
+            overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
+        } else if result.copiedToClipboard {
+            reportCaptureProblem("Couldn't Save. Copied to Clipboard", icon: "📋", on: overlay)
+        }
+    }
+
+    /// On the overlay when it is open. Otherwise, as from the status menu with the overlay
+    /// closed, an alert, so a failed capture is never silent.
+    private func reportCaptureProblem(_ message: String, icon: String, on overlay: OverlayWindow?) {
+        if let overlay, overlay.isVisible {
+            overlay.showToggleFeedback(message, icon: icon)
+        } else {
+            showCaptureProblemAlert(message)
+        }
+    }
+
+    /// Never asks from here: the system prompt would open under the overlay. Says so on the
+    /// overlay, then gets every overlay out of the way and opens Settings to Capture, which
+    /// asks. When the prompt from an earlier capture is still up, Settings stays closed so
+    /// it can't cover the prompt. Annotations stay for when the overlay opens again.
+    private func showScreenRecordingOff(on overlay: OverlayWindow?) {
+        let showsNotice = overlay?.isVisible == true && !settings[.hideToolFeedback]
+        overlay?.showToggleFeedback(
+            isPrivacyPromptOnScreen()
+                ? "Screen Recording is off. Answer the macOS prompt"
+                : "Screen Recording is off. Opening Settings…",
+            icon: "🔒")
+        DispatchQueue.main.asyncAfter(deadline: .now() + (showsNotice ? screenRecordingNoticeDelay : 0)) {
+            [weak self] in
+            guard let self else { return }
+            self.moveOverlaysAsideForPermission()
+            if self.isPrivacyPromptOnScreen() {
+                self.restoreOverlaysWhenPermissionUIIsGone()
+                return
+            }
+            self.isSettingsOpenForPermission = true
+            self.openSettingsPane(.capture, true) { [weak self] in
+                self?.isSettingsOpenForPermission = false
+                self?.restoreOverlaysWhenPermissionUIIsGone()
+            }
+        }
+    }
+
+    /// Closes the interactive overlay, keeping its drawings for the next time it opens.
+    /// Always-On overlays sit above every normal window, so their annotations would cover
+    /// Settings and the system prompt; they are ordered out instead, to come back later.
+    private func moveOverlaysAsideForPermission() {
+        let visible = overlayWindows.values.filter(\.isVisible)
+        guard alwaysOnMode else {
+            guard isInteractiveOverlayOpen else { return }
+            overlaysKeepingDrawings.formUnion(visible.map(ObjectIdentifier.init))
+            hideAllOverlays()
+            return
+        }
+        guard !visible.isEmpty else { return }
+        visible.forEach { $0.orderOut(nil) }
+        overlaysAwaitingPermission.append(contentsOf: visible)
+        CursorHighlightManager.shared.overlayVisibilityChanged()
+    }
+
+    /// Brings back the Always-On overlays `moveOverlaysAsideForPermission` ordered out, once
+    /// Settings has closed and no privacy prompt is on screen. The prompt belongs to another
+    /// process and says nothing when it closes, so this checks again until it is gone.
+    /// Nothing comes back if Always-On has ended or the display is gone.
+    private func restoreOverlaysWhenPermissionUIIsGone() {
+        guard !overlaysAwaitingPermission.isEmpty, !isSettingsOpenForPermission else { return }
+        if isPrivacyPromptOnScreen() {
+            guard !isPollingForPrivacyPrompt else { return }
+            isPollingForPrivacyPrompt = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + privacyPromptPollInterval) { [weak self] in
+                self?.isPollingForPrivacyPrompt = false
+                self?.restoreOverlaysWhenPermissionUIIsGone()
+            }
+            return
+        }
+        let waiting = overlaysAwaitingPermission
+        overlaysAwaitingPermission = []
+        guard alwaysOnMode else { return }
+        let current = Set(overlayWindows.values.map(ObjectIdentifier.init))
+        let restored = waiting.filter { current.contains(ObjectIdentifier($0)) && !$0.isVisible }
+        guard !restored.isEmpty else { return }
+        restored.forEach { $0.orderFront(nil) }
+        CursorHighlightManager.shared.overlayVisibilityChanged()
+    }
+
+    /// Whether `overlay` was closed by the app and keeps its drawings this time it opens.
+    /// Any opening uses the exemption up, so a later close by the user clears as usual.
+    @discardableResult
+    func consumeKeptDrawings(of overlay: OverlayWindow) -> Bool {
+        overlaysKeepingDrawings.remove(ObjectIdentifier(overlay)) != nil
+    }
+}
+
+/// The macOS privacy prompt, which asks for Screen Recording among other permissions. Another
+/// process shows it, `universalAccessAuthWarn`, and its windows can be found by owner without
+/// any permission.
+enum SystemPrivacyPrompt {
+    static let helperBundleIdentifier = "com.apple.accessibility.universalAccessAuthWarn"
+
+    @MainActor
+    static var isOnScreen: Bool {
+        let helpers = Set(
+            NSRunningApplication.runningApplications(withBundleIdentifier: helperBundleIdentifier)
+                .map(\.processIdentifier))
+        guard !helpers.isEmpty,
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return false }
+        return hasWindow(ownedBy: helpers, in: windows)
+    }
+
+    /// Whether any window in a `CGWindowListCopyWindowInfo` list belongs to one of `owners`.
+    static func hasWindow(ownedBy owners: Set<pid_t>, in windows: [[String: Any]]) -> Bool {
+        windows.contains { window in
+            (window[kCGWindowOwnerPID as String] as? NSNumber).map { owners.contains($0.int32Value) } ?? false
+        }
+    }
+}

@@ -18,11 +18,35 @@ final class SettingsWindowManager {
     /// Strong reference to the delegate; `NSWindow.delegate` is weak.
     fileprivate var windowDelegate: SettingsWindowDelegate?
 
+    /// The pane the open window shows. Each new window starts fresh, on General.
+    private(set) var navigation = SettingsNavigation()
+
+    /// Run once when the window closes.
+    private var closeHandlers: [@MainActor () -> Void] = []
+
     private init() {}
 
     /// Shows the settings window, creating it on first use and re-fronting
-    /// the existing one on subsequent calls.
-    func show() {
+    /// the existing one on subsequent calls. With a `pane`, switches to it.
+    /// `requestingScreenRecording` has the Capture pane ask for Screen Recording access.
+    /// `onClose` runs when the window closes, including a window that was already open.
+    func show(
+        pane: SettingsPane? = nil,
+        requestingScreenRecording: Bool = false,
+        onClose: (@MainActor () -> Void)? = nil
+    ) {
+        if let onClose {
+            closeHandlers.append(onClose)
+        }
+        if settingsWindow == nil {
+            navigation = SettingsNavigation()
+        }
+        if let pane {
+            navigation.selection = pane
+        }
+        if requestingScreenRecording {
+            navigation.requestsScreenRecording = true
+        }
         if let window = settingsWindow {
             NSApp.activate(ignoringOtherApps: true)
             window.deminiaturize(nil)
@@ -42,7 +66,7 @@ final class SettingsWindowManager {
         window.titlebarAppearsTransparent = true
         window.toolbar = NSToolbar()
         window.toolbarStyle = .unified
-        window.contentView = NSHostingView(rootView: SettingsView())
+        window.contentView = NSHostingView(rootView: SettingsView(navigation: navigation))
         window.center()
         window.isReleasedWhenClosed = false
         window.level = .normal
@@ -54,13 +78,20 @@ final class SettingsWindowManager {
         windowDelegate = SettingsWindowDelegate()
         window.delegate = windowDelegate
     }
+
+    fileprivate func windowWillClose() {
+        settingsWindow = nil
+        windowDelegate = nil
+        let handlers = closeHandlers
+        closeHandlers = []
+        handlers.forEach { $0() }
+    }
 }
 
 /// Clears the manager's references when the window closes so the next
 /// `show()` builds a fresh window.
 private final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
     func windowWillClose(_: Notification) {
-        SettingsWindowManager.shared.settingsWindow = nil
-        SettingsWindowManager.shared.windowDelegate = nil
+        SettingsWindowManager.shared.windowWillClose()
     }
 }
