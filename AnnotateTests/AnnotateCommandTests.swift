@@ -1259,6 +1259,44 @@ final class AnnotateCommandTests: XCTestCase {
         }
     }
 
+    func testEveryPointerMoveWhilePickingSetsTheCrosshair() throws {
+        // Something can still set the arrow mid-pick, as AppKit does whenever the pointer leaves
+        // one of the app's windows, and a move inside the overlay crosses no cursor rect that
+        // would set the crosshair again. The live check saw the arrow last through 35 moves.
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        run(.show)
+        let acceptedMovesBefore = overlay.acceptsMouseMovedEvents
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            run(.capture(.area))
+            XCTAssertTrue(overlay.acceptsMouseMovedEvents, "\(style): the picker needs every move")
+
+            for step in 0..<3 {
+                NSCursor.arrow.set()
+                let point = NSPoint(x: 300 + CGFloat(step) * 10, y: 300)
+                overlay.sendEvent(
+                    try XCTUnwrap(
+                        TestEvents.createMouseEvent(type: .mouseMoved, location: point, windowNumber: overlay.windowNumber)))
+                XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style), move \(step)")
+            }
+            NSCursor.arrow.set()
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseDragged] {
+                overlay.sendEvent(
+                    try XCTUnwrap(
+                        TestEvents.createMouseEvent(
+                            type: type, location: NSPoint(x: 320, y: 310), windowNumber: overlay.windowNumber)))
+                XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style), \(type)")
+                NSCursor.arrow.set()
+            }
+
+            try pressEscape()
+            XCTAssertFalse(overlay.isRegionPickerOpen, "\(style)")
+            XCTAssertEqual(overlay.acceptsMouseMovedEvents, acceptedMovesBefore, "\(style)")
+        }
+    }
+
     func testAnotherDisplaysOverlayLeavesThePickersCrosshair() throws {
         // Every overlay's refresh sets the one system cursor. With the Text tool, the hidden
         // overlay on the other display sets the I-beam, so the picking overlay has to go last.

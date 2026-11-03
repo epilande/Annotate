@@ -512,6 +512,12 @@ class OverlayWindow: NSPanel {
     /// restores coalescing and must not commit geometry. The toolbar is a separate panel,
     /// so its clicks never reach this window at all.
     private func routeOverlayMouseEvent(_ event: NSEvent) -> Bool {
+        // The picker sets its crosshair again on every pointer event, moves included.
+        if event.type == .mouseMoved, let regionPicker {
+            regionPicker.handleMouseEvent(event)
+            return true
+        }
+
         switch event.type {
         case .leftMouseDown, .leftMouseDragged, .leftMouseUp,
             .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
@@ -729,6 +735,9 @@ class OverlayWindow: NSPanel {
     func beginRegionPicker(onDismiss: (() -> Void)? = nil, onPick: @escaping (CGRect) -> Void) -> Bool {
         guard regionPicker == nil, !overlayView.isReadOnlyMode else { return false }
         cancelQuickPicker()
+        // After the quick picker has put its own setting back.
+        acceptedMouseMovedBeforePicker = acceptsMouseMovedEvents
+        acceptsMouseMovedEvents = true
         if let activeField = overlayView.activeTextField {
             overlayView.finalizeTextAnnotation(activeField)
         }
@@ -763,6 +772,7 @@ class OverlayWindow: NSPanel {
         guard let picker = regionPicker else { return }
         regionPicker = nil
         picker.removeFromSuperview()
+        acceptsMouseMovedEvents = acceptedMouseMovedBeforePicker
         overlayView.resumeFade()
         updateToolbarVisibility()
         overlayView.cursorOverride = nil

@@ -95,6 +95,10 @@ final class RegionPicker: NSView {
     /// Handles a mouse event the overlay window forwards. Every mouse event belongs to the
     /// picker while it is open, so nothing reaches the canvas.
     func handleMouseEvent(_ event: NSEvent) {
+        // AppKit sets the arrow whenever the pointer leaves one of the app's windows, and a move
+        // inside this one crosses no cursor rect that would set the crosshair again. Setting it
+        // on every pointer event keeps it for the whole pick.
+        NSCursor.crosshair.set()
         let point = convert(event.locationInWindow, from: nil)
         switch event.type {
         case .leftMouseDown: mouseDown(at: point)
@@ -106,7 +110,6 @@ final class RegionPicker: NSView {
     }
 
     func mouseDown(at point: NSPoint) {
-        NSCursor.crosshair.set()
         dragStart = point
         dragEnd = point
         updateLayers()
