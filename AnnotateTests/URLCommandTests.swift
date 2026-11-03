@@ -60,7 +60,7 @@ final class URLCommandTests: XCTestCase {
     }
 
     func testEveryCommandRoundTripsThroughALink() throws {
-        for command in AnnotateCommandTests.everyCommand {
+        for command in AnnotateCommandTests.everyCommand where command.runsFromLinks {
             for scheme in ["annotate", "annotate-debug"] {
                 let url = try link("\(scheme):/\(command.path)")
                 XCTAssertEqual(AnnotateCommand(url: url, scheme: scheme), command, url.absoluteString)
@@ -110,6 +110,8 @@ final class URLCommandTests: XCTestCase {
             ("annotate://nope", .unknownCommand),
             ("annotate://tool/brush", .unknownCommand),
             ("annotate://tool/arrow/extra", .unknownCommand),
+            ("annotate://capture/screen", .notFromLinks),
+            ("ANNOTATE://Capture/Screen/", .notFromLinks),
         ]
         for (string, reason) in cases {
             guard case .failure(let rejection) = AnnotateCommand.parse(url: try link(string), scheme: "annotate") else {
@@ -188,6 +190,19 @@ final class URLCommandTests: XCTestCase {
         testDefaults.settings[.urlCommandsEnabled] = true
         try open("annotate-debug://show")
         XCTAssertEqual(overlay?.isVisible, true, "Links run again once the setting is back on")
+    }
+
+    func testCaptureLinksNeverReadTheScreen() throws {
+        launch()
+        let source = StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 8, height: 8, RGBA(r: 0, g: 0, b: 255, a: 255)))
+        appDelegate.captureService = CaptureService(source: source, sinks: [])
+        try open("annotate-debug://show")
+
+        XCTAssertNil(appDelegate.openCommandURL(try link("annotate-debug://capture/screen")))
+        try open("annotate-debug://capture/screen")
+
+        XCTAssertNil(appDelegate.captureTask)
+        XCTAssertEqual(source.captureCount, 0)
     }
 
     func testMalformedLinksChangeNothing() throws {

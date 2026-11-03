@@ -6,7 +6,7 @@ Status: approved 2026-11-01, with the open questions settled under Decisions. Wr
 
 Capture fits Annotate. It closes the "annotate, capture, share" loop the issue describes, and three quarters of the plumbing exists: `ScreenSampler` already takes ScreenCaptureKit screenshots of one display with Annotate's windows excluded, the command layer runs the same code from menus, Shortcuts, and `annotate://`, and every annotation already carries a monotonic creation time.
 
-**v1 ships:** Capture Screen and Capture Area for one display, PNG to a folder, a copy on the clipboard, an on-overlay confirmation plus a system notification with Show in Finder, a Capture pane in Settings (folder, after-capture destination, notification, Screen Recording status for Capture and Redact), both commands in Shortcuts and `annotate://`, and an opt-in JSON sidecar.
+**v1 ships:** Capture Screen and Capture Area for one display, PNG to a folder, a copy on the clipboard, an on-overlay confirmation plus a system notification with Show in Finder, a Capture pane in Settings (folder, after-capture destination, notification, Screen Recording status for Capture and Redact), both commands in Shortcuts (not `annotate://`, see Decisions), and an opt-in JSON sidecar.
 
 **Waits:** window crop, stitching several displays, global hotkeys for capture, sidecar on by default, session recording and bundles, and opening an image to annotate.
 
@@ -47,7 +47,7 @@ Timestamps and ids: `creationTime` is `CACurrentMediaTime`, mach host time, and 
 - Full-screen Spaces: display capture sees the full-screen app; the overlay's `.canJoinAllSpaces` means annotations are there too.
 - macOS 15 and later show a periodic ScreenCaptureKit reminder alert; it will sit under an open overlay until it closes. Already true for Redact; capture widens exposure.
 
-**7. Shortcuts and links.** Yes. `AnnotateCommand.capture(CaptureScope)` with `screen` and `area` gives `annotate://capture/screen` and `annotate://capture/area`, plus Capture Screen and Capture Area intents returning the PNG as an `IntentFile`. Overlay shortcuts `captureScreen` (⌘S) and `captureArea` (⇧⌘S), rebindable, through `newlyEditable`; `s` is free of reserved keys and fixed key equivalents. Status menu items for both. "Open an image to annotate" needs a parameter the link parser rejects by design; when it comes, it is an intent with a file parameter.
+**7. Shortcuts and links.** Shortcuts yes, links no (see Decisions). `AnnotateCommand.capture(CaptureScope)` with `screen` and `area` has the paths `/capture/screen` and `/capture/area`, which the link parser rejects, plus Capture Screen and Capture Area intents returning the PNG as an `IntentFile`. Overlay shortcuts `captureScreen` (⌘S) and `captureArea` (⇧⌘S), rebindable, through `newlyEditable`; `s` is free of reserved keys and fixed key equivalents. Status menu items for both. "Open an image to annotate" needs a parameter the link parser rejects by design; when it comes, it is an intent with a file parameter.
 
 **8. Stacked PRs.**
 
@@ -55,7 +55,7 @@ Timestamps and ids: `creationTime` is `CACurrentMediaTime`, mach host time, and 
 2. Capture Screen. `DisplayCapturing`, `Capture`, `CaptureService`, `FileSink`, `ClipboardSink` (the default saves and copies), PNG encode off main, HUD, Capture pane with default folder and the Screen Recording row moved from Tools, `ShortcutKey.captureScreen`, menu item, `AnnotateCommand.capture(.screen)`. Tests: composite pixels against a stub snapshot (board on and off, scale 1 and 2), file naming and collisions, clipboard contents, display selection rule, command outcome. Mac: Retina plus external display, board, fade, Always-On, denied permission flow.
 3. Capture Area. `RegionPicker`, fade freeze, crop, `captureArea`, opening the interactive overlay when none is open. Tests: picker geometry and keys, rect normalization, crop math, frozen clock, opening from a hidden or Always-On overlay. Mac: drag on each display, Escape, tiny rects, picker on a display whose overlay is not key, Always-On.
 4. Folder, destinations, notification. Entitlement change, bookmark key and stale handling, the after-capture destination setting, notification protocol and stub. Tests: bookmark round trip in a temp directory, stale fallback, destination setting. Mac: a notarized build, pick a folder on an external volume, revoke it, click the notification.
-5. Intents and links, README, AGENTS. Tests in `AnnotateCommandTests`, `URLCommandTests`, intent display representations.
+5. Intents, README, AGENTS. Tests in `AnnotateCommandTests`, intent display representations. Links stay blocked (PR 3).
 6. Sidecar and ids. `CaptureRecord` v1, ids on annotations, the toggle, a schema doc under `docs/`. Tests: golden JSON, coordinate transform, clock fields.
 
 **9. Risks.** The renderer extraction is the regression risk; pixel tests and a no-behavior-change rule contain it. Permission UX: the prompt and the macOS 15 reminder both hide under the overlay, so every prompt comes from Settings. Entitlement changes touch notarization; PR 4 needs a signed build check. 5K composites peak around 200 MB; encode off main. CI has no Screen Recording, so nothing in tests may call ScreenCaptureKit, which the protocol enforces.
@@ -74,7 +74,7 @@ For the session feature, v1 does differently because of it: a renderer that draw
 4. Default folder `~/Pictures/Annotate` with the Pictures entitlement; custom folder by bookmark.
 5. Save and copy to the clipboard by default; HUD plus system notification, authorization from Settings only.
 6. Sidecar shipped off by default; ids on every annotation.
-7. Names Capture Screen and Capture Area, ⌘S and ⇧⌘S, `annotate://capture/<screen|area>`.
+7. Names Capture Screen and Capture Area, ⌘S and ⇧⌘S. No `annotate://` links for capture (see Decisions).
 8. A sixth Settings pane, Capture, which also takes the Screen Recording row from Tools.
 
 ## Decisions
@@ -89,4 +89,5 @@ Settled 2026-11-01 from the open questions.
 
 Settled 2026-11-02 in the review of #142.
 
+- `annotate://` links never run a capture, Capture Screen or Capture Area. Any web page or app can open a link, and a capture reads the screen and writes the clipboard. The link parser rejects `/capture/...` with its own reason. Shortcuts, the menu, and the keyboard still capture. This replaces the link parts of answers 2, 3, 6, 7, and 8.
 - When only the save or only the clipboard copy fails, Annotate says which. Failures show an alert when no overlay HUD can show them, including with Hide Tool Feedback on.

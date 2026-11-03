@@ -22,11 +22,13 @@ extension AnnotateCommand {
         case missingCommand = "it names no command"
         case extraParts = "it has a user, password, port, query, or fragment"
         case unknownCommand = "its command or value is unknown"
+        case notFromLinks = "its command never runs from a link"
     }
 
     /// Parses a link such as `annotate://show` or `annotate://tool/arrow`: the host is the command
     /// and the path its value, matched like `init?(path:)`. Fails for another scheme, a missing
-    /// command, a user, password, port, query, or fragment, or a path `init?(path:)` rejects.
+    /// command, a user, password, port, query, or fragment, a path `init?(path:)` rejects, or a
+    /// command that `runsFromLinks` keeps from links, such as a capture.
     static func parse(url: URL, scheme: String = AnnotateCommand.urlScheme) -> Result<AnnotateCommand, LinkRejection> {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return .failure(.unparseable)
@@ -39,6 +41,7 @@ extension AnnotateCommand {
         guard let command = AnnotateCommand(path: host + components.path) else {
             return .failure(.unknownCommand)
         }
+        guard command.runsFromLinks else { return .failure(.notFromLinks) }
         return .success(command)
     }
 

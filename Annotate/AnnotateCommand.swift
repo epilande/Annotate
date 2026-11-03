@@ -1,8 +1,8 @@
 import Cocoa
 
-/// An action other apps can trigger, from Shortcuts actions or `annotate://` links.
-/// Each command runs the same `AppDelegate` code the menu and shortcuts do, then shows the
-/// on-screen HUD on any open overlay.
+/// An action other apps can trigger, from Shortcuts actions or `annotate://` links (except
+/// the ones `runsFromLinks` leaves out). Each command runs the same `AppDelegate` code the menu
+/// and shortcuts do, then shows the on-screen HUD on any open overlay.
 enum AnnotateCommand: Hashable, Sendable {
     case toggle
     case show
@@ -17,6 +17,7 @@ enum AnnotateCommand: Hashable, Sendable {
     case fade(CommandSwitch)
     case board(CommandSwitch)
     /// Saves an image of the display with its annotations and copies it to the clipboard.
+    /// Never runs from a link.
     case capture(CaptureScope)
 
     /// Whether running a command changed anything.
@@ -24,6 +25,14 @@ enum AnnotateCommand: Hashable, Sendable {
         case ran
         /// The app was already in the requested state, or there was nothing to act on.
         case noOp
+    }
+
+    /// Whether an `annotate://` link may run the command. Any web page or app can open a link,
+    /// so links never run a capture, which reads the screen and writes the clipboard. Shortcuts,
+    /// the menu, and the keyboard still capture.
+    var runsFromLinks: Bool {
+        if case .capture = self { return false }
+        return true
     }
 
     // MARK: - Path form
