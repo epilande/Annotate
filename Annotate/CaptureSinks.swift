@@ -5,6 +5,8 @@ import AppKit
 struct FileSink: CaptureSink {
     var folder: URL
 
+    var destination: CaptureDestination { .file }
+
     /// `~/Pictures/Annotate`. Pictures is reachable through the app's Pictures entitlement
     /// and, unlike Desktop, Documents, and Downloads, has no first-access prompt that would
     /// open under the overlay.
@@ -82,6 +84,8 @@ struct FileSink: CaptureSink {
 /// Puts each capture on a pasteboard as PNG.
 struct ClipboardSink: CaptureSink {
     var pasteboard: NSPasteboard = .general
+
+    var destination: CaptureDestination { .clipboard }
 
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
         pasteboard.clearContents()

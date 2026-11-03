@@ -13,6 +13,8 @@ final class AnnotateCommandTests: XCTestCase {
     var privacyPromptUp = false
     /// Messages a capture reported in an alert, which tests record instead of showing.
     var captureProblemAlerts: [String] = []
+    /// The detail text of each alert in `captureProblemAlerts`.
+    var captureProblemDetails: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -496,7 +498,11 @@ final class AnnotateCommandTests: XCTestCase {
         privacyPromptUp = false
         appDelegate.isPrivacyPromptOnScreen = { [unowned self] in self.privacyPromptUp }
         captureProblemAlerts = []
-        appDelegate.showCaptureProblemAlert = { [unowned self] in self.captureProblemAlerts.append($0) }
+        captureProblemDetails = []
+        appDelegate.showCaptureProblemAlert = { [unowned self] message, detail in
+            self.captureProblemAlerts.append(message)
+            self.captureProblemDetails.append(detail)
+        }
         appDelegate.privacyPromptPollInterval = 0.02
         appDelegate.captureService = CaptureService(
             source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
@@ -806,6 +812,19 @@ final class AnnotateCommandTests: XCTestCase {
         await appDelegate.captureTask?.value
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+        XCTAssertEqual(captureProblemDetails, ["Annotate couldn't finish the capture. Try again in a moment."])
+    }
+
+    func testCaptureFailureWithToolFeedbackHiddenStillShowsAnAlert() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        testDefaults.settings[.hideToolFeedback] = true
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(feedbackText(on: overlay))
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"], "A failure is never silent")
     }
 
     func testCaptureFailureWithTheOverlayOpenStaysOnTheOverlay() async throws {
@@ -837,6 +856,44 @@ final class AnnotateCommandTests: XCTestCase {
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
+        let detail = try XCTUnwrap(captureProblemDetails.first)
+        XCTAssertTrue(detail.hasPrefix("The image is on the clipboard, but Annotate couldn't save it."), detail)
+        XCTAssertFalse(detail.contains("couldn't finish the capture"), "Only the save failed")
+    }
+
+    /// Saves to a temporary folder while every copy to the clipboard fails.
+    private func useCaptureWhoseCopyFails() throws -> URL {
+        try useStubCapture()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: folder), FailingSink(destination: .clipboard)])
+        return folder
+    }
+
+    func testFailedCopyWithTheOverlayClosedIsReported() async throws {
+        let folder = try useCaptureWhoseCopyFails()
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Copy. Saved \(file)"])
+        XCTAssertTrue(try XCTUnwrap(captureProblemDetails.first).hasPrefix("The image was saved, but Annotate couldn't copy it"))
+    }
+
+    func testFailedCopyWithTheOverlayOpenSaysSoOnTheOverlay() async throws {
+        let folder = try useCaptureWhoseCopyFails()
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(feedbackText(on: overlay), "⚠️ Couldn't Copy. Saved \(file)")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
     }
 
     func testShareableContentListsAppsWhoseWindowsAreOffScreen() {

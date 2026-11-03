@@ -41,13 +41,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
-    /// Reports a capture problem when no overlay is open to show it on. Tests replace it.
-    var showCaptureProblemAlert: (_ message: String) -> Void = { message in
+    /// Reports a capture problem when no overlay HUD can show it. Tests replace it.
+    var showCaptureProblemAlert: (_ message: String, _ detail: String) -> Void = { message, detail in
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message
-        alert.informativeText = "Annotate couldn't finish the capture. Try again in a moment."
+        alert.informativeText = detail
+        // With Hide Tool Feedback on, an overlay can be open, and it sits above modal panels.
+        // `runModal` resets the level as it starts; the main queue drains inside the modal
+        // session, so the raise lands after that.
+        DispatchQueue.main.async {
+            alert.window.level = NSWindow.Level(rawValue: OverlayWindow.elevatedLevel.rawValue + 1)
+        }
         alert.runModal()
     }
     /// Whether a macOS privacy prompt is on screen. Tests replace it.

@@ -53,7 +53,7 @@ extension AppDelegate {
                 self?.showScreenRecordingOff(on: overlay)
             } catch {
                 log.error("Capture failed: \(error.localizedDescription)")
-                self?.reportCaptureProblem("Capture Failed", icon: "⚠️", on: overlay)
+                self?.reportCaptureProblem(.failed, on: overlay)
             }
         }
     }
@@ -74,22 +74,29 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
+    /// Success shows on the overlay, if it is open. When one destination failed, says which,
+    /// even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
         if let file = result.savedFile {
+            if let copyError = result.failure(of: .clipboard) {
+                reportCaptureProblem(.copyFailed(savedAs: file, error: copyError), on: overlay)
+                return
+            }
             guard let overlay, overlay.isVisible else { return }
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
-            reportCaptureProblem("Couldn't Save. Copied to Clipboard", icon: "📋", on: overlay)
+            reportCaptureProblem(.saveFailed(error: result.failure(of: .file)), on: overlay)
         }
     }
 
-    /// On the overlay when it is open. Otherwise, as from the status menu with the overlay
-    /// closed, an alert, so a failed capture is never silent.
-    private func reportCaptureProblem(_ message: String, icon: String, on overlay: OverlayWindow?) {
-        if let overlay, overlay.isVisible {
-            overlay.showToggleFeedback(message, icon: icon)
+    /// On the overlay's HUD when it is open and showing feedback. Otherwise an alert: from the
+    /// status menu with the overlay closed, or with Hide Tool Feedback on, a failed capture is
+    /// never silent.
+    private func reportCaptureProblem(_ problem: CaptureProblem, on overlay: OverlayWindow?) {
+        if let overlay, overlay.isVisible, !settings[.hideToolFeedback] {
+            overlay.showToggleFeedback(problem.title, icon: problem.icon)
         } else {
-            showCaptureProblemAlert(message)
+            showCaptureProblemAlert(problem.title, problem.detail)
         }
     }
 
@@ -167,6 +174,33 @@ extension AppDelegate {
     @discardableResult
     func consumeKeptDrawings(of overlay: OverlayWindow) -> Bool {
         overlaysKeepingDrawings.remove(ObjectIdentifier(overlay)) != nil
+    }
+}
+
+/// A capture that went wrong, in whole or in part: a short title for the HUD and the alert,
+/// and the alert's detail.
+struct CaptureProblem: Equatable {
+    let title: String
+    let icon: String
+    let detail: String
+
+    static let failed = CaptureProblem(
+        title: "Capture Failed", icon: "⚠️", detail: "Annotate couldn't finish the capture. Try again in a moment.")
+
+    static func copyFailed(savedAs file: URL, error: Error) -> CaptureProblem {
+        CaptureProblem(
+            title: "Couldn't Copy. Saved \(file.lastPathComponent)",
+            icon: "⚠️",
+            detail: "The image was saved, but Annotate couldn't copy it to the clipboard. \(error.localizedDescription)")
+    }
+
+    static func saveFailed(error: Error?) -> CaptureProblem {
+        CaptureProblem(
+            title: "Couldn't Save. Copied to Clipboard",
+            icon: "📋",
+            detail: ["The image is on the clipboard, but Annotate couldn't save it.", error?.localizedDescription]
+                .compactMap { $0 }
+                .joined(separator: " "))
     }
 }
 

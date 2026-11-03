@@ -86,3 +86,7 @@ Settled 2026-11-01 from the open questions.
 - Full-screen capture in Fade Mode: annotations at their current fade, as shown on screen.
 - The Redact Screen Recording permission row moves from the Tools pane into the Capture pane.
 - Capture settings get their own Settings pane, Capture.
+
+Settled 2026-11-02 in the review of #142.
+
+- When only the save or only the clipboard copy fails, Annotate says which. Failures show an alert when no overlay HUD can show them, including with Hide Tool Feedback on.

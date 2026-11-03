@@ -106,12 +106,34 @@ struct Capture {
 enum CaptureDelivery: Equatable, Sendable {
     case file(URL)
     case clipboard
+
+    var destination: CaptureDestination {
+        switch self {
+        case .file: return .file
+        case .clipboard: return .clipboard
+        }
+    }
+}
+
+/// The kinds of place a capture can go.
+enum CaptureDestination: Equatable, Sendable {
+    case file
+    case clipboard
 }
 
 /// A destination for finished captures.
 @MainActor
 protocol CaptureSink {
+    /// What `deliver` returns on success, so a failure can say what didn't happen.
+    var destination: CaptureDestination { get }
+
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery
+}
+
+/// A sink that threw, and what it threw.
+struct CaptureSinkFailure {
+    let destination: CaptureDestination
+    let error: Error
 }
 
 /// Why a capture produced nothing.
@@ -129,13 +151,18 @@ enum CaptureError: Error, Equatable {
 struct CaptureResult {
     let capture: Capture
     let deliveries: [CaptureDelivery]
-    let failures: [Error]
+    let failures: [CaptureSinkFailure]
 
     var savedFile: URL? {
         deliveries.lazy.compactMap { if case .file(let url) = $0 { return url } else { return nil } }.first
     }
 
     var copiedToClipboard: Bool { deliveries.contains(.clipboard) }
+
+    /// The error a sink of `destination` threw, if one did.
+    func failure(of destination: CaptureDestination) -> Error? {
+        failures.first { $0.destination == destination }?.error
+    }
 }
 
 /// Makes captures: takes the screen pixels, composites the scene over them, encodes a PNG,
@@ -181,16 +208,16 @@ final class CaptureService {
         }
 
         var deliveries: [CaptureDelivery] = []
-        var failures: [Error] = []
+        var failures: [CaptureSinkFailure] = []
         for sink in sinks {
             do {
                 deliveries.append(try await sink.deliver(capture, png: png))
             } catch {
                 log.error("Capture sink failed: \(error.localizedDescription)")
-                failures.append(error)
+                failures.append(CaptureSinkFailure(destination: sink.destination, error: error))
             }
         }
-        if deliveries.isEmpty, let first = failures.first { throw first }
+        if deliveries.isEmpty, let first = failures.first { throw first.error }
         return CaptureResult(capture: capture, deliveries: deliveries, failures: failures)
     }
 }

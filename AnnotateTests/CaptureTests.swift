@@ -51,6 +51,15 @@ final class GatedDisplayCapturing: DisplayCapturing {
     }
 }
 
+/// A sink that always throws, standing in for a destination that fails.
+struct FailingSink: CaptureSink {
+    let destination: CaptureDestination
+
+    func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
+
 /// An RGBA color with 0-255 components.
 struct RGBA: Equatable, CustomStringConvertible {
     var r: Int, g: Int, b: Int, a: Int
@@ -397,8 +406,24 @@ final class CaptureTests: XCTestCase {
 
         XCTAssertNil(result.savedFile)
         XCTAssertTrue(result.copiedToClipboard)
-        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertEqual(result.failures.map(\.destination), [.file])
+        XCTAssertNotNil(result.failure(of: .file))
+        XCTAssertNil(result.failure(of: .clipboard))
         XCTAssertNotNil(pasteboard.data(forType: .png))
+    }
+
+    func testServiceSaysWhichDestinationFailed() async throws {
+        let folder = try temporaryFolder()
+        let service = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 100, height: 50, Self.blue)),
+            sinks: [FileSink(folder: folder), FailingSink(destination: .clipboard)])
+
+        let result = try await service.capture(request(display: display(), scene: nil))
+
+        XCTAssertNotNil(result.savedFile)
+        XCTAssertFalse(result.copiedToClipboard)
+        XCTAssertNotNil(result.failure(of: .clipboard))
+        XCTAssertNil(result.failure(of: .file))
     }
 
     // MARK: - File naming
