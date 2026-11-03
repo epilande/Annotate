@@ -32,8 +32,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Created as launch starts, before launch or any link can activate the app.
     var linkFocusHandoff: LinkFocusHandoff?
 
-    /// Makes Capture Screen's images. Tests swap in one with a stub source, a temporary
-    /// folder, and a private pasteboard.
+    /// Makes Capture Screen's and Capture Area's images. Tests swap in one with a stub source,
+    /// a temporary folder, and a private pasteboard.
     lazy var captureService = CaptureService(
         source: ScreenSampler.shared,
         sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
@@ -402,6 +402,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 NSMenuItem(
                     title: "Capture Screen",
                     action: #selector(captureScreen),
+                    keyEquivalent: ""))
+            menu.addItem(
+                NSMenuItem(
+                    title: "Capture Area",
+                    action: #selector(captureArea),
                     keyEquivalent: ""))
 
             menu.addItem(NSMenuItem.separator())
@@ -1021,6 +1026,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             case #selector(toggleToolbar): action = .toggleToolbar
             case #selector(clearAllAnnotations): action = .clearAll
             case #selector(captureScreen): action = .captureScreen
+            case #selector(captureArea): action = .captureArea
             default:
                 continue
             }

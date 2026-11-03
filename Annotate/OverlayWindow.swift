@@ -38,6 +38,8 @@ class OverlayWindow: NSPanel {
     /// True when the picker consumed this mouse-down, so the matching up must not commit geometry.
     private var pickerConsumedMouseDown = false
     private var mouseCoalescingSnapshot: Bool?
+    /// Capture Area's picker while it is open. See `beginRegionPicker(onPick:)`.
+    private(set) var regionPicker: RegionPicker?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     private var activeShapeTool: ToolType?
@@ -361,6 +363,7 @@ class OverlayWindow: NSPanel {
 
     override func orderOut(_ sender: Any?) {
         cancelQuickPicker()
+        cancelRegionPicker()
         restoreMouseCoalescing()
         overlayView.discardRedactionSamples()
         super.orderOut(sender)
@@ -382,15 +385,19 @@ class OverlayWindow: NSPanel {
     override func close() {
         // The fade timer retains the window, and the observer would keep re-measuring a toolbar
         // nobody sees, so a closed overlay has to drop both or it lives for the rest of the process.
-        stopFadeLoop()
         NotificationCenter.default.removeObserver(self, name: .shortcutsDidChange, object: nil)
         toolbarPanel?.tearDown()
         toolbarPanel = nil
+        // After the toolbar goes, so the picker has no bar to put back, and before the fade
+        // loop stops, since closing the picker lets the fade run again.
+        cancelRegionPicker()
+        stopFadeLoop()
         super.close()
     }
 
     override func resignKey() {
         cancelQuickPicker()
+        cancelRegionPicker()
         restoreMouseCoalescing()
         super.resignKey()
     }
@@ -426,7 +433,8 @@ class OverlayWindow: NSPanel {
     }
 
     func startFadeLoop() {
-        guard fadeTimer == nil else { return }
+        // A frozen fade draws the same frame every tick.
+        guard fadeTimer == nil, overlayView?.isFadeFrozen != true else { return }
         fadeTimer = Timer.scheduledTimer(
             timeInterval: fadeInterval,
             target: self,
@@ -462,6 +470,11 @@ class OverlayWindow: NSPanel {
         }
 
         switch (event.type, KeyChord(event: event)) {
+        case (.keyDown, let chord?) where regionPicker != nil, (.keyUp, let chord?) where regionPicker != nil:
+            if event.type == .keyDown {
+                regionPicker?.handleKey(chord)
+            }
+            return
         case (.keyDown, let chord?):
             if quickPicker != nil {
                 _ = handleQuickPickerKeyDown(chord)
@@ -503,7 +516,7 @@ class OverlayWindow: NSPanel {
             .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
             break
         case .scrollWheel:
-            return quickPicker != nil
+            return quickPicker != nil || regionPicker != nil
         default:
             return false
         }
@@ -511,6 +524,12 @@ class OverlayWindow: NSPanel {
         // Read-only (Always-On) mode owns no mouse input: swallow so a synthetic or
         // stray event can never reach the drawing handlers.
         if overlayView.isReadOnlyMode {
+            return true
+        }
+
+        // Capture Area's picker owns every press, including one on the menu bar.
+        if let regionPicker {
+            regionPicker.handleMouseEvent(event)
             return true
         }
 
@@ -610,7 +629,7 @@ class OverlayWindow: NSPanel {
         activationKey: String? = nil,
         activationKeyCode: UInt16? = nil
     ) {
-        guard quickPicker == nil else { return }
+        guard quickPicker == nil, regionPicker == nil else { return }
 
         discardLiveDrawing()
 
@@ -695,6 +714,49 @@ class OverlayWindow: NSPanel {
         guard quickPicker != nil else { return }
         restoreMouseCoalescing()
         dismissQuickPicker()
+    }
+
+    var isRegionPickerOpen: Bool { regionPicker != nil }
+
+    /// Opens Capture Area's picker over the canvas and returns whether it opened. Closes a
+    /// quick picker, commits a label being typed, drops any drawing in progress, freezes the
+    /// fade, and moves the toolbar aside so the whole display can be picked. `onPick` gets the
+    /// picked rectangle in the overlay view's coordinates, before the picker closes, so a
+    /// capture made there reads the annotations at the fade the picker showed.
+    @discardableResult
+    func beginRegionPicker(onPick: @escaping (CGRect) -> Void) -> Bool {
+        guard regionPicker == nil, !overlayView.isReadOnlyMode else { return false }
+        cancelQuickPicker()
+        if let activeField = overlayView.activeTextField {
+            overlayView.finalizeTextAnnotation(activeField)
+        }
+        discardLiveDrawing()
+        restoreMouseCoalescing()
+
+        let picker = RegionPicker(frame: overlayView.bounds)
+        picker.onPick = { [weak self] rect in
+            onPick(rect)
+            self?.cancelRegionPicker()
+        }
+        picker.onCancel = { [weak self] in self?.cancelRegionPicker() }
+        overlayView.addSubview(picker)
+        regionPicker = picker
+        overlayView.freezeFade()
+        toolbarPanel?.detach()
+        invalidateCursorRects(for: picker)
+        NSCursor.crosshair.set()
+        return true
+    }
+
+    /// Closes Capture Area's picker without picking, and lets the fade run again.
+    func cancelRegionPicker() {
+        guard let picker = regionPicker else { return }
+        regionPicker = nil
+        picker.removeFromSuperview()
+        overlayView.resumeFade()
+        updateToolbarVisibility()
+        invalidateCursorRects(for: overlayView)
+        overlayView.updateCursor()
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -894,16 +956,19 @@ class OverlayWindow: NSPanel {
         case .clearAll: performClearAll()
         case .captureScreen:
             if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
+        case .captureArea:
+            if !chord.isRepeat { AppDelegate.shared?.captureArea() }
         }
         return true
     }
 
-    /// Whether `action`'s shortcut works while a label is being typed. Capture Screen does
-    /// when its binding has Command, which no typed character carries; it commits the label
-    /// and captures, as the menu item does. Every other shortcut, and a Capture Screen binding
-    /// without Command, types into the label instead.
+    /// Whether `action`'s shortcut works while a label is being typed. Capture Screen and
+    /// Capture Area do when their binding has Command, which no typed character carries; they
+    /// commit the label first, as their menu items do. Every other shortcut, and a capture
+    /// binding without Command, types into the label instead.
     static func firesWhileEditingText(_ action: ShortcutKey) -> Bool {
-        action == .captureScreen && ShortcutManager.shared.binding(for: action).modifiers.contains(.command)
+        [.captureScreen, .captureArea].contains(action)
+            && ShortcutManager.shared.binding(for: action).modifiers.contains(.command)
     }
 
     private func handleQuickPickerKeyUp(_ chord: KeyChord) -> Bool {
@@ -1665,6 +1730,10 @@ class OverlayWindow: NSPanel {
             super.keyDown(with: event)
             return
         }
+        if let regionPicker {
+            regionPicker.handleKey(chord)
+            return
+        }
         if handleQuickPickerKeyDown(chord) {
             return
         }
@@ -2314,6 +2383,9 @@ class OverlayWindow: NSPanel {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard let chord = KeyChord(event: event) else {
             return super.performKeyEquivalent(with: event)
+        }
+        if let regionPicker {
+            return regionPicker.handleKey(chord)
         }
         if handleQuickPickerKeyDown(chord) || handleOverlayShortcut(chord) { return true }
 

@@ -16,8 +16,8 @@ enum AnnotateCommand: Hashable, Sendable {
     case toolbar(CommandSwitch)
     case fade(CommandSwitch)
     case board(CommandSwitch)
-    /// Saves an image of the display with its annotations and copies it to the clipboard.
-    /// Never runs from a link.
+    /// Saves an image of the display, or of an area the user drags out, with its annotations
+    /// and copies it to the clipboard. Never runs from a link.
     case capture(CaptureScope)
 
     /// Whether running a command changed anything.
@@ -151,7 +151,8 @@ enum AnnotateCommand: Hashable, Sendable {
                 icon: board.currentBoardType == .blackboard ? "⬛" : "⬜")
             return enabled == current ? .noOp : .ran
         case .capture(let scope):
-            // The capture finishes later and reports itself on the overlay.
+            // The capture finishes later and reports itself on the overlay. Capture Area
+            // first waits for the user to drag out the area.
             appDelegate.capture(scope)
             return .ran
         }

@@ -3,8 +3,9 @@ import os
 
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
 
-/// Capture Screen from the menu, the overlay shortcut, and `AnnotateCommand.capture`: picks the
-/// display, reads what its overlay shows, and reports the result on that overlay.
+/// Capture Screen and Capture Area from the menu, the overlay shortcuts, and
+/// `AnnotateCommand.capture`: picks the display, reads what its overlay shows, and reports the
+/// result on that overlay.
 extension AppDelegate {
     /// The display a capture saves: the key interactive overlay's, else the one under the
     /// pointer, else the main display.
@@ -18,9 +19,19 @@ extension AppDelegate {
         return Self.captureTarget(keyOverlay: keyOverlay, pointer: getCurrentScreen(), main: NSScreen.main)
     }
 
+    /// The display Capture Area picks on: the key interactive overlay's, else the open overlay
+    /// under the pointer, else any open overlay.
+    private var areaTargetScreen: NSScreen? {
+        let open = overlayWindows.filter { $0.value.isVisible }
+        if let key = open.first(where: { $0.value.isKeyWindow })?.key { return key }
+        if let pointer = getCurrentScreen(), open[pointer] != nil { return pointer }
+        return NSScreen.screens.first { open[$0] != nil }
+    }
+
     func capture(_ scope: CaptureScope) {
         switch scope {
         case .screen: captureScreen()
+        case .area: captureArea()
         }
     }
 
@@ -32,12 +43,60 @@ extension AppDelegate {
             return
         }
         let overlay = overlayWindows[screen]
-        let request = CaptureRequest(
-            display: display,
-            scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
-            hostTime: CACurrentMediaTime(),
-            date: Date())
+        startCapture(
+            CaptureRequest(
+                display: display,
+                scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
+                hostTime: CACurrentMediaTime(),
+                date: Date()),
+            on: overlay)
+    }
 
+    /// Lets the user drag out part of a display, then saves it with its board and annotations
+    /// and copies it, as Capture Screen does. The picker needs the interactive overlay, so with
+    /// none open, including in Always-On, this opens it first. The fade holds while picking,
+    /// and the capture shows each annotation at the fade the picker showed.
+    @objc func captureArea() {
+        if !isInteractiveOverlayOpen {
+            // Always-On annotations are on screen, so the overlay opening over them keeps them,
+            // even with Clear Drawings on Start.
+            if alwaysOnMode, let screen = getCurrentScreen(), let overlay = overlayWindows[screen] {
+                overlaysKeepingDrawings.insert(ObjectIdentifier(overlay))
+            }
+            showInteractiveOverlay()
+        }
+        guard let screen = areaTargetScreen, let overlay = overlayWindows[screen],
+            let display = DisplayInfo(screen: screen)
+        else {
+            log.error("No overlay to pick an area on")
+            return
+        }
+        guard !overlay.isRegionPickerOpen else { return }
+        // Without Screen Recording the drag would come to nothing, so ask before it starts.
+        let board = BoardManager.shared
+        if !captureService.source.canCapture,
+            !CaptureScene.boardCoversScreen(board.appearance, opacity: CGFloat(board.opacity))
+        {
+            showScreenRecordingOff(on: overlay)
+            return
+        }
+        // The picker reads Escape from its own overlay, and another display's may be key.
+        overlay.makeKeyAndOrderFront(nil)
+        overlay.beginRegionPicker { [weak self, weak overlay] rect in
+            guard let self, let overlay else { return }
+            // Runs before the picker closes, so the scene's fade clock is still frozen.
+            self.startCapture(
+                CaptureRequest(
+                    display: display,
+                    region: .rect(fromViewRect: rect, displayHeight: display.frame.height),
+                    scene: self.captureScene(of: overlay),
+                    hostTime: CACurrentMediaTime(),
+                    date: Date()),
+                on: overlay)
+        }
+    }
+
+    private func startCapture(_ request: CaptureRequest, on overlay: OverlayWindow?) {
         // Each capture waits for the one before it, so captures finish in the order they were
         // asked for: an older image never replaces a newer one on the clipboard or in the HUD,
         // and every capture still gets its own file. The scene above is already taken, so the

@@ -300,6 +300,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// The time fade alphas and expiry are measured at. Test hook: production keeps the media
     /// clock that creation times are stamped with.
     var fadeClock: () -> CFTimeInterval = CACurrentMediaTime
+    /// The running clock while `freezeFade()` holds `fadeClock` still, or nil.
+    private var clockBeforeFreeze: (() -> CFTimeInterval)?
+    /// Whether `freezeFade()` is holding every annotation at its current fade.
+    var isFadeFrozen: Bool { clockBeforeFreeze != nil }
     /// How long annotations caught mid-fade take to return to full strength after a switch
     /// to Persist.
     let persistRestoreDuration: CFTimeInterval = 0.15
@@ -468,6 +472,29 @@ class OverlayView: NSView, NSTextFieldDelegate {
     private func clearSelectionForHistoryStep() {
         guard !selectedObjects.isEmpty else { return }
         selectedObjects.removeAll()
+    }
+
+    /// Holds every annotation at its current fade while Capture Area's picker is open. Fade
+    /// Mode's default hold is shorter than a drag, so without this an area would empty before
+    /// it was picked. Wraps the clock rather than replacing it, so a test clock keeps running
+    /// underneath.
+    func freezeFade() {
+        guard clockBeforeFreeze == nil else { return }
+        let running = fadeClock
+        let frozenAt = running()
+        clockBeforeFreeze = running
+        fadeClock = { frozenAt }
+        (window as? OverlayWindow)?.stopFadeLoop()
+    }
+
+    /// Lets the fade run on the real clock again. Each annotation picks up the fade its age
+    /// gives it; creation times stay as they are, since undo finds annotations by them.
+    func resumeFade() {
+        guard let running = clockBeforeFreeze else { return }
+        clockBeforeFreeze = nil
+        fadeClock = running
+        advanceFade()
+        startFadeLoopIfNeeded()
     }
 
     func startFadeLoopIfNeeded() {

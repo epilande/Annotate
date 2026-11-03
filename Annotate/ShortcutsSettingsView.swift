@@ -257,6 +257,13 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ShortcutSettingRow(
+                    tool: .captureArea,
+                    label: ShortcutKey.captureArea.displayName,
+                    description: "Drag out part of the display to save and copy",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
             } header: {
                 SettingsHeader(
                     icon: "slider.horizontal.3",

@@ -456,6 +456,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(AnnotateCommand.fade(.toggle).path, "/fade/toggle")
         XCTAssertEqual(AnnotateCommand.board(.on).path, "/board/on")
         XCTAssertEqual(AnnotateCommand.capture(.screen).path, "/capture/screen")
+        XCTAssertEqual(AnnotateCommand.capture(.area).path, "/capture/area")
     }
 
     func testPathParsingIsLenientAboutSlashesAndCase() {
@@ -909,6 +910,197 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(item.title, "Capture Screen")
         XCTAssertEqual(item.keyEquivalent, "s")
         XCTAssertEqual(item.keyEquivalentModifierMask, .command)
+    }
+
+    // MARK: - Capture Area
+
+    /// Presses at `start`, drags to `end`, and releases there, through the overlay's own event
+    /// routing. Points are in the overlay view's coordinates, which the window shares.
+    private func drag(from start: NSPoint, to end: NSPoint) throws {
+        let steps: [(NSEvent.EventType, NSPoint)] = [(.leftMouseDown, start), (.leftMouseDragged, end), (.leftMouseUp, end)]
+        for (type, point) in steps {
+            overlay.sendEvent(
+                try XCTUnwrap(TestEvents.createMouseEvent(type: type, location: point, windowNumber: overlay.windowNumber)))
+        }
+    }
+
+    private func pressEscape() throws {
+        overlay.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createKeyEvent(
+                    type: .keyDown, keyCode: 53, characters: "\u{1b}", windowNumber: overlay.windowNumber)))
+    }
+
+    func testCaptureAreaOpensTheOverlayAndSavesTheDraggedArea() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        XCTAssertTrue(visibleOverlays.isEmpty)
+
+        XCTAssertEqual(run(.capture(.area)), .ran)
+
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertNil(appDelegate.captureTask, "Nothing is captured before the drag")
+        overlay.overlayView.rectangles = [solidRedactionInTheCorner]
+
+        // Up and to the left, from (80, 60) to the display's bottom-left corner.
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        await appDelegate.captureTask?.value
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(try XCTUnwrap(files.first))")
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let scale = screen.backingScaleFactor
+        XCTAssertEqual(image.width, Int(80 * scale))
+        XCTAssertEqual(image.height, Int(60 * scale))
+        // The 40 point solid redaction in the bottom-left corner, and the screen beside it.
+        let corner = CaptureTestImages.pixel(image, x: 4, y: image.height - 4)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 0, g: 0, b: 0, a: 255)), "\(corner)")
+        let topRight = CaptureTestImages.pixel(image, x: image.width - 4, y: 4)
+        XCTAssertTrue(topRight.isClose(to: RGBA(r: 0, g: 0, b: 255, a: 255)), "\(topRight)")
+    }
+
+    func testEscapeCancelsCaptureAreaAndKeepsTheOverlayOpen() throws {
+        try useStubCapture()
+        run(.show)
+        let toolbarWasAttached = overlay.toolbarPanel?.isAttached
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertEqual(overlay.toolbarPanel?.isAttached ?? false, false, "The whole display can be picked")
+
+        try pressEscape()
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen, "Escape closes only the picker")
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+        XCTAssertEqual(overlay.toolbarPanel?.isAttached, toolbarWasAttached)
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCaptureAreaHoldsTheFadeAndCapturesAtTheHeldTime() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        var clock: CFTimeInterval = 1000
+        view.fadeClock = { clock }
+        view.fadeMode = true
+        // A thick red outline around the bottom-left corner, made just now.
+        var outline = Rectangle(
+            startPoint: .zero, endPoint: NSPoint(x: 40, y: 40), color: .red, lineWidth: 20, style: .outline)
+        outline.creationTime = clock
+        view.rectangles = [outline]
+
+        run(.capture(.area))
+        XCTAssertTrue(view.isFadeFrozen)
+        XCTAssertNil(overlay.fadeTimer, "A held fade has nothing to animate")
+        // The drag takes far longer than the outline lasts.
+        clock += view.fadeDuration * 10
+        XCTAssertEqual(view.fadeClock(), 1000)
+
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+
+        XCTAssertFalse(view.isFadeFrozen)
+        XCTAssertEqual(view.fadeClock(), clock, "The fade runs on the real clock again")
+        XCTAssertTrue(view.rectangles.isEmpty, "Once the picker closes the outline is past its fade")
+        await appDelegate.captureTask?.value
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "Captured as the picker showed it: \(corner)")
+    }
+
+    func testCaptureAreaFromAlwaysOnOpensTheInteractiveOverlayWithItsDrawings() throws {
+        try useStubCapture()
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        appDelegate.toggleAlwaysOnMode()
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.area))
+
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "The Always-On drawings were on screen, so they stay")
+    }
+
+    func testCaptureAreaFromAClosedOverlayStillClearsWithClearDrawingsOnStart() throws {
+        try useStubCapture()
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.area))
+
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertTrue(overlay.overlayView.paths.isEmpty, "Opens the way the overlay shortcut does")
+    }
+
+    func testShiftCommandSWhileTypingALabelCommitsItAndPicks() throws {
+        try useStubCapture()
+        let view = try startTypingALabel("Hello")
+
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("S", modifiers: [.shift, .command])))
+
+        XCTAssertNil(view.activeTextField)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+    }
+
+    func testShortcutsStandDownWhilePicking() throws {
+        try useStubCapture()
+        run(.show)
+        overlay.overlayView.currentTool = .arrow
+        run(.capture(.area))
+
+        overlay.sendEvent(try keyDown("p"))
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
+
+        XCTAssertEqual(overlay.overlayView.currentTool, .arrow)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testClosingTheOverlayCancelsThePicker() throws {
+        try useStubCapture()
+        run(.capture(.area))
+        XCTAssertTrue(overlay.overlayView.isFadeFrozen)
+
+        run(.hide)
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+    }
+
+    func testCaptureAreaWithoutScreenRecordingAsksBeforePicking() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var opened: [SettingsPane] = []
+        appDelegate.openSettingsPane = { pane, _, _ in opened.append(pane) }
+        run(.show)
+
+        run(.capture(.area))
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        runLoop { !opened.isEmpty }
+        XCTAssertEqual(opened, [.capture])
+    }
+
+    func testCaptureAreaOverAnOpaqueBoardNeedsNoScreenRecording() throws {
+        try useStubCapture(canCapture: false)
+        BoardManager.shared.isEnabled = true
+        BoardManager.shared.opacity = 1
+        run(.show)
+
+        run(.capture(.area))
+
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+    }
+
+    func testCaptureAreaMenuItemTakesTheShortcut() throws {
+        let item = try XCTUnwrap(
+            appDelegate.statusItem.menu?.items.first { $0.action == #selector(AppDelegate.captureArea) })
+        XCTAssertEqual(item.title, "Capture Area")
+        XCTAssertEqual(item.keyEquivalent, "s")
+        XCTAssertEqual(item.keyEquivalentModifierMask, [.shift, .command])
     }
 
     // MARK: - App Intents

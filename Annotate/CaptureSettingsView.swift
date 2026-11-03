@@ -44,7 +44,7 @@ struct CaptureSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("capture.folderError")
                 }
-                Text("Capture Screen saves a PNG of the display, with the board and annotations as they appear, to this folder and copies it to the clipboard.")
+                Text("Capture Screen saves a PNG of the display, and Capture Area of a part you drag out, with the board and annotations as they appear, to this folder and copies it to the clipboard.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -52,8 +52,8 @@ struct CaptureSettingsView: View {
                 SettingsHeader(
                     icon: "camera.viewfinder",
                     color: .teal,
-                    title: "Capture Screen",
-                    subtitle: "Save the display with its annotations"
+                    title: "Capture",
+                    subtitle: "Save the display or an area with its annotations"
                 )
             }
 
@@ -78,8 +78,8 @@ struct CaptureSettingsView: View {
         .onChange(of: navigation.requestsScreenRecording) { _, _ in requestAccessIfAsked() }
     }
 
-    /// Capture Screen and the Redact tool's Pixelate and Blur read the screen, which macOS
-    /// gates behind Screen Recording.
+    /// Capture and the Redact tool's Pixelate and Blur read the screen, which macOS gates
+    /// behind Screen Recording.
     private var screenRecordingRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -96,7 +96,7 @@ struct CaptureSettingsView: View {
                     }
                 }
             }
-            Text("Capture Screen and the Redact tool's Pixelate and Blur styles read the pixels on screen. Until access is granted, Capture Screen works only while a fully opaque board is showing, and redactions use a solid fill. macOS may ask you to relaunch Annotate first.")
+            Text("Capture Screen, Capture Area, and the Redact tool's Pixelate and Blur styles read the pixels on screen. Until access is granted, capture works only while a fully opaque board is showing, and redactions use a solid fill. macOS may ask you to relaunch Annotate first.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

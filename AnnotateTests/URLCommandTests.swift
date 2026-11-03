@@ -111,6 +111,7 @@ final class URLCommandTests: XCTestCase {
             ("annotate://tool/brush", .unknownCommand),
             ("annotate://tool/arrow/extra", .unknownCommand),
             ("annotate://capture/screen", .notFromLinks),
+            ("annotate://capture/area", .notFromLinks),
             ("ANNOTATE://Capture/Screen/", .notFromLinks),
         ]
         for (string, reason) in cases {
@@ -197,12 +198,15 @@ final class URLCommandTests: XCTestCase {
         let source = StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 8, height: 8, RGBA(r: 0, g: 0, b: 255, a: 255)))
         appDelegate.captureService = CaptureService(source: source, sinks: [])
         try open("annotate-debug://show")
+        let overlay = try XCTUnwrap(overlay)
 
         XCTAssertNil(appDelegate.openCommandURL(try link("annotate-debug://capture/screen")))
-        try open("annotate-debug://capture/screen")
+        XCTAssertNil(appDelegate.openCommandURL(try link("annotate-debug://capture/area")))
+        try open("annotate-debug://capture/screen", "annotate-debug://capture/area")
 
         XCTAssertNil(appDelegate.captureTask)
         XCTAssertEqual(source.captureCount, 0)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
     }
 
     func testMalformedLinksChangeNothing() throws {
