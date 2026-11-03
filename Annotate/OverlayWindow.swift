@@ -748,7 +748,9 @@ class OverlayWindow: NSPanel {
         toolbarPanel?.detach()
         // An active cursor style hides the system cursor and draws its own; the picker needs
         // the crosshair, so the style stands down on this display until the picker closes.
-        // The canvas answers the window's cursor updates, so it shows the crosshair too.
+        // The canvas answers the window's cursor updates, so it shows the crosshair too. The
+        // window that drew the style stays ordered in, since ordering it out from under the
+        // pointer makes AppKit set the arrow (see `CursorHighlightWindow.updateVisibility`).
         overlayView.cursorOverride = .crosshair
         CursorHighlightManager.shared.overlayVisibilityChanged()
         invalidateCursorRects(for: picker)

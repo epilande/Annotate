@@ -1117,8 +1117,9 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(view.rectangles.count, 1)
     }
 
-    func testActiveCursorStyleStandsDownWhilePicking() async throws {
-        try useStubCapture()
+    /// Swaps in a cursor manager on the test's defaults, and makes the cursor effects windows
+    /// again so they draw from it too: each one's view keeps the manager it was made with.
+    private func useTestCursorManager() -> CursorHighlightManager {
         let original = CursorHighlightManager.shared
         let manager = CursorHighlightManager(userDefaults: testDefaults)
         CursorHighlightManager.shared = manager
@@ -1126,6 +1127,18 @@ final class AnnotateCommandTests: XCTestCase {
             manager.showSystemCursor()
             CursorHighlightManager.shared = original
         }
+        appDelegate.cursorHighlightWindows.values.forEach {
+            $0.stopAnimationLoop()
+            $0.close()
+        }
+        appDelegate.cursorHighlightWindows.removeAll()
+        appDelegate.setupCursorHighlightWindows()
+        return manager
+    }
+
+    func testActiveCursorStyleStandsDownWhilePicking() async throws {
+        try useStubCapture()
+        let manager = useTestCursorManager()
         manager.activeCursorStyle = .circle
         run(.show)
         let view = try XCTUnwrap(overlay.overlayView)
@@ -1182,13 +1195,7 @@ final class AnnotateCommandTests: XCTestCase {
 
     func testThePickerShowsTheCrosshairWithEveryCursorStyle() throws {
         try useStubCapture()
-        let original = CursorHighlightManager.shared
-        let manager = CursorHighlightManager(userDefaults: testDefaults)
-        CursorHighlightManager.shared = manager
-        addTeardownBlock { @MainActor in
-            manager.showSystemCursor()
-            CursorHighlightManager.shared = original
-        }
+        let manager = useTestCursorManager()
         run(.show)
         let view = try XCTUnwrap(overlay.overlayView)
 
@@ -1213,6 +1220,42 @@ final class AnnotateCommandTests: XCTestCase {
             try deliverCursorUpdate()
             XCTAssertFalse(NSCursor.current === NSCursor.crosshair, "\(style): the tool's cursor is back")
             XCTAssertEqual(manager.isCursorHidden, style != .none, "\(style)")
+        }
+    }
+
+    func testTheCursorStyleWindowStaysInPlaceWhilePicking() throws {
+        // AppKit sets the arrow when the pointer leaves one of the app's windows, and that
+        // includes the click-through window that draws the cursor style. Standing the style
+        // down for the picker used to order that window out from under the pointer, so the
+        // arrow replaced the crosshair a moment after the picker opened, and nothing put it
+        // back. XCTest can't put the pointer over a window, so this checks the window stays.
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        manager.clickEffectsEnabled = false
+        manager.cursorPosition = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+        run(.show)
+        let effects = try XCTUnwrap(appDelegate.cursorHighlightWindows[screen])
+        let layers = try XCTUnwrap(effects.highlightView.layer?.sublayers)
+        let styleCursor = try XCTUnwrap(layers.first { $0.name == "activeCursor" })
+        let styleOutline = try XCTUnwrap(layers.first { $0.name == "activeCursorOutline" })
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            // With no style and no other effect the window is out, and it stays out: ordering
+            // it in for the pick would order it out again as the picker closes.
+            let drawsStyle = style != .none
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) before picking")
+            XCTAssertEqual(styleCursor.opacity, drawsStyle ? 1 : 0, "\(style) before picking")
+
+            run(.capture(.area))
+            XCTAssertTrue(overlay.isRegionPickerOpen, "\(style)")
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) while picking")
+            XCTAssertEqual(styleCursor.opacity, 0, "\(style): its cursor is gone while picking")
+            XCTAssertEqual(styleOutline.opacity, 0, "\(style): its cursor is gone while picking")
+
+            try pressEscape()
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) after picking")
+            XCTAssertEqual(styleCursor.opacity, drawsStyle ? 1 : 0, "\(style) is back after picking")
         }
     }
 

@@ -320,6 +320,11 @@ class CursorHighlightManager: @unchecked Sendable {
         AppDelegate.shared?.overlayWindows.keys.contains { shouldShowActiveCursorOnScreen($0) } ?? false
     }
 
+    /// Whether Capture Area's picker is open on any display.
+    var isRegionPickerOpenOnAnyScreen: Bool {
+        AppDelegate.shared?.overlayWindows.values.contains { $0.isRegionPickerOpen } ?? false
+    }
+
     // MARK: - Excluded Applications Suppression
 
     /// Whether an excluded application currently has frontmost focus.

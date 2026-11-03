@@ -89,11 +89,13 @@ class CursorHighlightView: NSView {
         releaseRingLayer = releaseLayer
 
         let cursorOutline = CAShapeLayer()
+        cursorOutline.name = "activeCursorOutline"
         cursorOutline.opacity = 0
         layer?.addSublayer(cursorOutline)
         activeCursorOutlineLayer = cursorOutline
 
         let cursorLayer = CAShapeLayer()
+        cursorLayer.name = "activeCursor"
         cursorLayer.opacity = 0
         layer?.addSublayer(cursorLayer)
         activeCursorLayer = cursorLayer

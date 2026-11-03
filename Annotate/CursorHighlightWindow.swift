@@ -130,7 +130,7 @@ class CursorHighlightWindow: NSPanel {
     // MARK: - Visibility
 
     /// Orders the window in or out based on which effects are enabled, applying
-    /// the current spotlight/dimming state immediately rather than waiting for a frame.
+    /// the current spotlight/dimming/active cursor state immediately rather than waiting for a frame.
     func updateVisibility() {
         let manager = CursorHighlightManager.shared
 
@@ -139,8 +139,16 @@ class CursorHighlightWindow: NSPanel {
         highlightView.updateSpotlightPosition()
         highlightView.updateDimming()
         highlightView.updateHoldRingPosition()
+        highlightView.updateActiveCursor()
 
-        if manager.isActive || manager.cursorHighlightAvailable || manager.shouldShowActiveCursorOnAnyScreen() {
+        let isNeeded = manager.isActive || manager.cursorHighlightAvailable
+            || manager.shouldShowActiveCursorOnAnyScreen()
+        // AppKit sets the arrow when the pointer leaves one of the app's windows, this
+        // click-through one included, and ordering it out from under the pointer counts. While
+        // Capture Area's picker is open nothing would put the crosshair back, so a window that
+        // is in stays in until the picker closes. One that is out stays out, or closing the
+        // picker would order it out again and replace the tool's cursor.
+        if isNeeded || (isVisible && manager.isRegionPickerOpenOnAnyScreen) {
             orderFront(nil)
             startAnimationLoop()
         } else {
