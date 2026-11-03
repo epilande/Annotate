@@ -1140,9 +1140,12 @@ final class AnnotateCommandTests: XCTestCase {
         view.updateCursor()
         XCTAssertFalse(manager.isCursorHidden)
 
-        // Cancelling brings the style back.
+        // Cancelling brings the style back. The canvas is asked directly: a state change also
+        // refreshes hidden overlays on other displays, which show the system cursor, so with
+        // two displays the shared result depends on which overlay goes last.
         try pressEscape()
         XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        view.updateCursor()
         XCTAssertTrue(manager.isCursorHidden)
 
         // So does picking.
@@ -1150,8 +1153,62 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(manager.isCursorHidden)
         try drag(from: .zero, to: NSPoint(x: 80, y: 60))
         XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        view.updateCursor()
         XCTAssertTrue(manager.isCursorHidden)
         await appDelegate.captureTask?.value
+    }
+
+    /// Sends a cursor update the way AppKit does: to the owner of each cursor-update tracking
+    /// area in the overlay, which is the canvas, not the picker on top of it.
+    private func deliverCursorUpdate() throws {
+        let event = try XCTUnwrap(
+            NSEvent.enterExitEvent(
+                with: .cursorUpdate,
+                location: NSPoint(x: 300, y: 300),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: overlay.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                trackingNumber: 0,
+                userData: nil))
+        let views = [overlay.overlayView as NSView] + overlay.overlayView.subviews
+        let owners = views.flatMap(\.trackingAreas)
+            .filter { $0.options.contains(.cursorUpdate) }
+            .compactMap { $0.owner as? NSResponder }
+        XCTAssertFalse(owners.isEmpty, "Something must answer cursor updates")
+        owners.forEach { $0.cursorUpdate(with: event) }
+    }
+
+    func testThePickerShowsTheCrosshairWithEveryCursorStyle() throws {
+        try useStubCapture()
+        let original = CursorHighlightManager.shared
+        let manager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = manager
+        addTeardownBlock { @MainActor in
+            manager.showSystemCursor()
+            CursorHighlightManager.shared = original
+        }
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            run(.capture(.area))
+            NSCursor.arrow.set()
+
+            // AppKit asks again on every move across the overlay; each answer must be the crosshair.
+            try deliverCursorUpdate()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) while picking")
+            view.updateCursor()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) after the canvas refreshes its cursor")
+            XCTAssertFalse(manager.isCursorHidden, "\(style)")
+
+            try pressEscape()
+            try deliverCursorUpdate()
+            XCTAssertFalse(NSCursor.current === NSCursor.crosshair, "\(style): the tool's cursor is back")
+            XCTAssertEqual(manager.isCursorHidden, style != .none, "\(style)")
+        }
     }
 
     func testCaptureAreaFromAClosedOverlayStillClearsWithClearDrawingsOnStart() throws {

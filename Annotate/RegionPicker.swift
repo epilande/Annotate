@@ -147,21 +147,10 @@ final class RegionPicker: NSView {
 
     // MARK: - Cursor and layers
 
+    /// The canvas under the picker owns the window's cursor-update tracking area, so the
+    /// overlay also sets the crosshair there while the picker is open.
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(
-            NSTrackingArea(
-                rect: bounds, options: [.cursorUpdate, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-
-    /// The canvas under the picker sets its own cursor on these, so the picker answers first.
-    override func cursorUpdate(with event: NSEvent) {
-        NSCursor.crosshair.set()
     }
 
     override func layout() {

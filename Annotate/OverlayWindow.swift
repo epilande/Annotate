@@ -748,11 +748,10 @@ class OverlayWindow: NSPanel {
         toolbarPanel?.detach()
         // An active cursor style hides the system cursor and draws its own; the picker needs
         // the crosshair, so the style stands down on this display until the picker closes.
-        let cursorManager = CursorHighlightManager.shared
-        cursorManager.overlayVisibilityChanged()
-        cursorManager.showSystemCursor()
+        // The canvas answers the window's cursor updates, so it shows the crosshair too.
+        overlayView.cursorOverride = .crosshair
+        CursorHighlightManager.shared.overlayVisibilityChanged()
         invalidateCursorRects(for: picker)
-        NSCursor.crosshair.set()
         return true
     }
 
@@ -764,9 +763,8 @@ class OverlayWindow: NSPanel {
         picker.removeFromSuperview()
         overlayView.resumeFade()
         updateToolbarVisibility()
+        overlayView.cursorOverride = nil
         CursorHighlightManager.shared.overlayVisibilityChanged()
-        invalidateCursorRects(for: overlayView)
-        overlayView.updateCursor()
         let onDismiss = regionPickerDismissHandler
         regionPickerDismissHandler = nil
         onDismiss?()

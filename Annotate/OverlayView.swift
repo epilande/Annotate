@@ -379,7 +379,23 @@ class OverlayView: NSView, NSTextFieldDelegate {
         updateCursorTrackingArea()
     }
 
+    /// A cursor that replaces every tool and cursor-style cursor on this canvas while set, as
+    /// Capture Area's crosshair does while its picker is open. The canvas owns the window's
+    /// cursor-update tracking area, so it, not the picker on top, answers cursor updates; left
+    /// to itself it would fall back to the arrow.
+    var cursorOverride: NSCursor? {
+        didSet {
+            guard cursorOverride !== oldValue else { return }
+            window?.invalidateCursorRects(for: self)
+            updateCursor()
+        }
+    }
+
     override func cursorUpdate(with event: NSEvent) {
+        if let cursorOverride {
+            cursorOverride.set()
+            return
+        }
         // Over a side handle, the label's width is what is about to change.
         if resizeHandle != nil
             || textResizeHandle(at: convert(event.locationInWindow, from: nil)) != nil {
@@ -398,6 +414,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     func updateCursor() {
+        if let cursorOverride {
+            CursorHighlightManager.shared.showSystemCursor()
+            cursorOverride.set()
+            return
+        }
         // Show I-beam cursor in text mode when no text field is active
         if currentTool == .text && activeTextField == nil {
             NSCursor.iBeam.set()
@@ -415,7 +436,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        if currentTool == .text && activeTextField == nil {
+        if let cursorOverride {
+            addCursorRect(bounds, cursor: cursorOverride)
+        } else if currentTool == .text && activeTextField == nil {
             addCursorRect(bounds, cursor: .iBeam)
         } else if shouldShowActiveCursorForThisOverlay() {
             addCursorRect(bounds, cursor: Self.transparentCursor)
