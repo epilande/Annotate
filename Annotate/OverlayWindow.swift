@@ -40,6 +40,7 @@ class OverlayWindow: NSPanel {
     private var mouseCoalescingSnapshot: Bool?
     /// Capture Area's picker while it is open. See `beginRegionPicker(onPick:)`.
     private(set) var regionPicker: RegionPicker?
+    private var regionPickerDismissHandler: (() -> Void)?
     // Latched at mouseDown: currentTool can change mid-drag via tool shortcuts
     private var activeFreehandTool: ToolType?
     private var activeShapeTool: ToolType?
@@ -722,9 +723,10 @@ class OverlayWindow: NSPanel {
     /// quick picker, commits a label being typed, drops any drawing in progress, freezes the
     /// fade, and moves the toolbar aside so the whole display can be picked. `onPick` gets the
     /// picked rectangle in the overlay view's coordinates, before the picker closes, so a
-    /// capture made there reads the annotations at the fade the picker showed.
+    /// capture made there reads the annotations at the fade the picker showed. `onDismiss`
+    /// runs once the picker has closed, whether it picked or not.
     @discardableResult
-    func beginRegionPicker(onPick: @escaping (CGRect) -> Void) -> Bool {
+    func beginRegionPicker(onDismiss: (() -> Void)? = nil, onPick: @escaping (CGRect) -> Void) -> Bool {
         guard regionPicker == nil, !overlayView.isReadOnlyMode else { return false }
         cancelQuickPicker()
         if let activeField = overlayView.activeTextField {
@@ -741,6 +743,7 @@ class OverlayWindow: NSPanel {
         picker.onCancel = { [weak self] in self?.cancelRegionPicker() }
         overlayView.addSubview(picker)
         regionPicker = picker
+        regionPickerDismissHandler = onDismiss
         overlayView.freezeFade()
         toolbarPanel?.detach()
         invalidateCursorRects(for: picker)
@@ -757,6 +760,9 @@ class OverlayWindow: NSPanel {
         updateToolbarVisibility()
         invalidateCursorRects(for: overlayView)
         overlayView.updateCursor()
+        let onDismiss = regionPickerDismissHandler
+        regionPickerDismissHandler = nil
+        onDismiss?()
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -1596,6 +1602,8 @@ class OverlayWindow: NSPanel {
     }
 
     func prepareForAlwaysOnMode() {
+        // Always-On is click-through, so a picker left open could never finish.
+        cancelRegionPicker()
         cancelQuickPicker()
         restoreMouseCoalescing()
         cancelFreehandStroke()

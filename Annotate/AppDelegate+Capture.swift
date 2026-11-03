@@ -57,32 +57,51 @@ extension AppDelegate {
     /// none open, including in Always-On, this opens it first. The fade holds while picking,
     /// and the capture shows each annotation at the fade the picker showed.
     @objc func captureArea() {
-        if !isInteractiveOverlayOpen {
-            // Always-On annotations are on screen, so the overlay opening over them keeps them,
-            // even with Clear Drawings on Start.
-            if alwaysOnMode, let screen = getCurrentScreen(), let overlay = overlayWindows[screen] {
-                overlaysKeepingDrawings.insert(ObjectIdentifier(overlay))
-            }
-            showInteractiveOverlay()
-        }
-        guard let screen = areaTargetScreen, let overlay = overlayWindows[screen],
-            let display = DisplayInfo(screen: screen)
-        else {
-            log.error("No overlay to pick an area on")
-            return
-        }
-        guard !overlay.isRegionPickerOpen else { return }
-        // Without Screen Recording the drag would come to nothing, so ask before it starts.
+        // Without Screen Recording the drag would come to nothing, so ask before anything opens.
+        // From Always-On, the Screen Recording flow brings Always-On back afterwards, drawings
+        // and all.
         let board = BoardManager.shared
         if !captureService.source.canCapture,
             !CaptureScene.boardCoversScreen(board.appearance, opacity: CGFloat(board.opacity))
         {
-            showScreenRecordingOff(on: overlay)
+            showScreenRecordingOff(on: areaTargetScreen.flatMap { overlayWindows[$0] })
             return
         }
+        var heldAlwaysOnFade: OverlayWindow?
+        if !isInteractiveOverlayOpen {
+            // Always-On annotations are on screen, so the overlay opening over them keeps them,
+            // even with Clear Drawings on Start, and keeps Always-On's Persist fade until the
+            // picker closes, or leaving Always-On would expire the older ones at once.
+            if alwaysOnMode, let screen = getCurrentScreen(), let overlay = overlayWindows[screen] {
+                overlaysKeepingDrawings.insert(ObjectIdentifier(overlay))
+                overlaysHoldingAlwaysOnFade.insert(ObjectIdentifier(overlay))
+                heldAlwaysOnFade = overlay
+            }
+            showInteractiveOverlay()
+        }
+        let opened = beginAreaPicker(releasingHeldFadeOf: heldAlwaysOnFade)
+        if !opened, let heldAlwaysOnFade {
+            releaseHeldAlwaysOnFade(of: heldAlwaysOnFade)
+        }
+    }
+
+    /// Opens the picker on the target display, and returns whether it opened. When it does,
+    /// closing it in any way releases `held`'s Always-On fade.
+    private func beginAreaPicker(releasingHeldFadeOf held: OverlayWindow?) -> Bool {
+        guard let screen = areaTargetScreen, let overlay = overlayWindows[screen],
+            let display = DisplayInfo(screen: screen)
+        else {
+            log.error("No overlay to pick an area on")
+            return false
+        }
+        guard !overlay.isRegionPickerOpen else { return false }
         // The picker reads Escape from its own overlay, and another display's may be key.
         overlay.makeKeyAndOrderFront(nil)
-        overlay.beginRegionPicker { [weak self, weak overlay] rect in
+        let onDismiss: () -> Void = { [weak self] in
+            guard let self, let held else { return }
+            self.releaseHeldAlwaysOnFade(of: held)
+        }
+        return overlay.beginRegionPicker(onDismiss: onDismiss) { [weak self, weak overlay] rect in
             guard let self, let overlay else { return }
             // Runs before the picker closes, so the scene's fade clock is still frozen.
             self.startCapture(
@@ -94,6 +113,13 @@ extension AppDelegate {
                     date: Date()),
                 on: overlay)
         }
+    }
+
+    /// Gives an overlay Capture Area opened from Always-On its Fade Mode setting back. Back in
+    /// Always-On, as when its shortcut ended the pick, Persist stays as Always-On wants.
+    func releaseHeldAlwaysOnFade(of overlay: OverlayWindow) {
+        guard overlaysHoldingAlwaysOnFade.remove(ObjectIdentifier(overlay)) != nil, !alwaysOnMode else { return }
+        overlay.overlayView.fadeMode = settings[.fadeMode]
     }
 
     private func startCapture(_ request: CaptureRequest, on overlay: OverlayWindow?) {

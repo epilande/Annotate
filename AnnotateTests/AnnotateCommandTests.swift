@@ -1023,6 +1023,100 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(overlay.overlayView.paths.count, 1, "The Always-On drawings were on screen, so they stay")
     }
 
+    /// Enters Always-On in Fade Mode with a thick red outline around the bottom-left corner
+    /// made long ago: Always-On holds it in Persist, while Fade Mode would have expired it.
+    @discardableResult
+    private func showAnOldDrawingInAlwaysOn() throws -> OverlayView {
+        testDefaults.settings[.fadeMode] = true
+        let view = try XCTUnwrap(overlay.overlayView)
+        let clock: CFTimeInterval = 1000
+        view.fadeClock = { clock }
+        appDelegate.toggleAlwaysOnMode()
+        var outline = Rectangle(
+            startPoint: .zero, endPoint: NSPoint(x: 40, y: 40), color: .red, lineWidth: 20, style: .outline)
+        outline.creationTime = clock - view.fadeDuration * 10
+        view.rectangles = [outline]
+        return view
+    }
+
+    func testCaptureAreaFromAlwaysOnKeepsDrawingsPastTheirFade() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+
+        run(.capture(.area))
+
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertFalse(view.fadeMode, "Always-On's Persist holds through the pick")
+        XCTAssertEqual(view.rectangles.count, 1, "Leaving Always-On must not expire what it showed")
+
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+        await appDelegate.captureTask?.value
+
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "\(corner)")
+        XCTAssertTrue(view.fadeMode, "The Fade Mode setting is back once the picker closes")
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testCaptureAreaFromAlwaysOnGivesFadeModeBackOnEscape() throws {
+        try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+        run(.capture(.area))
+
+        try pressEscape()
+
+        XCTAssertTrue(view.fadeMode)
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testAlwaysOnShortcutWhilePickingClosesThePicker() throws {
+        try useStubCapture()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        // The global Always-On shortcut calls this directly, outside the picker's key handling.
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertFalse(view.isFadeFrozen)
+        XCTAssertFalse(view.subviews.contains { $0 is RegionPicker }, "No dimming left on a click-through overlay")
+    }
+
+    func testAlwaysOnShortcutWhilePickingFromAlwaysOnKeepsTheDrawings() throws {
+        try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+        run(.capture(.area))
+
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertFalse(view.fadeMode, "Back in Always-On's Persist")
+        XCTAssertEqual(view.rectangles.count, 1)
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testCaptureAreaWithoutScreenRecordingInAlwaysOnKeepsTheDrawings() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var closeSettings: (@MainActor () -> Void)?
+        appDelegate.openSettingsPane = { _, _, onClose in closeSettings = onClose }
+        let view = try showAnOldDrawingInAlwaysOn()
+
+        run(.capture(.area))
+        runLoop { closeSettings != nil }
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertTrue(appDelegate.alwaysOnMode, "Asking for access never leaves Always-On")
+        try XCTUnwrap(closeSettings)()
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(view.rectangles.count, 1)
+    }
+
     func testCaptureAreaFromAClosedOverlayStillClearsWithClearDrawingsOnStart() throws {
         try useStubCapture()
         testDefaults.settings[.clearDrawingsOnStart] = true

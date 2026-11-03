@@ -69,6 +69,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Overlays closed by the app rather than the user, which keep their drawings the next
     /// time they open even with Clear Drawings on Start.
     var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
+    /// Overlays Capture Area opened from Always-On. They keep Always-On's Persist fade until
+    /// the picker closes, so drawings Always-On still shows past their fade stay for the pick
+    /// and the capture.
+    var overlaysHoldingAlwaysOnFade: Set<ObjectIdentifier> = []
     /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
     /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
     /// Settings window opens.
@@ -901,7 +905,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.overlayView.isReadOnlyMode = false
         overlayWindow.updateToolbarVisibility()
 
-        overlayWindow.overlayView.fadeMode = settings[.fadeMode]
+        overlayWindow.overlayView.fadeMode =
+            overlaysHoldingAlwaysOnFade.contains(ObjectIdentifier(overlayWindow)) ? false : settings[.fadeMode]
         overlayWindow.overlayView.fadeDelay = settings[.fadeDelay]
         overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
