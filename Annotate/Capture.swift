@@ -119,13 +119,6 @@ struct Capture {
 enum CaptureDelivery: Equatable, Sendable {
     case file(URL)
     case clipboard
-
-    var destination: CaptureDestination {
-        switch self {
-        case .file: return .file
-        case .clipboard: return .clipboard
-        }
-    }
 }
 
 /// The kinds of place a capture can go.
