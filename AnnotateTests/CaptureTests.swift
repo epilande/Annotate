@@ -531,6 +531,28 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(ShortcutKey.newlyEditable.contains(.captureScreen))
         XCTAssertEqual(ShortcutKey.captureScreen.displayName, "Capture Screen")
     }
+
+    // MARK: - Capture pane
+
+    func testShowInFinderReportsAFolderItCantCreate() throws {
+        // A regular file where the folder should be.
+        let blocker = try temporaryFolder()
+        try Data().write(to: blocker)
+
+        guard case .failure(let error) = CaptureSettingsView.prepareFolder(blocker) else {
+            return XCTFail("Expected the folder to fail")
+        }
+        XCTAssertTrue(CaptureSettingsView.folderErrorMessage(error).hasPrefix("Couldn't create the folder."))
+
+        let folder = try temporaryFolder()
+        guard case .success(let created) = CaptureSettingsView.prepareFolder(folder) else {
+            return XCTFail("Expected the folder to be created")
+        }
+        XCTAssertEqual(created, folder)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+    }
 }
 
 /// `XCTUnwrap` for an optional produced by an `await`.

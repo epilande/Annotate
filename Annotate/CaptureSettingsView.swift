@@ -3,6 +3,8 @@ import SwiftUI
 struct CaptureSettingsView: View {
     var navigation: SettingsNavigation
     @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
+    /// Why Show in Finder couldn't make the folder, until it next succeeds.
+    @State private var folderError: String?
 
     static let screenCaptureSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
@@ -34,6 +36,13 @@ struct CaptureSettingsView: View {
                             .textSelection(.enabled)
                         Button("Show in Finder", action: showFolder)
                     }
+                }
+                if let folderError {
+                    Label(folderError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("capture.folderError")
                 }
                 Text("Capture Screen saves a PNG of the display, with the board and annotations as they appear, to this folder and copies it to the clipboard.")
                     .font(.footnote)
@@ -108,8 +117,24 @@ struct CaptureSettingsView: View {
     }
 
     private func showFolder() {
-        let folder = FileSink.defaultFolder
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(folder)
+        switch Self.prepareFolder(FileSink.defaultFolder) {
+        case .success(let folder):
+            folderError = nil
+            NSWorkspace.shared.open(folder)
+        case .failure(let error):
+            folderError = Self.folderErrorMessage(error)
+        }
+    }
+
+    /// Creates `folder` if it is missing, so Finder has something to open.
+    static func prepareFolder(_ folder: URL) -> Result<URL, Error> {
+        Result {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return folder
+        }
+    }
+
+    static func folderErrorMessage(_ error: Error) -> String {
+        "Couldn't create the folder. \(error.localizedDescription)"
     }
 }
