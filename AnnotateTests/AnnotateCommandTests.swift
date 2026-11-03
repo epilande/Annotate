@@ -638,6 +638,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.capture(.screen))
         // Give the second capture time to overtake the held first one if nothing orders them.
         try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(source.captureCount, 1, "The second capture must wait for the first to finish")
         source.open()
         await appDelegate.captureTask?.value
         // Unordered, the held capture would still be running here; let it finish too, so the
