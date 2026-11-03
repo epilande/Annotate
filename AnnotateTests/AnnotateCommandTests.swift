@@ -1117,6 +1117,43 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(view.rectangles.count, 1)
     }
 
+    func testActiveCursorStyleStandsDownWhilePicking() async throws {
+        try useStubCapture()
+        let original = CursorHighlightManager.shared
+        let manager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = manager
+        addTeardownBlock { @MainActor in
+            manager.showSystemCursor()
+            CursorHighlightManager.shared = original
+        }
+        manager.activeCursorStyle = .circle
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        view.updateCursor()
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertTrue(manager.isCursorHidden)
+
+        // Opening: the crosshair shows, and the canvas asking again doesn't hide it.
+        run(.capture(.area))
+        XCTAssertFalse(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertFalse(manager.isCursorHidden)
+        view.updateCursor()
+        XCTAssertFalse(manager.isCursorHidden)
+
+        // Cancelling brings the style back.
+        try pressEscape()
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertTrue(manager.isCursorHidden)
+
+        // So does picking.
+        run(.capture(.area))
+        XCTAssertFalse(manager.isCursorHidden)
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertTrue(manager.isCursorHidden)
+        await appDelegate.captureTask?.value
+    }
+
     func testCaptureAreaFromAClosedOverlayStillClearsWithClearDrawingsOnStart() throws {
         try useStubCapture()
         testDefaults.settings[.clearDrawingsOnStart] = true

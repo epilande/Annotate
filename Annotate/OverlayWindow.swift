@@ -746,18 +746,25 @@ class OverlayWindow: NSPanel {
         regionPickerDismissHandler = onDismiss
         overlayView.freezeFade()
         toolbarPanel?.detach()
+        // An active cursor style hides the system cursor and draws its own; the picker needs
+        // the crosshair, so the style stands down on this display until the picker closes.
+        let cursorManager = CursorHighlightManager.shared
+        cursorManager.overlayVisibilityChanged()
+        cursorManager.showSystemCursor()
         invalidateCursorRects(for: picker)
         NSCursor.crosshair.set()
         return true
     }
 
-    /// Closes Capture Area's picker without picking, and lets the fade run again.
+    /// Closes Capture Area's picker without picking, and lets the fade and the active cursor
+    /// style run again.
     func cancelRegionPicker() {
         guard let picker = regionPicker else { return }
         regionPicker = nil
         picker.removeFromSuperview()
         overlayView.resumeFade()
         updateToolbarVisibility()
+        CursorHighlightManager.shared.overlayVisibilityChanged()
         invalidateCursorRects(for: overlayView)
         overlayView.updateCursor()
         let onDismiss = regionPickerDismissHandler
