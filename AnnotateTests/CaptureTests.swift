@@ -429,6 +429,50 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(third.lastPathComponent, "Annotate X (3).png")
         XCTAssertEqual(try Data(contentsOf: first), Data([1]))
         XCTAssertEqual(try Data(contentsOf: second), Data([2]))
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted(),
+            ["Annotate X (2).png", "Annotate X (3).png", "Annotate X.png"],
+            "No temporary file is left behind")
+    }
+
+    func testWriteGoesThroughAHiddenTemporaryFileInTheSameFolder() {
+        let name = FileSink.temporaryFileName()
+        XCTAssertTrue(name.hasPrefix("."), "Finder hides it while it is written")
+        XCTAssertFalse(name.hasSuffix(".png"), "Nothing mistakes it for a capture")
+        XCTAssertNotEqual(name, FileSink.temporaryFileName())
+    }
+
+    func testWriteThatFailsPartwayLeavesNoTruncatedCapture() async throws {
+        let folder = try temporaryFolder()
+        struct DiskFull: Error {}
+
+        do {
+            _ = try await FileSink.write(Data([1, 2, 3, 4]), baseName: "Annotate X", in: folder) { data, url in
+                // Half the bytes land, then the disk fills up.
+                try data.prefix(2).write(to: url)
+                throw DiskFull()
+            }
+            XCTFail("Expected the write to fail")
+        } catch is DiskFull {}
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
+    }
+
+    func testFailedWriteLeavesNoFileBehind() async throws {
+        let folder = try temporaryFolder()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // A read-only folder: the temporary file can't be written, so nothing may appear.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        }
+
+        do {
+            _ = try await FileSink.write(Data([1]), baseName: "Annotate X", in: folder)
+            XCTFail("Expected the write to fail")
+        } catch {}
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
     func testDefaultFolderIsPicturesAnnotateInTheRealHome() {

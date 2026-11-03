@@ -43,21 +43,37 @@ struct FileSink: CaptureSink {
         attempt <= 1 ? "\(baseName).png" : "\(baseName) (\(attempt)).png"
     }
 
-    /// Writes `data` under the first free name, creating the folder if needed. Each attempt
-    /// refuses to overwrite, so two captures in the same second never replace each other.
-    /// Runs off the main actor.
-    nonisolated static func write(_ data: Data, baseName: String, in folder: URL) async throws -> URL {
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    /// Writes `data` under the first free name, creating the folder if needed. The bytes go
+    /// to a hidden temporary file in the same folder first and are moved into place whole, so
+    /// a write that fails partway never leaves a truncated image under a capture's name. Each
+    /// move refuses to overwrite, so two captures in the same second never replace each other.
+    /// Runs off the main actor. `writeBytes` writes the temporary file; tests make it fail
+    /// partway.
+    nonisolated static func write(
+        _ data: Data, baseName: String, in folder: URL,
+        writeBytes: @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .withoutOverwriting) }
+    ) async throws -> URL {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let temporary = folder.appendingPathComponent(temporaryFileName(), isDirectory: false)
+        // Whatever happens, the temporary file goes; after a move there is nothing left to remove.
+        defer { try? fileManager.removeItem(at: temporary) }
+        try writeBytes(data, temporary)
         var attempt = 1
         while true {
             let url = folder.appendingPathComponent(fileName(baseName, attempt: attempt), isDirectory: false)
             do {
-                try data.write(to: url, options: .withoutOverwriting)
+                try fileManager.moveItem(at: temporary, to: url)
                 return url
             } catch CocoaError.fileWriteFileExists where attempt < maxAttempts {
                 attempt += 1
             }
         }
+    }
+
+    /// A hidden name no capture uses, unique per write.
+    nonisolated static func temporaryFileName() -> String {
+        ".Annotate-\(UUID().uuidString).png.tmp"
     }
 
     nonisolated private static let maxAttempts = 1000
