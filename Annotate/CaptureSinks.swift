@@ -4,13 +4,16 @@ import AppKit
 /// screenshots: `Annotate 2026-11-01 at 10.23.45.png`, then ` (2)`, ` (3)` on collision.
 struct FileSink: CaptureSink {
     var folder: URL
+    /// Writes each capture's temporary file. Debug builds can make it fail on purpose; see
+    /// `failSavesArgument`.
+    var writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
 
     var destination: CaptureDestination { .file }
 
     /// `~/Pictures/Annotate`. Pictures is reachable through the app's Pictures entitlement
     /// and, unlike Desktop, Documents, and Downloads, has no first-access prompt that would
     /// open under the overlay.
-    static var defaultFolder: URL {
+    nonisolated static var defaultFolder: URL {
         realHomeDirectory
             .appendingPathComponent("Pictures", isDirectory: true)
             .appendingPathComponent("Annotate", isDirectory: true)
@@ -18,7 +21,7 @@ struct FileSink: CaptureSink {
 
     /// The user's home folder. In the sandbox `homeDirectoryForCurrentUser` is the app's
     /// container, which would hide captures inside `~/Library/Containers`.
-    static var realHomeDirectory: URL {
+    nonisolated static var realHomeDirectory: URL {
         if let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir {
             return URL(fileURLWithPath: String(cString: directory), isDirectory: true)
         }
@@ -27,7 +30,7 @@ struct FileSink: CaptureSink {
 
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
         let baseName = Self.baseName(for: capture.capturedAt)
-        return .file(try await Self.write(png, baseName: baseName, in: folder))
+        return .file(try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes))
     }
 
     /// `Annotate 2026-11-01 at 10.23.45`, in the current time zone.
@@ -53,7 +56,7 @@ struct FileSink: CaptureSink {
     /// partway.
     nonisolated static func write(
         _ data: Data, baseName: String, in folder: URL,
-        writeBytes: @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .withoutOverwriting) }
+        writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
     ) async throws -> URL {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -72,6 +75,24 @@ struct FileSink: CaptureSink {
             }
         }
     }
+
+    nonisolated static let writeWithoutOverwriting: @Sendable (Data, URL) throws -> Void = {
+        try $0.write(to: $1, options: .withoutOverwriting)
+    }
+
+    #if DEBUG
+    /// Launch a debug build with this argument and every save fails before any bytes land, so
+    /// the save-failure report can be checked live: the overlay's HUD, or the alert with Hide
+    /// Tool Feedback on. The clipboard copy still works.
+    /// `open Annotate.app --args --fail-capture-saves`
+    nonisolated static let failSavesArgument = "--fail-capture-saves"
+
+    /// What a save throws when `failSavesArgument` is set. The alert's detail names the switch,
+    /// so the failure is never mistaken for a real one.
+    struct ForcedSaveFailure: LocalizedError {
+        var errorDescription: String? { "This debug build was launched with \(FileSink.failSavesArgument)." }
+    }
+    #endif
 
     /// A hidden name no capture uses, unique per write.
     nonisolated static func temporaryFileName() -> String {

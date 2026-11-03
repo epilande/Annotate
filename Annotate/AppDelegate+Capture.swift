@@ -13,6 +13,23 @@ extension AppDelegate {
         keyOverlay ?? pointer ?? main
     }
 
+    /// Where captures go: a file in `folder` and the clipboard. In a debug build launched with
+    /// `FileSink.failSavesArgument`, every save fails.
+    static func captureSinks(
+        folder: URL = FileSink.defaultFolder,
+        pasteboard: NSPasteboard = .general,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [CaptureSink] {
+        var file = FileSink(folder: folder)
+        #if DEBUG
+        if arguments.contains(FileSink.failSavesArgument) {
+            log.notice("Capture saves fail on purpose: launched with \(FileSink.failSavesArgument, privacy: .public)")
+            file.writeBytes = { _, _ in throw FileSink.ForcedSaveFailure() }
+        }
+        #endif
+        return [file, ClipboardSink(pasteboard: pasteboard)]
+    }
+
     var captureTargetScreen: NSScreen? {
         let keyOverlay = alwaysOnMode
             ? nil : overlayWindows.first { $0.value.isVisible && $0.value.isKeyWindow }?.key

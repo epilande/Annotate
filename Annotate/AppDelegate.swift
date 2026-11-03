@@ -34,9 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     /// Makes Capture Screen's and Capture Area's images. Tests swap in one with a stub source,
     /// a temporary folder, and a private pasteboard.
-    lazy var captureService = CaptureService(
-        source: ScreenSampler.shared,
-        sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
+    lazy var captureService = CaptureService(source: ScreenSampler.shared, sinks: Self.captureSinks())
     /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.

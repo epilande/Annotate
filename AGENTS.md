@@ -26,6 +26,8 @@ Neither needs any interaction. Tests create real AppKit windows, so run them fro
 
 Testing Shortcuts actions end to end needs a build signed with an Apple Development certificate. In the #135 live check, an ad-hoc signed Debug build (Xcode's Sign to Run Locally) listed the actions in Shortcuts, but each one failed with "Shortcuts couldn't communicate with the app". Quit the installed Annotate first, since Shortcuts finds the app by bundle ID.
 
+To check how a failed capture save is reported (the HUD, or the alert with Hide Tool Feedback on), launch a Debug build with `--fail-capture-saves`, for example `open build/dd/Build/Products/Debug/Annotate.app --args --fail-capture-saves`. Every save fails and the clipboard copy still works. `open` passes the argument only when the app isn't already running.
+
 SwiftLint runs in CI through the SwiftLintPlugins package. With `strict: true`, any violation that isn't recorded in `.swiftlint-baseline.json` fails the run, warnings included:
 
 ```sh

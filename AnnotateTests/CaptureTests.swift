@@ -415,6 +415,34 @@ final class CaptureTests: XCTestCase {
         XCTAssertNotNil(pasteboard.data(forType: .png))
     }
 
+    #if DEBUG
+    func testFailSavesSwitchFailsOnlyTheSave() async throws {
+        let source = StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 100, height: 50, Self.blue))
+        let folder = try temporaryFolder()
+        let pasteboard = privatePasteboard()
+
+        let forced = CaptureService(
+            source: source,
+            sinks: AppDelegate.captureSinks(
+                folder: folder, pasteboard: pasteboard, arguments: ["Annotate", FileSink.failSavesArgument]))
+        let result = try await forced.capture(request(display: display(), scene: nil))
+
+        XCTAssertNil(result.savedFile)
+        XCTAssertTrue(result.copiedToClipboard)
+        XCTAssertTrue(result.failure(of: .file) is FileSink.ForcedSaveFailure)
+        let detail = CaptureProblem.saveFailed(error: result.failure(of: .file)).detail
+        XCTAssertTrue(detail.contains(FileSink.failSavesArgument), detail)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "Not even a temporary file")
+
+        // Without the switch, the same sinks save.
+        let normal = CaptureService(
+            source: source, sinks: AppDelegate.captureSinks(folder: folder, pasteboard: pasteboard, arguments: ["Annotate"]))
+        let saved = try await normal.capture(request(display: display(), scene: nil))
+        XCTAssertNotNil(saved.savedFile)
+        XCTAssertTrue(saved.failures.isEmpty)
+    }
+    #endif
+
     func testServiceSaysWhichDestinationFailed() async throws {
         let folder = try temporaryFolder()
         let service = CaptureService(
