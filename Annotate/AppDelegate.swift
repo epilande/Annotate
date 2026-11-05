@@ -32,22 +32,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Created as launch starts, before launch or any link can activate the app.
     var linkFocusHandoff: LinkFocusHandoff?
 
-    /// Makes Capture Screen's images. Tests swap in one with a stub source, a temporary
-    /// folder, and a private pasteboard.
-    lazy var captureService = CaptureService(
-        source: ScreenSampler.shared,
-        sinks: [FileSink(folder: FileSink.defaultFolder), ClipboardSink()])
+    /// Makes Capture Screen's and Capture Area's images. Tests swap in one with a stub source,
+    /// a temporary folder, and a private pasteboard.
+    lazy var captureService = CaptureService(source: ScreenSampler.shared, sinks: Self.captureSinks())
     /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
-    /// Reports a capture problem when no overlay is open to show it on. Tests replace it.
-    var showCaptureProblemAlert: (_ message: String) -> Void = { message in
+    /// Reports a capture problem when no overlay HUD can show it. Tests replace it.
+    var showCaptureProblemAlert: (_ message: String, _ detail: String) -> Void = { message, detail in
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message
-        alert.informativeText = "Annotate couldn't finish the capture. Try again in a moment."
+        alert.informativeText = detail
+        // With Hide Tool Feedback on, an overlay can be open, and it sits above modal panels.
+        // `runModal` resets the level as it starts; the main queue drains inside the modal
+        // session, so the raise lands after that.
+        DispatchQueue.main.async {
+            alert.window.level = NSWindow.Level(rawValue: OverlayWindow.elevatedLevel.rawValue + 1)
+        }
         alert.runModal()
     }
     /// Whether a macOS privacy prompt is on screen. Tests replace it.
@@ -63,6 +67,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Overlays closed by the app rather than the user, which keep their drawings the next
     /// time they open even with Clear Drawings on Start.
     var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
+    /// Overlays Capture Area opened from Always-On. They keep Always-On's Persist fade until
+    /// the picker closes, so drawings Always-On still shows past their fade stay for the pick
+    /// and the capture.
+    var overlaysHoldingAlwaysOnFade: Set<ObjectIdentifier> = []
     /// Opens Settings to a pane. `requestingScreenRecording` asks for access once the pane
     /// shows, and `onClose` runs when the Settings window closes. Tests replace it so no
     /// Settings window opens.
@@ -396,6 +404,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 NSMenuItem(
                     title: "Capture Screen",
                     action: #selector(captureScreen),
+                    keyEquivalent: ""))
+            menu.addItem(
+                NSMenuItem(
+                    title: "Capture Area",
+                    action: #selector(captureArea),
                     keyEquivalent: ""))
 
             menu.addItem(NSMenuItem.separator())
@@ -890,7 +903,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         overlayWindow.overlayView.isReadOnlyMode = false
         overlayWindow.updateToolbarVisibility()
 
-        overlayWindow.overlayView.fadeMode = settings[.fadeMode]
+        overlayWindow.overlayView.fadeMode =
+            overlaysHoldingAlwaysOnFade.contains(ObjectIdentifier(overlayWindow)) ? false : settings[.fadeMode]
         overlayWindow.overlayView.fadeDelay = settings[.fadeDelay]
         overlayWindow.overlayView.startFadeLoopIfNeeded()
     }
@@ -1015,6 +1029,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             case #selector(toggleToolbar): action = .toggleToolbar
             case #selector(clearAllAnnotations): action = .clearAll
             case #selector(captureScreen): action = .captureScreen
+            case #selector(captureArea): action = .captureArea
             default:
                 continue
             }
@@ -1306,7 +1321,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     @objc func cursorHighlightStateChanged() {
         updateAllCursorHighlightWindows()
         CursorHighlightManager.shared.updateCursorVisibility()
-        overlayWindows.values.forEach { window in
+        // Every overlay sets the one system cursor, whichever display it is on, so the last
+        // one wins. An overlay with a cursor override, as Capture Area's picker sets, goes
+        // last: otherwise another display's I-beam or hidden cursor would replace the crosshair.
+        let windows = Array(overlayWindows.values)
+        let overriding = windows.filter { $0.overlayView.cursorOverride != nil }
+        for window in windows.filter({ $0.overlayView.cursorOverride == nil }) + overriding {
             window.overlayView.updateCursor()
             window.overlayView.window?.invalidateCursorRects(for: window.overlayView)
         }

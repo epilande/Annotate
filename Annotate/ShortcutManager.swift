@@ -123,11 +123,13 @@ enum ShortcutKey: String, CaseIterable {
     case increaseSize
     case clearAll
     case captureScreen
+    case captureArea
 
     /// Actions whose default binding arrived after users could already customize shortcuts.
     /// An existing custom binding on the same key wins over the new default (see `init`).
     static let newlyEditable: [ShortcutKey] = [
         .toggleFade, .toggleToolbar, .decreaseSize, .increaseSize, .clearAll, .redact, .captureScreen,
+        .captureArea,
     ]
 
     var defaultBinding: ShortcutBinding {
@@ -139,6 +141,7 @@ enum ShortcutKey: String, CaseIterable {
         case .increaseSize: return ShortcutBinding("]")
         case .clearAll: return ShortcutBinding("\u{7f}", modifiers: .option)
         case .captureScreen: return ShortcutBinding("s", modifiers: .command)
+        case .captureArea: return ShortcutBinding("s", modifiers: [.shift, .command])
         default: return ShortcutBinding(rawValue)
         }
     }
@@ -169,6 +172,7 @@ enum ShortcutKey: String, CaseIterable {
         case .increaseSize: return "Increase Size"
         case .clearAll: return "Clear All"
         case .captureScreen: return "Capture Screen"
+        case .captureArea: return "Capture Area"
         }
     }
 }

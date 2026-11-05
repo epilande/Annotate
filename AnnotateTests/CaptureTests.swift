@@ -51,6 +51,15 @@ final class GatedDisplayCapturing: DisplayCapturing {
     }
 }
 
+/// A sink that always throws, standing in for a destination that fails.
+struct FailingSink: CaptureSink {
+    let destination: CaptureDestination
+
+    func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
+
 /// An RGBA color with 0-255 components.
 struct RGBA: Equatable, CustomStringConvertible {
     var r: Int, g: Int, b: Int, a: Int
@@ -140,8 +149,11 @@ final class CaptureTests: XCTestCase {
         CaptureScene(document: document, board: board, boardOpacity: opacity, fade: fade, now: now)
     }
 
-    private func request(display: DisplayInfo, scene: CaptureScene?) -> CaptureRequest {
-        CaptureRequest(display: display, scene: scene, hostTime: 42, date: Date(timeIntervalSince1970: 0))
+    private func request(
+        display: DisplayInfo, region: CaptureRegion = .display, scene: CaptureScene?
+    ) -> CaptureRequest {
+        CaptureRequest(
+            display: display, region: region, scene: scene, hostTime: 42, date: Date(timeIntervalSince1970: 0))
     }
 
     private func temporaryFolder() throws -> URL {
@@ -397,8 +409,164 @@ final class CaptureTests: XCTestCase {
 
         XCTAssertNil(result.savedFile)
         XCTAssertTrue(result.copiedToClipboard)
-        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertEqual(result.failures.map(\.destination), [.file])
+        XCTAssertNotNil(result.failure(of: .file))
+        XCTAssertNil(result.failure(of: .clipboard))
         XCTAssertNotNil(pasteboard.data(forType: .png))
+    }
+
+    #if DEBUG
+    func testFailSavesSwitchFailsOnlyTheSave() async throws {
+        let source = StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 100, height: 50, Self.blue))
+        let folder = try temporaryFolder()
+        let pasteboard = privatePasteboard()
+
+        let forced = CaptureService(
+            source: source,
+            sinks: AppDelegate.captureSinks(
+                folder: folder, pasteboard: pasteboard, arguments: ["Annotate", FileSink.failSavesArgument]))
+        let result = try await forced.capture(request(display: display(), scene: nil))
+
+        XCTAssertNil(result.savedFile)
+        XCTAssertTrue(result.copiedToClipboard)
+        XCTAssertTrue(result.failure(of: .file) is FileSink.ForcedSaveFailure)
+        let detail = CaptureProblem.saveFailed(error: result.failure(of: .file)).detail
+        XCTAssertTrue(detail.contains(FileSink.failSavesArgument), detail)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [], "Not even a temporary file")
+
+        // Without the switch, the same sinks save.
+        let normal = CaptureService(
+            source: source, sinks: AppDelegate.captureSinks(folder: folder, pasteboard: pasteboard, arguments: ["Annotate"]))
+        let saved = try await normal.capture(request(display: display(), scene: nil))
+        XCTAssertNotNil(saved.savedFile)
+        XCTAssertTrue(saved.failures.isEmpty)
+    }
+    #endif
+
+    func testServiceSaysWhichDestinationFailed() async throws {
+        let folder = try temporaryFolder()
+        let service = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 100, height: 50, Self.blue)),
+            sinks: [FileSink(folder: folder), FailingSink(destination: .clipboard)])
+
+        let result = try await service.capture(request(display: display(), scene: nil))
+
+        XCTAssertNotNil(result.savedFile)
+        XCTAssertFalse(result.copiedToClipboard)
+        XCTAssertNotNil(result.failure(of: .clipboard))
+        XCTAssertNil(result.failure(of: .file))
+    }
+
+    // MARK: - Area
+
+    func testViewRectBecomesATopLeftRegion() {
+        // A view rect 10 pt above the bottom of a 50 pt tall display.
+        let region = CaptureRegion.rect(fromViewRect: CGRect(x: 20, y: 10, width: 30, height: 15), displayHeight: 50)
+        XCTAssertEqual(region, .rect(CGRect(x: 20, y: 25, width: 30, height: 15)))
+    }
+
+    func testCropKeepsTheRegionAtScaleOneAndTwo() throws {
+        for scale in [CGFloat(1), 2] {
+            let width = Int(100 * scale)
+            let height = Int(50 * scale)
+            // Red top rows above a blue rest, and green left columns, so a crop's corners tell
+            // which part of the display it kept.
+            let image = CaptureTestImages.image(
+                width: width,
+                height: height,
+                top: Self.red,
+                bottom: Self.blue,
+                topRows: Int(10 * scale),
+                left: Self.green,
+                leftColumns: Int(20 * scale))
+            let region = CaptureRegion.rect(CGRect(x: 10, y: 5, width: 30, height: 20))
+
+            let (cropped, points) = try XCTUnwrap(CaptureCompositor.crop(image, to: region, display: display(scale: scale)))
+
+            XCTAssertEqual(points, CGRect(x: 10, y: 5, width: 30, height: 20), "scale \(scale)")
+            XCTAssertEqual(cropped.width, Int(30 * scale))
+            XCTAssertEqual(cropped.height, Int(20 * scale))
+            // Top-left: inside the green columns, which paint over the red rows.
+            XCTAssertTrue(CaptureTestImages.pixel(cropped, x: 1, y: 1).isClose(to: Self.green), "scale \(scale)")
+            // Top-right: red rows, right of the green columns.
+            XCTAssertTrue(
+                CaptureTestImages.pixel(cropped, x: cropped.width - 2, y: 1).isClose(to: Self.red), "scale \(scale)")
+            // Bottom-right: blue.
+            XCTAssertTrue(
+                CaptureTestImages.pixel(cropped, x: cropped.width - 2, y: cropped.height - 2).isClose(to: Self.blue),
+                "scale \(scale)")
+        }
+    }
+
+    func testCropRoundsToWholePixelsAndReportsTheAreaItKept() throws {
+        let image = CaptureTestImages.solid(width: 200, height: 100, Self.blue)
+        let region = CaptureRegion.rect(CGRect(x: 10.2, y: 5.3, width: 30.1, height: 20.2))
+
+        let (cropped, points) = try XCTUnwrap(CaptureCompositor.crop(image, to: region, display: display(scale: 2)))
+
+        // Edges round to the nearest pixel: 20.4 to 20, 10.6 to 11, 80.6 to 81, 51 stays.
+        XCTAssertEqual(cropped.width, 61)
+        XCTAssertEqual(cropped.height, 40)
+        XCTAssertEqual(points, CGRect(x: 10, y: 5.5, width: 30.5, height: 20))
+        XCTAssertEqual(CGFloat(cropped.width) / points.width, 2, "The scale stays exact")
+    }
+
+    func testCropClipsToTheDisplayAndRejectsAnAreaOffIt() throws {
+        let image = CaptureTestImages.solid(width: 100, height: 50, Self.blue)
+
+        let (cropped, points) = try XCTUnwrap(
+            CaptureCompositor.crop(image, to: .rect(CGRect(x: 80, y: 40, width: 50, height: 50)), display: display()))
+        XCTAssertEqual(points, CGRect(x: 80, y: 40, width: 20, height: 10))
+        XCTAssertEqual(cropped.width, 20)
+        XCTAssertEqual(cropped.height, 10)
+
+        XCTAssertNil(CaptureCompositor.crop(image, to: .rect(CGRect(x: 200, y: 0, width: 10, height: 10)), display: display()))
+        XCTAssertNil(CaptureCompositor.crop(image, to: .rect(CGRect(x: 10, y: 10, width: 0.2, height: 10)), display: display()))
+    }
+
+    func testCropOfTheWholeDisplayKeepsTheImage() throws {
+        let image = CaptureTestImages.solid(width: 200, height: 100, Self.blue)
+        let (cropped, points) = try XCTUnwrap(CaptureCompositor.crop(image, to: .display, display: display(scale: 2)))
+        XCTAssertTrue(cropped === image)
+        XCTAssertEqual(points, CGRect(x: 0, y: 0, width: 100, height: 50))
+    }
+
+    func testServiceCropsAnAreaWithItsAnnotations() async throws {
+        let pasteboard = privatePasteboard()
+        let service = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 200, height: 100, Self.blue)),
+            sinks: [ClipboardSink(pasteboard: pasteboard)])
+        var document = OverlayDocument()
+        // A solid redaction over the display's bottom-left 20 x 10 points.
+        document.rectangles = [redaction(CGRect(x: 0, y: 0, width: 20, height: 10))]
+        // The bottom-left 40 x 20 points, as a picker on the overlay reports it.
+        let region = CaptureRegion.rect(fromViewRect: CGRect(x: 0, y: 0, width: 40, height: 20), displayHeight: 50)
+
+        let result = try await service.capture(request(display: display(scale: 2), region: region, scene: scene(document)))
+
+        XCTAssertEqual(result.capture.region, CGRect(x: 0, y: 30, width: 40, height: 20))
+        XCTAssertEqual(result.capture.scale, 2)
+        let image = result.capture.image
+        XCTAssertEqual(image.width, 80)
+        XCTAssertEqual(image.height, 40)
+        XCTAssertTrue(CaptureTestImages.pixel(image, x: 2, y: image.height - 2).isClose(to: Self.black))
+        XCTAssertTrue(CaptureTestImages.pixel(image, x: image.width - 2, y: 2).isClose(to: Self.blue))
+        let decoded = try XCTUnwrap(NSImage(data: try XCTUnwrap(pasteboard.data(forType: .png))))
+        XCTAssertEqual(decoded.size, NSSize(width: 40, height: 20), "DPI keeps the area's point size")
+    }
+
+    func testServiceRejectsAnAreaOffTheDisplay() async throws {
+        let service = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 100, height: 50, Self.blue)),
+            sinks: [])
+
+        do {
+            _ = try await service.capture(
+                request(display: display(), region: .rect(CGRect(x: 500, y: 0, width: 10, height: 10)), scene: nil))
+            XCTFail("Expected emptyRegion")
+        } catch {
+            XCTAssertEqual(error as? CaptureError, .emptyRegion)
+        }
     }
 
     // MARK: - File naming
@@ -429,6 +597,50 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(third.lastPathComponent, "Annotate X (3).png")
         XCTAssertEqual(try Data(contentsOf: first), Data([1]))
         XCTAssertEqual(try Data(contentsOf: second), Data([2]))
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted(),
+            ["Annotate X (2).png", "Annotate X (3).png", "Annotate X.png"],
+            "No temporary file is left behind")
+    }
+
+    func testWriteGoesThroughAHiddenTemporaryFileInTheSameFolder() {
+        let name = FileSink.temporaryFileName()
+        XCTAssertTrue(name.hasPrefix("."), "Finder hides it while it is written")
+        XCTAssertFalse(name.hasSuffix(".png"), "Nothing mistakes it for a capture")
+        XCTAssertNotEqual(name, FileSink.temporaryFileName())
+    }
+
+    func testWriteThatFailsPartwayLeavesNoTruncatedCapture() async throws {
+        let folder = try temporaryFolder()
+        struct DiskFull: Error {}
+
+        do {
+            _ = try await FileSink.write(Data([1, 2, 3, 4]), baseName: "Annotate X", in: folder) { data, url in
+                // Half the bytes land, then the disk fills up.
+                try data.prefix(2).write(to: url)
+                throw DiskFull()
+            }
+            XCTFail("Expected the write to fail")
+        } catch is DiskFull {}
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
+    }
+
+    func testFailedWriteLeavesNoFileBehind() async throws {
+        let folder = try temporaryFolder()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // A read-only folder: the temporary file can't be written, so nothing may appear.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        }
+
+        do {
+            _ = try await FileSink.write(Data([1]), baseName: "Annotate X", in: folder)
+            XCTFail("Expected the write to fail")
+        } catch {}
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
     func testDefaultFolderIsPicturesAnnotateInTheRealHome() {
@@ -461,6 +673,35 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse(ShortcutKey.captureScreen.defaultBinding.isReserved)
         XCTAssertTrue(ShortcutKey.newlyEditable.contains(.captureScreen))
         XCTAssertEqual(ShortcutKey.captureScreen.displayName, "Capture Screen")
+    }
+
+    func testCaptureAreaDefaultsToShiftCommandS() {
+        XCTAssertEqual(ShortcutKey.captureArea.defaultBinding, ShortcutBinding("s", modifiers: [.shift, .command]))
+        XCTAssertFalse(ShortcutKey.captureArea.defaultBinding.isReserved)
+        XCTAssertTrue(ShortcutKey.newlyEditable.contains(.captureArea))
+        XCTAssertEqual(ShortcutKey.captureArea.displayName, "Capture Area")
+    }
+
+    // MARK: - Capture pane
+
+    func testShowInFinderReportsAFolderItCantCreate() throws {
+        // A regular file where the folder should be.
+        let blocker = try temporaryFolder()
+        try Data().write(to: blocker)
+
+        guard case .failure(let error) = CaptureSettingsView.prepareFolder(blocker) else {
+            return XCTFail("Expected the folder to fail")
+        }
+        XCTAssertTrue(CaptureSettingsView.folderErrorMessage(error).hasPrefix("Couldn't create the folder."))
+
+        let folder = try temporaryFolder()
+        guard case .success(let created) = CaptureSettingsView.prepareFolder(folder) else {
+            return XCTFail("Expected the folder to be created")
+        }
+        XCTAssertEqual(created, folder)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
     }
 }
 

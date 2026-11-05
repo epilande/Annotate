@@ -3,8 +3,9 @@ import ImageIO
 import UniformTypeIdentifiers
 import os
 
-// Capture Screen: a ScreenCaptureKit snapshot of one display with Annotate's windows left out,
-// with the board and annotations composited over it in process. Nothing here reads app
+// Capture Screen and Capture Area: a ScreenCaptureKit snapshot of one display with Annotate's
+// windows left out, with the board and annotations composited over it in process, cropped to
+// the picked area for Capture Area. Nothing here reads app
 // singletons or views; `AppDelegate+Capture.swift` gathers the overlay's state and passes it in.
 
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
@@ -13,11 +14,19 @@ private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture"
 /// saved links.
 enum CaptureScope: String, CaseIterable, Sendable {
     case screen
+    case area
 }
 
 /// The part of a display a capture keeps.
 enum CaptureRegion: Equatable, Sendable {
     case display
+    /// Part of the display, in display-local points with a top-left origin.
+    case rect(CGRect)
+
+    /// A rectangle from an overlay view, whose origin is the display's bottom-left corner.
+    static func rect(fromViewRect rect: CGRect, displayHeight: CGFloat) -> CaptureRegion {
+        .rect(CGRect(x: rect.minX, y: displayHeight - rect.maxY, width: rect.width, height: rect.height))
+    }
 }
 
 /// One display, as a capture records it.
@@ -65,7 +74,11 @@ struct CaptureScene {
     var now: CFTimeInterval
 
     /// A fully opaque board hides every screen pixel, so such a capture needs none.
-    var coversScreen: Bool { board.isVisible && boardOpacity >= 1 }
+    var coversScreen: Bool { Self.boardCoversScreen(board, opacity: boardOpacity) }
+
+    static func boardCoversScreen(_ board: BoardAppearance, opacity: CGFloat) -> Bool {
+        board.isVisible && opacity >= 1
+    }
 }
 
 /// A capture to make. `scene` is nil when the display's overlay is hidden, which saves the
@@ -108,10 +121,25 @@ enum CaptureDelivery: Equatable, Sendable {
     case clipboard
 }
 
+/// The kinds of place a capture can go.
+enum CaptureDestination: Equatable, Sendable {
+    case file
+    case clipboard
+}
+
 /// A destination for finished captures.
 @MainActor
 protocol CaptureSink {
+    /// What `deliver` returns on success, so a failure can say what didn't happen.
+    var destination: CaptureDestination { get }
+
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery
+}
+
+/// A sink that threw, and what it threw.
+struct CaptureSinkFailure {
+    let destination: CaptureDestination
+    let error: Error
 }
 
 /// Why a capture produced nothing.
@@ -122,6 +150,8 @@ enum CaptureError: Error, Equatable {
     case snapshotFailed
     /// The image could not be composited or encoded.
     case renderFailed
+    /// The area to keep lies off the display or is less than a pixel across.
+    case emptyRegion
 }
 
 /// The outcome of a capture that produced an image. `failures` holds the sinks that threw;
@@ -129,13 +159,18 @@ enum CaptureError: Error, Equatable {
 struct CaptureResult {
     let capture: Capture
     let deliveries: [CaptureDelivery]
-    let failures: [Error]
+    let failures: [CaptureSinkFailure]
 
     var savedFile: URL? {
         deliveries.lazy.compactMap { if case .file(let url) = $0 { return url } else { return nil } }.first
     }
 
     var copiedToClipboard: Bool { deliveries.contains(.clipboard) }
+
+    /// The error a sink of `destination` threw, if one did.
+    func failure(of destination: CaptureDestination) -> Error? {
+        failures.first { $0.destination == destination }?.error
+    }
 }
 
 /// Makes captures: takes the screen pixels, composites the scene over them, encodes a PNG,
@@ -166,12 +201,14 @@ final class CaptureService {
                 in: current.document, from: snapshot, display: request.display)
         }
 
-        guard let image = CaptureCompositor.composite(snapshot: snapshot, display: request.display, scene: scene)
+        guard let composite = CaptureCompositor.composite(snapshot: snapshot, display: request.display, scene: scene)
         else { throw CaptureError.renderFailed }
+        guard let (image, region) = CaptureCompositor.crop(composite, to: request.region, display: request.display)
+        else { throw CaptureError.emptyRegion }
         let capture = Capture(
             image: image,
             display: request.display,
-            region: CGRect(origin: .zero, size: request.display.frame.size),
+            region: region,
             scene: scene,
             capturedAt: request.date,
             hostTime: request.hostTime)
@@ -181,16 +218,16 @@ final class CaptureService {
         }
 
         var deliveries: [CaptureDelivery] = []
-        var failures: [Error] = []
+        var failures: [CaptureSinkFailure] = []
         for sink in sinks {
             do {
                 deliveries.append(try await sink.deliver(capture, png: png))
             } catch {
                 log.error("Capture sink failed: \(error.localizedDescription)")
-                failures.append(error)
+                failures.append(CaptureSinkFailure(destination: sink.destination, error: error))
             }
         }
-        if deliveries.isEmpty, let first = failures.first { throw first }
+        if deliveries.isEmpty, let first = failures.first { throw first.error }
         return CaptureResult(capture: capture, deliveries: deliveries, failures: failures)
     }
 }
@@ -238,6 +275,27 @@ enum CaptureCompositor {
             ).draw(in: context)
         }
         return context.makeImage()
+    }
+
+    /// The part of a full-display composite that `region` keeps, and the area it covers in
+    /// display-local points with a top-left origin. Edges round to whole pixels with the
+    /// redaction crop's math, and the area is read back from those pixels, so the image's
+    /// scale stays exact. Nil when the region misses the display or is under a pixel.
+    static func crop(_ image: CGImage, to region: CaptureRegion, display: DisplayInfo) -> (CGImage, CGRect)? {
+        let size = display.frame.size
+        guard case .rect(let local) = region else { return (image, CGRect(origin: .zero, size: size)) }
+        guard size.width > 0 else { return nil }
+        let scale = CGFloat(image.width) / size.width
+        // `pixelRect` works in Cocoa screen coordinates; a frame at the origin keeps the
+        // conversion local.
+        let frame = CGRect(origin: .zero, size: size)
+        let screenRect = CGRect(x: local.minX, y: size.height - local.maxY, width: local.width, height: local.height)
+        guard let pixels = ScreenSampler.pixelRect(screenRect: screenRect, displayFrame: frame, scale: scale),
+            let cropped = image.cropping(to: pixels)
+        else { return nil }
+        let points = CGRect(
+            x: pixels.minX / scale, y: pixels.minY / scale, width: pixels.width / scale, height: pixels.height / scale)
+        return (cropped, points)
     }
 
     /// A copy of `document` whose pixelate and blur redactions hold samples from `snapshot`,

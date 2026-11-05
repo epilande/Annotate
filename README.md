@@ -150,7 +150,7 @@ brew install --cask annotate
 
 #### ⚡ Quick Actions
 
-Fade mode, toolbar visibility, size stepping, Clear All, and Capture Screen can be rebound in **Settings → Shortcuts**, using a single key or a modifier combination. The table shows their defaults.
+Fade mode, toolbar visibility, size stepping, Clear All, Capture Screen, and Capture Area can be rebound in **Settings → Shortcuts**, using a single key or a modifier combination. The table shows their defaults.
 
 | Shortcut                                              | Action               | Description                                                                |
 | ----------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
@@ -159,6 +159,7 @@ Fade mode, toolbar visibility, size stepping, Clear All, and Capture Screen can 
 | <kbd>Delete</kbd>                                     | **Delete**           | Remove selected objects or most recent annotation                          |
 | <kbd>Option</kbd> + <kbd>Delete</kbd>                 | **Clear All**        | Remove all annotations                                                     |
 | <kbd>Command</kbd> + <kbd>S</kbd>                     | **Capture Screen**   | Save the display with its annotations as a PNG and copy it                 |
+| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>  | **Capture Area**     | Drag out part of the display, save it as a PNG, and copy it                |
 | <kbd>Command</kbd> + <kbd>Z</kbd>                     | **Undo**             | Undo the last action                                                       |
 | <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | **Redo**             | Redo the last undone action                                                |
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
@@ -394,6 +395,8 @@ open "annotate://tool/arrow"
 | `annotate://fade/<on\|off\|toggle>`    | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit. |
 | `annotate://board/<on\|off\|toggle>`   | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.        |
 
+Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard or the menu bar icon instead.
+
 - **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
 
@@ -458,8 +461,9 @@ Cursor effects hide while the macOS screenshot selection (<kbd>Shift</kbd> + <kb
 
 ### Capture
 
-- **Folder**: Capture Screen saves to `~/Pictures/Annotate` and also copies the image to the clipboard. **Show in Finder** opens the folder.
-- **Screen Recording**: Shows whether Annotate has Screen Recording permission, with a shortcut to System Settings. Capture Screen and the Redact tool's Pixelate and Blur styles need it. If you run Capture Screen without it, Annotate closes the overlay and opens this pane, which asks for access.
+- **Folder**: Capture Screen and Capture Area save to `~/Pictures/Annotate` and also copy the image to the clipboard. **Show in Finder** opens the folder, and says so here if it can't create it.
+- **Capture Area**: Drag out the part of the display to save. Escape cancels. Annotations hold their fade while you drag, and the image shows them as they were. With no overlay open, including in Always-On Mode, Capture Area opens the overlay first.
+- **Screen Recording**: Shows whether Annotate has Screen Recording permission, with a shortcut to System Settings. Capture Screen, Capture Area, and the Redact tool's Pixelate and Blur styles need it. Capture works without it while a fully opaque board is showing, since the board hides the screen. If you capture without it otherwise, Annotate closes the overlay and opens this pane, which asks for access.
 
 ### Shortcuts
 
@@ -468,7 +472,7 @@ Customize keys and modifier combinations for tools and utilities, organized into
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
 - **Shapes**: Rectangle, Circle
 - **Advanced Tools**: Counter, Text, Select, Eraser
-- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All, Capture Screen
+- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All, Capture Screen, Capture Area
 
 The **Built-in Shortcuts** reference lists the fixed keys: Delete, Undo (Command + Z), Redo (Shift + Command + Z), and Escape. Editable bindings cannot conflict with another assigned action or a fixed editing command. Escape cancels recording without changing the binding.
 

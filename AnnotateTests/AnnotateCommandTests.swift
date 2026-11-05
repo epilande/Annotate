@@ -13,6 +13,8 @@ final class AnnotateCommandTests: XCTestCase {
     var privacyPromptUp = false
     /// Messages a capture reported in an alert, which tests record instead of showing.
     var captureProblemAlerts: [String] = []
+    /// The detail text of each alert in `captureProblemAlerts`.
+    var captureProblemDetails: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -454,6 +456,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(AnnotateCommand.fade(.toggle).path, "/fade/toggle")
         XCTAssertEqual(AnnotateCommand.board(.on).path, "/board/on")
         XCTAssertEqual(AnnotateCommand.capture(.screen).path, "/capture/screen")
+        XCTAssertEqual(AnnotateCommand.capture(.area).path, "/capture/area")
     }
 
     func testPathParsingIsLenientAboutSlashesAndCase() {
@@ -496,7 +499,11 @@ final class AnnotateCommandTests: XCTestCase {
         privacyPromptUp = false
         appDelegate.isPrivacyPromptOnScreen = { [unowned self] in self.privacyPromptUp }
         captureProblemAlerts = []
-        appDelegate.showCaptureProblemAlert = { [unowned self] in self.captureProblemAlerts.append($0) }
+        captureProblemDetails = []
+        appDelegate.showCaptureProblemAlert = { [unowned self] message, detail in
+            self.captureProblemAlerts.append(message)
+            self.captureProblemDetails.append(detail)
+        }
         appDelegate.privacyPromptPollInterval = 0.02
         appDelegate.captureService = CaptureService(
             source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
@@ -632,6 +639,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.capture(.screen))
         // Give the second capture time to overtake the held first one if nothing orders them.
         try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(source.captureCount, 1, "The second capture must wait for the first to finish")
         source.open()
         await appDelegate.captureTask?.value
         // Unordered, the held capture would still be running here; let it finish too, so the
@@ -806,6 +814,19 @@ final class AnnotateCommandTests: XCTestCase {
         await appDelegate.captureTask?.value
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+        XCTAssertEqual(captureProblemDetails, ["Annotate couldn't finish the capture. Try again in a moment."])
+    }
+
+    func testCaptureFailureWithToolFeedbackHiddenStillShowsAnAlert() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+        testDefaults.settings[.hideToolFeedback] = true
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(feedbackText(on: overlay))
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"], "A failure is never silent")
     }
 
     func testCaptureFailureWithTheOverlayOpenStaysOnTheOverlay() async throws {
@@ -837,6 +858,44 @@ final class AnnotateCommandTests: XCTestCase {
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
+        let detail = try XCTUnwrap(captureProblemDetails.first)
+        XCTAssertTrue(detail.hasPrefix("The image is on the clipboard, but Annotate couldn't save it."), detail)
+        XCTAssertFalse(detail.contains("couldn't finish the capture"), "Only the save failed")
+    }
+
+    /// Saves to a temporary folder while every copy to the clipboard fails.
+    private func useCaptureWhoseCopyFails() throws -> URL {
+        try useStubCapture()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateCommandTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: folder), FailingSink(destination: .clipboard)])
+        return folder
+    }
+
+    func testFailedCopyWithTheOverlayClosedIsReported() async throws {
+        let folder = try useCaptureWhoseCopyFails()
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Copy. Saved \(file)"])
+        XCTAssertTrue(try XCTUnwrap(captureProblemDetails.first).hasPrefix("The image was saved, but Annotate couldn't copy it"))
+    }
+
+    func testFailedCopyWithTheOverlayOpenSaysSoOnTheOverlay() async throws {
+        let folder = try useCaptureWhoseCopyFails()
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(feedbackText(on: overlay), "⚠️ Couldn't Copy. Saved \(file)")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
     }
 
     func testShareableContentListsAppsWhoseWindowsAreOffScreen() {
@@ -851,6 +910,496 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(item.title, "Capture Screen")
         XCTAssertEqual(item.keyEquivalent, "s")
         XCTAssertEqual(item.keyEquivalentModifierMask, .command)
+    }
+
+    // MARK: - Capture Area
+
+    /// Presses at `start`, drags to `end`, and releases there, through the overlay's own event
+    /// routing. Points are in the overlay view's coordinates, which the window shares.
+    private func drag(from start: NSPoint, to end: NSPoint) throws {
+        let steps: [(NSEvent.EventType, NSPoint)] = [(.leftMouseDown, start), (.leftMouseDragged, end), (.leftMouseUp, end)]
+        for (type, point) in steps {
+            overlay.sendEvent(
+                try XCTUnwrap(TestEvents.createMouseEvent(type: type, location: point, windowNumber: overlay.windowNumber)))
+        }
+    }
+
+    private func pressEscape() throws {
+        overlay.sendEvent(
+            try XCTUnwrap(
+                TestEvents.createKeyEvent(
+                    type: .keyDown, keyCode: 53, characters: "\u{1b}", windowNumber: overlay.windowNumber)))
+    }
+
+    func testCaptureAreaOpensTheOverlayAndSavesTheDraggedArea() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        XCTAssertTrue(visibleOverlays.isEmpty)
+
+        XCTAssertEqual(run(.capture(.area)), .ran)
+
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertNil(appDelegate.captureTask, "Nothing is captured before the drag")
+        overlay.overlayView.rectangles = [solidRedactionInTheCorner]
+
+        // Up and to the left, from (80, 60) to the display's bottom-left corner.
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        await appDelegate.captureTask?.value
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(try XCTUnwrap(files.first))")
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let scale = screen.backingScaleFactor
+        XCTAssertEqual(image.width, Int(80 * scale))
+        XCTAssertEqual(image.height, Int(60 * scale))
+        // The 40 point solid redaction in the bottom-left corner, and the screen beside it.
+        let corner = CaptureTestImages.pixel(image, x: 4, y: image.height - 4)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 0, g: 0, b: 0, a: 255)), "\(corner)")
+        let topRight = CaptureTestImages.pixel(image, x: image.width - 4, y: 4)
+        XCTAssertTrue(topRight.isClose(to: RGBA(r: 0, g: 0, b: 255, a: 255)), "\(topRight)")
+    }
+
+    func testEscapeCancelsCaptureAreaAndKeepsTheOverlayOpen() throws {
+        try useStubCapture()
+        run(.show)
+        let toolbarWasAttached = overlay.toolbarPanel?.isAttached
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertEqual(overlay.toolbarPanel?.isAttached ?? false, false, "The whole display can be picked")
+
+        try pressEscape()
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen, "Escape closes only the picker")
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+        XCTAssertEqual(overlay.toolbarPanel?.isAttached, toolbarWasAttached)
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCaptureAreaHoldsTheFadeAndCapturesAtTheHeldTime() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        var clock: CFTimeInterval = 1000
+        view.fadeClock = { clock }
+        view.fadeMode = true
+        // A thick red outline around the bottom-left corner, made just now.
+        var outline = Rectangle(
+            startPoint: .zero, endPoint: NSPoint(x: 40, y: 40), color: .red, lineWidth: 20, style: .outline)
+        outline.creationTime = clock
+        view.rectangles = [outline]
+
+        run(.capture(.area))
+        XCTAssertTrue(view.isFadeFrozen)
+        XCTAssertNil(overlay.fadeTimer, "A held fade has nothing to animate")
+        // The drag takes far longer than the outline lasts.
+        clock += view.fadeDuration * 10
+        XCTAssertEqual(view.fadeClock(), 1000)
+
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+
+        XCTAssertFalse(view.isFadeFrozen)
+        XCTAssertEqual(view.fadeClock(), clock, "The fade runs on the real clock again")
+        XCTAssertTrue(view.rectangles.isEmpty, "Once the picker closes the outline is past its fade")
+        await appDelegate.captureTask?.value
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "Captured as the picker showed it: \(corner)")
+    }
+
+    func testCaptureAreaFromAlwaysOnOpensTheInteractiveOverlayWithItsDrawings() throws {
+        try useStubCapture()
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        appDelegate.toggleAlwaysOnMode()
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.area))
+
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "The Always-On drawings were on screen, so they stay")
+    }
+
+    /// Enters Always-On in Fade Mode with a thick red outline around the bottom-left corner
+    /// made long ago: Always-On holds it in Persist, while Fade Mode would have expired it.
+    @discardableResult
+    private func showAnOldDrawingInAlwaysOn() throws -> OverlayView {
+        testDefaults.settings[.fadeMode] = true
+        let view = try XCTUnwrap(overlay.overlayView)
+        let clock: CFTimeInterval = 1000
+        view.fadeClock = { clock }
+        appDelegate.toggleAlwaysOnMode()
+        var outline = Rectangle(
+            startPoint: .zero, endPoint: NSPoint(x: 40, y: 40), color: .red, lineWidth: 20, style: .outline)
+        outline.creationTime = clock - view.fadeDuration * 10
+        view.rectangles = [outline]
+        return view
+    }
+
+    func testCaptureAreaFromAlwaysOnKeepsDrawingsPastTheirFade() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+
+        run(.capture(.area))
+
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertFalse(view.fadeMode, "Always-On's Persist holds through the pick")
+        XCTAssertEqual(view.rectangles.count, 1, "Leaving Always-On must not expire what it showed")
+
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+        await appDelegate.captureTask?.value
+
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
+        let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
+        XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "\(corner)")
+        XCTAssertTrue(view.fadeMode, "The Fade Mode setting is back once the picker closes")
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testCaptureAreaFromAlwaysOnGivesFadeModeBackOnEscape() throws {
+        try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+        run(.capture(.area))
+
+        try pressEscape()
+
+        XCTAssertTrue(view.fadeMode)
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testAlwaysOnShortcutWhilePickingClosesThePicker() throws {
+        try useStubCapture()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        // The global Always-On shortcut calls this directly, outside the picker's key handling.
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertFalse(view.isFadeFrozen)
+        XCTAssertFalse(view.subviews.contains { $0 is RegionPicker }, "No dimming left on a click-through overlay")
+    }
+
+    func testAlwaysOnShortcutWhilePickingFromAlwaysOnKeepsTheDrawings() throws {
+        try useStubCapture()
+        let view = try showAnOldDrawingInAlwaysOn()
+        run(.capture(.area))
+
+        appDelegate.toggleAlwaysOnMode()
+
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertFalse(view.fadeMode, "Back in Always-On's Persist")
+        XCTAssertEqual(view.rectangles.count, 1)
+        XCTAssertTrue(appDelegate.overlaysHoldingAlwaysOnFade.isEmpty)
+    }
+
+    func testCaptureAreaWithoutScreenRecordingInAlwaysOnKeepsTheDrawings() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var closeSettings: (@MainActor () -> Void)?
+        appDelegate.openSettingsPane = { _, _, onClose in closeSettings = onClose }
+        let view = try showAnOldDrawingInAlwaysOn()
+
+        run(.capture(.area))
+        runLoop { closeSettings != nil }
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertTrue(appDelegate.alwaysOnMode, "Asking for access never leaves Always-On")
+        try XCTUnwrap(closeSettings)()
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(view.rectangles.count, 1)
+    }
+
+    /// Swaps in a cursor manager on the test's defaults, and makes the cursor effects windows
+    /// again so they draw from it too: each one's view keeps the manager it was made with.
+    private func useTestCursorManager() -> CursorHighlightManager {
+        let original = CursorHighlightManager.shared
+        let manager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = manager
+        addTeardownBlock { @MainActor in
+            manager.showSystemCursor()
+            CursorHighlightManager.shared = original
+        }
+        appDelegate.cursorHighlightWindows.values.forEach {
+            $0.stopAnimationLoop()
+            $0.close()
+        }
+        appDelegate.cursorHighlightWindows.removeAll()
+        appDelegate.setupCursorHighlightWindows()
+        return manager
+    }
+
+    func testActiveCursorStyleStandsDownWhilePicking() async throws {
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        manager.activeCursorStyle = .circle
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+        view.updateCursor()
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertTrue(manager.isCursorHidden)
+
+        // Opening: the crosshair shows, and the canvas asking again doesn't hide it.
+        run(.capture(.area))
+        XCTAssertFalse(manager.shouldShowActiveCursorOnScreen(screen))
+        XCTAssertFalse(manager.isCursorHidden)
+        view.updateCursor()
+        XCTAssertFalse(manager.isCursorHidden)
+
+        // Cancelling brings the style back. The canvas is asked directly: a state change also
+        // refreshes hidden overlays on other displays, which show the system cursor, so with
+        // two displays the shared result depends on which overlay goes last.
+        try pressEscape()
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        view.updateCursor()
+        XCTAssertTrue(manager.isCursorHidden)
+
+        // So does picking.
+        run(.capture(.area))
+        XCTAssertFalse(manager.isCursorHidden)
+        try drag(from: .zero, to: NSPoint(x: 80, y: 60))
+        XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
+        view.updateCursor()
+        XCTAssertTrue(manager.isCursorHidden)
+        await appDelegate.captureTask?.value
+    }
+
+    /// Sends a cursor update the way AppKit does: to the owner of each cursor-update tracking
+    /// area in the overlay, which is the canvas, not the picker on top of it.
+    private func deliverCursorUpdate() throws {
+        let event = try XCTUnwrap(
+            NSEvent.enterExitEvent(
+                with: .cursorUpdate,
+                location: NSPoint(x: 300, y: 300),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: overlay.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                trackingNumber: 0,
+                userData: nil))
+        let views = [overlay.overlayView as NSView] + overlay.overlayView.subviews
+        let owners = views.flatMap(\.trackingAreas)
+            .filter { $0.options.contains(.cursorUpdate) }
+            .compactMap { $0.owner as? NSResponder }
+        XCTAssertFalse(owners.isEmpty, "Something must answer cursor updates")
+        owners.forEach { $0.cursorUpdate(with: event) }
+    }
+
+    func testThePickerShowsTheCrosshairWithEveryCursorStyle() throws {
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        run(.show)
+        let view = try XCTUnwrap(overlay.overlayView)
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            run(.capture(.area))
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) as the picker opens")
+            NSCursor.arrow.set()
+
+            // AppKit asks again on every move across the overlay; each answer must be the crosshair.
+            try deliverCursorUpdate()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) while picking")
+            view.updateCursor()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style) after the canvas refreshes its cursor")
+            XCTAssertFalse(manager.isCursorHidden, "\(style)")
+            // A move over the overlay leaves the system cursor showing.
+            manager.cursorPosition = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+            manager.updateCursorVisibility()
+            XCTAssertFalse(manager.isCursorHidden, "\(style) after a move")
+
+            try pressEscape()
+            try deliverCursorUpdate()
+            XCTAssertFalse(NSCursor.current === NSCursor.crosshair, "\(style): the tool's cursor is back")
+            XCTAssertEqual(manager.isCursorHidden, style != .none, "\(style)")
+        }
+    }
+
+    func testTheCursorStyleWindowStaysInPlaceWhilePicking() throws {
+        // AppKit sets the arrow when the pointer leaves one of the app's windows, and that
+        // includes the click-through window that draws the cursor style. Standing the style
+        // down for the picker used to order that window out from under the pointer, so the
+        // arrow replaced the crosshair a moment after the picker opened, and nothing put it
+        // back. XCTest can't put the pointer over a window, so this checks the window stays.
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        manager.clickEffectsEnabled = false
+        manager.cursorPosition = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+        run(.show)
+        let effects = try XCTUnwrap(appDelegate.cursorHighlightWindows[screen])
+        let layers = try XCTUnwrap(effects.highlightView.layer?.sublayers)
+        let styleCursor = try XCTUnwrap(layers.first { $0.name == "activeCursor" })
+        let styleOutline = try XCTUnwrap(layers.first { $0.name == "activeCursorOutline" })
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            // With no style and no other effect the window is out, and it stays out: ordering
+            // it in for the pick would order it out again as the picker closes.
+            let drawsStyle = style != .none
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) before picking")
+            XCTAssertEqual(styleCursor.opacity, drawsStyle ? 1 : 0, "\(style) before picking")
+
+            run(.capture(.area))
+            XCTAssertTrue(overlay.isRegionPickerOpen, "\(style)")
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) while picking")
+            XCTAssertEqual(styleCursor.opacity, 0, "\(style): its cursor is gone while picking")
+            XCTAssertEqual(styleOutline.opacity, 0, "\(style): its cursor is gone while picking")
+
+            try pressEscape()
+            XCTAssertEqual(effects.isVisible, drawsStyle, "\(style) after picking")
+            XCTAssertEqual(styleCursor.opacity, drawsStyle ? 1 : 0, "\(style) is back after picking")
+        }
+    }
+
+    func testEveryPointerMoveWhilePickingSetsTheCrosshair() throws {
+        // Something can still set the arrow mid-pick, as AppKit does whenever the pointer leaves
+        // one of the app's windows, and a move inside the overlay crosses no cursor rect that
+        // would set the crosshair again. The live check saw the arrow last through 35 moves.
+        try useStubCapture()
+        let manager = useTestCursorManager()
+        run(.show)
+        let acceptedMovesBefore = overlay.acceptsMouseMovedEvents
+
+        for style in ActiveCursorStyle.allCases {
+            manager.activeCursorStyle = style
+            run(.capture(.area))
+            XCTAssertTrue(overlay.acceptsMouseMovedEvents, "\(style): the picker needs every move")
+
+            for step in 0..<3 {
+                NSCursor.arrow.set()
+                let point = NSPoint(x: 300 + CGFloat(step) * 10, y: 300)
+                overlay.sendEvent(
+                    try XCTUnwrap(
+                        TestEvents.createMouseEvent(type: .mouseMoved, location: point, windowNumber: overlay.windowNumber)))
+                XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style), move \(step)")
+            }
+            NSCursor.arrow.set()
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseDragged] {
+                overlay.sendEvent(
+                    try XCTUnwrap(
+                        TestEvents.createMouseEvent(
+                            type: type, location: NSPoint(x: 320, y: 310), windowNumber: overlay.windowNumber)))
+                XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(style), \(type)")
+                NSCursor.arrow.set()
+            }
+
+            try pressEscape()
+            XCTAssertFalse(overlay.isRegionPickerOpen, "\(style)")
+            XCTAssertEqual(overlay.acceptsMouseMovedEvents, acceptedMovesBefore, "\(style)")
+        }
+    }
+
+    func testAnotherDisplaysOverlayLeavesThePickersCrosshair() throws {
+        // Every overlay's refresh sets the one system cursor. With the Text tool, the hidden
+        // overlay on the other display sets the I-beam, so the picking overlay has to go last.
+        // Picking on each display in turn covers both orders the overlays can refresh in.
+        let screens = NSScreen.screens
+        try XCTSkipUnless(screens.count > 1, "Needs a second display")
+        try useStubCapture()
+        run(.tool(.text))
+        run(.hide)
+
+        for target in screens.prefix(2) {
+            appDelegate.pointerLocationOverride = NSPoint(x: target.frame.midX, y: target.frame.midY)
+            run(.capture(.area))
+            let picking = try XCTUnwrap(appDelegate.overlayWindows[target])
+            XCTAssertTrue(picking.isRegionPickerOpen, "\(target.localizedName)")
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(target.localizedName) as the picker opens")
+
+            appDelegate.cursorHighlightStateChanged()
+            XCTAssertTrue(NSCursor.current === NSCursor.crosshair, "\(target.localizedName) after every overlay refreshes")
+
+            picking.cancelRegionPicker()
+            run(.hide)
+        }
+    }
+
+    func testCaptureAreaFromAClosedOverlayStillClearsWithClearDrawingsOnStart() throws {
+        try useStubCapture()
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+
+        run(.capture(.area))
+
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertTrue(overlay.overlayView.paths.isEmpty, "Opens the way the overlay shortcut does")
+    }
+
+    func testShiftCommandSWhileTypingALabelCommitsItAndPicks() throws {
+        try useStubCapture()
+        let view = try startTypingALabel("Hello")
+
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("S", modifiers: [.shift, .command])))
+
+        XCTAssertNil(view.activeTextField)
+        XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+    }
+
+    func testShortcutsStandDownWhilePicking() throws {
+        try useStubCapture()
+        run(.show)
+        overlay.overlayView.currentTool = .arrow
+        run(.capture(.area))
+
+        overlay.sendEvent(try keyDown("p"))
+        XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
+
+        XCTAssertEqual(overlay.overlayView.currentTool, .arrow)
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testClosingTheOverlayCancelsThePicker() throws {
+        try useStubCapture()
+        run(.capture(.area))
+        XCTAssertTrue(overlay.overlayView.isFadeFrozen)
+
+        run(.hide)
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+    }
+
+    func testCaptureAreaWithoutScreenRecordingAsksBeforePicking() throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var opened: [SettingsPane] = []
+        appDelegate.openSettingsPane = { pane, _, _ in opened.append(pane) }
+        run(.show)
+
+        run(.capture(.area))
+
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        runLoop { !opened.isEmpty }
+        XCTAssertEqual(opened, [.capture])
+    }
+
+    func testCaptureAreaOverAnOpaqueBoardNeedsNoScreenRecording() throws {
+        try useStubCapture(canCapture: false)
+        BoardManager.shared.isEnabled = true
+        BoardManager.shared.opacity = 1
+        run(.show)
+
+        run(.capture(.area))
+
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+    }
+
+    func testCaptureAreaMenuItemTakesTheShortcut() throws {
+        let item = try XCTUnwrap(
+            appDelegate.statusItem.menu?.items.first { $0.action == #selector(AppDelegate.captureArea) })
+        XCTAssertEqual(item.title, "Capture Area")
+        XCTAssertEqual(item.keyEquivalent, "s")
+        XCTAssertEqual(item.keyEquivalentModifierMask, [.shift, .command])
     }
 
     // MARK: - App Intents

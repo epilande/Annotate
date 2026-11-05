@@ -300,7 +300,9 @@ class CursorHighlightManager: @unchecked Sendable {
         guard activeCursorStyle != .none,
               !isScreenshotSelectionActive,
               let overlay = AppDelegate.shared?.overlayWindows[screen],
-              overlay.isVisible else { return false }
+              overlay.isVisible,
+              // Capture Area's picker shows the system crosshair instead.
+              !overlay.isRegionPickerOpen else { return false }
         // The always-on overlay is click-through, so an excluded app underneath can capture and pin the cursor.
         return !(isExcludedAppActive && overlay.ignoresMouseEvents)
     }
@@ -316,6 +318,11 @@ class CursorHighlightManager: @unchecked Sendable {
 
     func shouldShowActiveCursorOnAnyScreen() -> Bool {
         AppDelegate.shared?.overlayWindows.keys.contains { shouldShowActiveCursorOnScreen($0) } ?? false
+    }
+
+    /// Whether Capture Area's picker is open on any display.
+    var isRegionPickerOpenOnAnyScreen: Bool {
+        AppDelegate.shared?.overlayWindows.values.contains { $0.isRegionPickerOpen } ?? false
     }
 
     // MARK: - Excluded Applications Suppression
@@ -442,7 +449,7 @@ class CursorHighlightManager: @unchecked Sendable {
 
     // MARK: - System Cursor Visibility
 
-    private var isCursorHidden = false
+    private(set) var isCursorHidden = false
 
     func hideSystemCursor() {
         guard !isCursorHidden else { return }

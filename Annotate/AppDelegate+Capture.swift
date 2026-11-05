@@ -3,13 +3,31 @@ import os
 
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
 
-/// Capture Screen from the menu, the overlay shortcut, and `AnnotateCommand.capture`: picks the
-/// display, reads what its overlay shows, and reports the result on that overlay.
+/// Capture Screen and Capture Area from the menu, the overlay shortcuts, and
+/// `AnnotateCommand.capture`: picks the display, reads what its overlay shows, and reports the
+/// result on that overlay.
 extension AppDelegate {
     /// The display a capture saves: the key interactive overlay's, else the one under the
     /// pointer, else the main display.
     static func captureTarget<Display>(keyOverlay: Display?, pointer: Display?, main: Display?) -> Display? {
         keyOverlay ?? pointer ?? main
+    }
+
+    /// Where captures go: a file in `folder` and the clipboard. In a debug build launched with
+    /// `FileSink.failSavesArgument`, every save fails.
+    static func captureSinks(
+        folder: URL = FileSink.defaultFolder,
+        pasteboard: NSPasteboard = .general,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [CaptureSink] {
+        var file = FileSink(folder: folder)
+        #if DEBUG
+        if arguments.contains(FileSink.failSavesArgument) {
+            log.notice("Capture saves fail on purpose: launched with \(FileSink.failSavesArgument, privacy: .public)")
+            file.writeBytes = { _, _ in throw FileSink.ForcedSaveFailure() }
+        }
+        #endif
+        return [file, ClipboardSink(pasteboard: pasteboard)]
     }
 
     var captureTargetScreen: NSScreen? {
@@ -18,9 +36,19 @@ extension AppDelegate {
         return Self.captureTarget(keyOverlay: keyOverlay, pointer: getCurrentScreen(), main: NSScreen.main)
     }
 
+    /// The display Capture Area picks on: the key interactive overlay's, else the open overlay
+    /// under the pointer, else any open overlay.
+    private var areaTargetScreen: NSScreen? {
+        let open = overlayWindows.filter { $0.value.isVisible }
+        if let key = open.first(where: { $0.value.isKeyWindow })?.key { return key }
+        if let pointer = getCurrentScreen(), open[pointer] != nil { return pointer }
+        return NSScreen.screens.first { open[$0] != nil }
+    }
+
     func capture(_ scope: CaptureScope) {
         switch scope {
         case .screen: captureScreen()
+        case .area: captureArea()
         }
     }
 
@@ -32,12 +60,86 @@ extension AppDelegate {
             return
         }
         let overlay = overlayWindows[screen]
-        let request = CaptureRequest(
-            display: display,
-            scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
-            hostTime: CACurrentMediaTime(),
-            date: Date())
+        startCapture(
+            CaptureRequest(
+                display: display,
+                scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
+                hostTime: CACurrentMediaTime(),
+                date: Date()),
+            on: overlay)
+    }
 
+    /// Lets the user drag out part of a display, then saves it with its board and annotations
+    /// and copies it, as Capture Screen does. The picker needs the interactive overlay, so with
+    /// none open, including in Always-On, this opens it first. The fade holds while picking,
+    /// and the capture shows each annotation at the fade the picker showed.
+    @objc func captureArea() {
+        // Without Screen Recording the drag would come to nothing, so ask before anything opens.
+        // From Always-On, the Screen Recording flow brings Always-On back afterwards, drawings
+        // and all.
+        let board = BoardManager.shared
+        if !captureService.source.canCapture,
+            !CaptureScene.boardCoversScreen(board.appearance, opacity: CGFloat(board.opacity))
+        {
+            showScreenRecordingOff(on: areaTargetScreen.flatMap { overlayWindows[$0] })
+            return
+        }
+        var heldAlwaysOnFade: OverlayWindow?
+        if !isInteractiveOverlayOpen {
+            // Always-On annotations are on screen, so the overlay opening over them keeps them,
+            // even with Clear Drawings on Start, and keeps Always-On's Persist fade until the
+            // picker closes, or leaving Always-On would expire the older ones at once.
+            if alwaysOnMode, let screen = getCurrentScreen(), let overlay = overlayWindows[screen] {
+                overlaysKeepingDrawings.insert(ObjectIdentifier(overlay))
+                overlaysHoldingAlwaysOnFade.insert(ObjectIdentifier(overlay))
+                heldAlwaysOnFade = overlay
+            }
+            showInteractiveOverlay()
+        }
+        let opened = beginAreaPicker(releasingHeldFadeOf: heldAlwaysOnFade)
+        if !opened, let heldAlwaysOnFade {
+            releaseHeldAlwaysOnFade(of: heldAlwaysOnFade)
+        }
+    }
+
+    /// Opens the picker on the target display, and returns whether it opened. When it does,
+    /// closing it in any way releases `held`'s Always-On fade.
+    private func beginAreaPicker(releasingHeldFadeOf held: OverlayWindow?) -> Bool {
+        guard let screen = areaTargetScreen, let overlay = overlayWindows[screen],
+            let display = DisplayInfo(screen: screen)
+        else {
+            log.error("No overlay to pick an area on")
+            return false
+        }
+        guard !overlay.isRegionPickerOpen else { return false }
+        // The picker reads Escape from its own overlay, and another display's may be key.
+        overlay.makeKeyAndOrderFront(nil)
+        let onDismiss: () -> Void = { [weak self] in
+            guard let self, let held else { return }
+            self.releaseHeldAlwaysOnFade(of: held)
+        }
+        return overlay.beginRegionPicker(onDismiss: onDismiss) { [weak self, weak overlay] rect in
+            guard let self, let overlay else { return }
+            // Runs before the picker closes, so the scene's fade clock is still frozen.
+            self.startCapture(
+                CaptureRequest(
+                    display: display,
+                    region: .rect(fromViewRect: rect, displayHeight: display.frame.height),
+                    scene: self.captureScene(of: overlay),
+                    hostTime: CACurrentMediaTime(),
+                    date: Date()),
+                on: overlay)
+        }
+    }
+
+    /// Gives an overlay Capture Area opened from Always-On its Fade Mode setting back. Back in
+    /// Always-On, as when its shortcut ended the pick, Persist stays as Always-On wants.
+    func releaseHeldAlwaysOnFade(of overlay: OverlayWindow) {
+        guard overlaysHoldingAlwaysOnFade.remove(ObjectIdentifier(overlay)) != nil, !alwaysOnMode else { return }
+        overlay.overlayView.fadeMode = settings[.fadeMode]
+    }
+
+    private func startCapture(_ request: CaptureRequest, on overlay: OverlayWindow?) {
         // Each capture waits for the one before it, so captures finish in the order they were
         // asked for: an older image never replaces a newer one on the clipboard or in the HUD,
         // and every capture still gets its own file. The scene above is already taken, so the
@@ -53,7 +155,7 @@ extension AppDelegate {
                 self?.showScreenRecordingOff(on: overlay)
             } catch {
                 log.error("Capture failed: \(error.localizedDescription)")
-                self?.reportCaptureProblem("Capture Failed", icon: "⚠️", on: overlay)
+                self?.reportCaptureProblem(.failed, on: overlay)
             }
         }
     }
@@ -74,22 +176,29 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
+    /// Success shows on the overlay, if it is open. When one destination failed, says which,
+    /// even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
         if let file = result.savedFile {
+            if let copyError = result.failure(of: .clipboard) {
+                reportCaptureProblem(.copyFailed(savedAs: file, error: copyError), on: overlay)
+                return
+            }
             guard let overlay, overlay.isVisible else { return }
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
-            reportCaptureProblem("Couldn't Save. Copied to Clipboard", icon: "📋", on: overlay)
+            reportCaptureProblem(.saveFailed(error: result.failure(of: .file)), on: overlay)
         }
     }
 
-    /// On the overlay when it is open. Otherwise, as from the status menu with the overlay
-    /// closed, an alert, so a failed capture is never silent.
-    private func reportCaptureProblem(_ message: String, icon: String, on overlay: OverlayWindow?) {
-        if let overlay, overlay.isVisible {
-            overlay.showToggleFeedback(message, icon: icon)
+    /// On the overlay's HUD when it is open and showing feedback. Otherwise an alert: from the
+    /// status menu with the overlay closed, or with Hide Tool Feedback on, a failed capture is
+    /// never silent.
+    private func reportCaptureProblem(_ problem: CaptureProblem, on overlay: OverlayWindow?) {
+        if let overlay, overlay.isVisible, !settings[.hideToolFeedback] {
+            overlay.showToggleFeedback(problem.title, icon: problem.icon)
         } else {
-            showCaptureProblemAlert(message)
+            showCaptureProblemAlert(problem.title, problem.detail)
         }
     }
 
@@ -167,6 +276,33 @@ extension AppDelegate {
     @discardableResult
     func consumeKeptDrawings(of overlay: OverlayWindow) -> Bool {
         overlaysKeepingDrawings.remove(ObjectIdentifier(overlay)) != nil
+    }
+}
+
+/// A capture that went wrong, in whole or in part: a short title for the HUD and the alert,
+/// and the alert's detail.
+struct CaptureProblem: Equatable {
+    let title: String
+    let icon: String
+    let detail: String
+
+    static let failed = CaptureProblem(
+        title: "Capture Failed", icon: "⚠️", detail: "Annotate couldn't finish the capture. Try again in a moment.")
+
+    static func copyFailed(savedAs file: URL, error: Error) -> CaptureProblem {
+        CaptureProblem(
+            title: "Couldn't Copy. Saved \(file.lastPathComponent)",
+            icon: "⚠️",
+            detail: "The image was saved, but Annotate couldn't copy it to the clipboard. \(error.localizedDescription)")
+    }
+
+    static func saveFailed(error: Error?) -> CaptureProblem {
+        CaptureProblem(
+            title: "Couldn't Save. Copied to Clipboard",
+            icon: "📋",
+            detail: ["The image is on the clipboard, but Annotate couldn't save it.", error?.localizedDescription]
+                .compactMap { $0 }
+                .joined(separator: " "))
     }
 }
 
