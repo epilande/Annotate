@@ -13,14 +13,17 @@ extension AppDelegate {
         keyOverlay ?? pointer ?? main
     }
 
-    /// Where captures go: a file in `folder` and the clipboard. In a debug build launched with
+    /// Where captures can go: a file and the clipboard. The file goes in the folder
+    /// `chosenFolder` holds, or in `folder` when there is none or it can't be reached. Each
+    /// request's `afterCapture` picks from these. In a debug build launched with
     /// `FileSink.failSavesArgument`, every save fails.
     static func captureSinks(
         folder: URL = FileSink.defaultFolder,
+        chosenFolder: CaptureFolderStore? = nil,
         pasteboard: NSPasteboard = .general,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> [CaptureSink] {
-        var file = FileSink(folder: folder)
+        var file = FileSink(folder: folder, chosenFolder: chosenFolder)
         #if DEBUG
         if arguments.contains(FileSink.failSavesArgument) {
             log.notice("Capture saves fail on purpose: launched with \(FileSink.failSavesArgument, privacy: .public)")
@@ -53,7 +56,7 @@ extension AppDelegate {
     }
 
     /// Saves the display with its board and annotations, as its overlay shows them, and copies
-    /// the image. With the overlay hidden it saves the plain screen.
+    /// the image, as After Capture says. With the overlay hidden it takes the plain screen.
     @objc func captureScreen() {
         guard let screen = captureTargetScreen, let display = DisplayInfo(screen: screen) else {
             log.error("No display to capture")
@@ -65,12 +68,13 @@ extension AppDelegate {
                 display: display,
                 scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
                 hostTime: CACurrentMediaTime(),
-                date: Date()),
+                date: Date(),
+                afterCapture: settings[.afterCapture]),
             on: overlay)
     }
 
-    /// Lets the user drag out part of a display, then saves it with its board and annotations
-    /// and copies it, as Capture Screen does. The picker needs the interactive overlay, so with
+    /// Lets the user drag out part of a display, then handles it with its board and annotations
+    /// as Capture Screen does. The picker needs the interactive overlay, so with
     /// none open, including in Always-On, this opens it first. The fade holds while picking,
     /// and the capture shows each annotation at the fade the picker showed.
     @objc func captureArea() {
@@ -127,7 +131,8 @@ extension AppDelegate {
                     region: .rect(fromViewRect: rect, displayHeight: display.frame.height),
                     scene: self.captureScene(of: overlay),
                     hostTime: CACurrentMediaTime(),
-                    date: Date()),
+                    date: Date(),
+                    afterCapture: self.settings[.afterCapture]),
                 on: overlay)
         }
     }
@@ -153,9 +158,12 @@ extension AppDelegate {
                 self?.reportCapture(result, on: overlay)
             } catch CaptureError.screenRecordingOff {
                 self?.showScreenRecordingOff(on: overlay)
+            } catch is CaptureError {
+                log.error("Capture failed")
+                self?.reportCaptureProblem(.failed, on: overlay)
             } catch {
                 log.error("Capture failed: \(error.localizedDescription)")
-                self?.reportCaptureProblem(.failed, on: overlay)
+                self?.reportCaptureProblem(.undelivered(error: error), on: overlay)
             }
         }
     }
@@ -176,18 +184,21 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
-    /// Success shows on the overlay, if it is open. When one destination failed, says which,
-    /// even with the overlay closed.
+    /// A system notification, when allowed, and the overlay's HUD, when it is open. A problem
+    /// takes the HUD's place, and shows even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
+        if let notice = CaptureNotice(result) {
+            captureNotifier.post(notice)
+        }
+        if let problem = CaptureProblem(result) {
+            reportCaptureProblem(problem, on: overlay)
+            return
+        }
+        guard let overlay, overlay.isVisible else { return }
         if let file = result.savedFile {
-            if let copyError = result.failure(of: .clipboard) {
-                reportCaptureProblem(.copyFailed(savedAs: file, error: copyError), on: overlay)
-                return
-            }
-            guard let overlay, overlay.isVisible else { return }
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
-            reportCaptureProblem(.saveFailed(error: result.failure(of: .file)), on: overlay)
+            overlay.showToggleFeedback("Copied to Clipboard", icon: "📋")
         }
     }
 
@@ -289,6 +300,23 @@ struct CaptureProblem: Equatable {
     static let failed = CaptureProblem(
         title: "Capture Failed", icon: "⚠️", detail: "Annotate couldn't finish the capture. Try again in a moment.")
 
+    /// Every destination the capture had failed, so the image went nowhere.
+    static func undelivered(error: Error) -> CaptureProblem {
+        CaptureProblem(
+            title: "Capture Failed",
+            icon: "⚠️",
+            detail: "Annotate couldn't deliver the image. \(error.localizedDescription)")
+    }
+
+    static func folderUnavailable(_ folder: String, savedAs file: URL) -> CaptureProblem {
+        CaptureProblem(
+            title: "Can't Reach \(folder). Saved to Default Folder",
+            icon: "📁",
+            detail: "Annotate can't reach \(folder), so it saved \(file.lastPathComponent) in "
+                + "\(CaptureSettingsView.displayPath(of: file.deletingLastPathComponent())). "
+                + "Choose another folder in Settings.")
+    }
+
     static func copyFailed(savedAs file: URL, error: Error) -> CaptureProblem {
         CaptureProblem(
             title: "Couldn't Copy. Saved \(file.lastPathComponent)",
@@ -303,6 +331,25 @@ struct CaptureProblem: Equatable {
             detail: ["The image is on the clipboard, but Annotate couldn't save it.", error?.localizedDescription]
                 .compactMap { $0 }
                 .joined(separator: " "))
+    }
+}
+
+extension CaptureProblem {
+    /// What a capture that produced an image, and got it somewhere, still has to report.
+    init?(_ result: CaptureResult) {
+        if let file = result.savedFile {
+            if let copyError = result.failure(of: .clipboard) {
+                self = .copyFailed(savedAs: file, error: copyError)
+            } else if let missedFolder = result.missedFolder {
+                self = .folderUnavailable(missedFolder, savedAs: file)
+            } else {
+                return nil
+            }
+        } else if let saveError = result.failure(of: .file), result.copiedToClipboard {
+            self = .saveFailed(error: saveError)
+        } else {
+            return nil
+        }
     }
 }
 

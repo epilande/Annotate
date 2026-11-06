@@ -1,9 +1,15 @@
 import AppKit
+import os
+
+private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
 
 /// Saves each capture as a PNG in a folder, named after its time the way macOS names
 /// screenshots: `Annotate 2026-11-01 at 10.23.45.png`, then ` (2)`, ` (3)` on collision.
 struct FileSink: CaptureSink {
+    /// The default folder, which also takes a capture the chosen folder can't.
     var folder: URL
+    /// Holds the folder chosen in Settings, read for each capture.
+    var chosenFolder: CaptureFolderStore?
     /// Writes each capture's temporary file. Debug builds can make it fail on purpose; see
     /// `failSavesArgument`.
     var writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
@@ -30,7 +36,37 @@ struct FileSink: CaptureSink {
 
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
         let baseName = Self.baseName(for: capture.capturedAt)
-        return .file(try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes))
+        guard let chosenFolder, let bookmark = chosenFolder.bookmark else {
+            return .file(try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes))
+        }
+        let chosen = await Self.write(png, baseName: baseName, bookmark: bookmark, writeBytes: writeBytes)
+        if let renewed = chosen.renewedBookmark {
+            chosenFolder.renew(bookmark, with: renewed)
+        }
+        if let file = chosen.file { return .file(file) }
+        let file = try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes)
+        return .file(file, missedFolder: CaptureFolderBookmark.folderName(of: bookmark))
+    }
+
+    /// Writes `data` to the folder `bookmark` leads to, holding its security scope for the whole
+    /// write. Returns a nil file when the folder is gone or the write failed, and a replacement
+    /// when macOS calls the bookmark stale, as it does once the folder has moved. A false from
+    /// `startAccessingSecurityScopedResource` is no verdict: folders under Pictures need no
+    /// scope, so the write decides.
+    nonisolated static func write(
+        _ data: Data, baseName: String, bookmark: Data,
+        writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
+    ) async -> (file: URL?, renewedBookmark: Data?) {
+        guard let folder = CaptureFolderBookmark.resolve(bookmark) else { return (nil, nil) }
+        let isAccessing = folder.url.startAccessingSecurityScopedResource()
+        defer { if isAccessing { folder.url.stopAccessingSecurityScopedResource() } }
+        let renewed = folder.isStale ? try? CaptureFolderBookmark.make(for: folder.url) : nil
+        do {
+            return (try await write(data, baseName: baseName, in: folder.url, writeBytes: writeBytes), renewed)
+        } catch {
+            log.error("Capture couldn't be saved to the chosen folder: \(error.localizedDescription)")
+            return (nil, renewed)
+        }
     }
 
     /// `Annotate 2026-11-01 at 10.23.45`, in the current time zone.
