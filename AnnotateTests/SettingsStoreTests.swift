@@ -147,6 +147,25 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.spotlightDimmingOpacity], 0.5)
     }
 
+    func testAfterCaptureDefaultsToBothAndAnUnknownValueReadsTheDefault() {
+        XCTAssertEqual(settings[.afterCapture], .both)
+
+        settings[.afterCapture] = .copy
+        XCTAssertEqual(defaults.string(forKey: "AfterCapture"), "copy")
+        XCTAssertEqual(settings[.afterCapture], .copy)
+
+        defaults.set("sideways", forKey: "AfterCapture")
+        XCTAssertEqual(settings[.afterCapture], .both)
+    }
+
+    func testCaptureFolderBookmarkDefaultsToEmptyAndRoundTrips() {
+        XCTAssertEqual(settings[.captureFolderBookmark], Data())
+
+        settings[.captureFolderBookmark] = Data([1, 2])
+        XCTAssertEqual(defaults.data(forKey: "CaptureFolderBookmark"), Data([1, 2]))
+        XCTAssertEqual(settings[.captureFolderBookmark], Data([1, 2]))
+    }
+
     func testWrongTypeReadsTheDefault() {
         defaults.set(Data([0x01]), forKey: "FadeMode")
         defaults.set(["on"], forKey: "ToolbarVisible")

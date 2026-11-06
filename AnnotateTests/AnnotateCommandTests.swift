@@ -15,6 +15,7 @@ final class AnnotateCommandTests: XCTestCase {
     var captureProblemAlerts: [String] = []
     /// The detail text of each alert in `captureProblemAlerts`.
     var captureProblemDetails: [String] = []
+    var captureNotifier = StubCaptureNotifier()
 
     override func setUp() {
         super.setUp()
@@ -505,6 +506,8 @@ final class AnnotateCommandTests: XCTestCase {
             self.captureProblemDetails.append(detail)
         }
         appDelegate.privacyPromptPollInterval = 0.02
+        captureNotifier = StubCaptureNotifier()
+        appDelegate.captureNotifier = captureNotifier
         appDelegate.captureService = CaptureService(
             source: source ?? StubDisplayCapturing(canCapture: canCapture, snapshotImage: snapshot),
             sinks: [FileSink(folder: folder), ClipboardSink(pasteboard: pasteboard)])
@@ -519,6 +522,101 @@ final class AnnotateCommandTests: XCTestCase {
             color: .black,
             lineWidth: 1,
             style: .solid)
+    }
+
+    func testCaptureSendsANotificationWhetherOrNotTheOverlayIsOpen() async throws {
+        let (folder, _) = try useStubCapture()
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(captureNotifier.notices.map(\.body), [file])
+        XCTAssertEqual(captureNotifier.notices.first?.file?.lastPathComponent, file)
+    }
+
+    func testCopyToClipboardSavesNoFileAndSaysSo() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        testDefaults.settings[.afterCapture] = .copy
+        run(.show)
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        await appDelegate.captureTask?.value
+
+        XCTAssertNotNil(pasteboard.data(forType: .png))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "No file means no folder either")
+        XCTAssertEqual(feedbackText(on: overlay), "📋 Copied to Clipboard")
+        XCTAssertTrue(captureProblemAlerts.isEmpty, "Saving no file is what was asked for")
+        XCTAssertEqual(captureNotifier.notices.map(\.title), ["Capture Copied"])
+    }
+
+    func testSaveToFolderLeavesTheClipboardAlone() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        testDefaults.settings[.afterCapture] = .save
+        run(.show)
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        await appDelegate.captureTask?.value
+
+        XCTAssertNil(pasteboard.data(forType: .png))
+        let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(feedbackText(on: overlay), "📸 Saved \(file)")
+    }
+
+    func testFailedSaveWithNothingElseToDoReportsWhy() async throws {
+        try useStubCapture()
+        testDefaults.settings[.afterCapture] = .save
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FailingSink(destination: .file)])
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+        let detail = try XCTUnwrap(captureProblemDetails.first)
+        XCTAssertTrue(detail.hasPrefix("Annotate couldn't deliver the image."), detail)
+        XCTAssertTrue(captureNotifier.notices.isEmpty, "Nothing was delivered")
+    }
+
+    /// A chosen folder that was deleted, with captures falling back to a temporary folder.
+    private func useCaptureWhoseChosenFolderIsGone() throws -> URL {
+        try useStubCapture()
+        let temporary = FileManager.default.temporaryDirectory
+        let chosen = temporary.appendingPathComponent("AnnotateChosen-\(UUID().uuidString)", isDirectory: true)
+        let standard = temporary.appendingPathComponent("AnnotateDefault-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: standard) }
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        let folders = CaptureFolderStore(settings: testDefaults.settings)
+        try folders.choose(chosen)
+        try FileManager.default.removeItem(at: chosen)
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: standard, chosenFolder: folders)])
+        return chosen
+    }
+
+    func testMissedFolderSaysSoOnTheOverlay() async throws {
+        let chosen = try useCaptureWhoseChosenFolderIsGone()
+        run(.show)
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(
+            feedbackText(on: overlay), "📁 Can't Reach \(chosen.lastPathComponent). Saved to Default Folder")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
+        XCTAssertEqual(captureNotifier.notices.map(\.title), ["Capture Saved to the Default Folder"])
+    }
+
+    func testMissedFolderWithTheOverlayClosedIsAnAlert() async throws {
+        let chosen = try useCaptureWhoseChosenFolderIsGone()
+
+        appDelegate.captureScreen()
+        await appDelegate.captureTask?.value
+
+        XCTAssertEqual(captureProblemAlerts, ["Can't Reach \(chosen.lastPathComponent). Saved to Default Folder"])
     }
 
     func testCaptureSavesAndCopiesTheDisplayWithItsAnnotations() async throws {

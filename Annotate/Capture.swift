@@ -91,6 +91,8 @@ struct CaptureRequest {
     /// frame times use.
     var hostTime: CFTimeInterval
     var date: Date
+    /// Where the finished image goes, as the setting stood when the capture was asked for.
+    var afterCapture: AfterCapture = .both
 
     var needsScreenPixels: Bool { !(scene?.coversScreen ?? false) }
 }
@@ -117,7 +119,9 @@ struct Capture {
 
 /// Where a capture went.
 enum CaptureDelivery: Equatable, Sendable {
-    case file(URL)
+    /// Saved at the URL. `missedFolder` names the chosen folder when it could not be reached
+    /// and the file went to the default folder instead.
+    case file(URL, missedFolder: String? = nil)
     case clipboard
 }
 
@@ -125,6 +129,31 @@ enum CaptureDelivery: Equatable, Sendable {
 enum CaptureDestination: Equatable, Sendable {
     case file
     case clipboard
+}
+
+/// The After Capture setting. The raw values are stored, so renaming a case resets the setting.
+enum AfterCapture: String, CaseIterable, Sendable {
+    case save
+    case copy
+    case both
+
+    var title: String {
+        switch self {
+        case .save: "Save to folder"
+        case .copy: "Copy to clipboard"
+        case .both: "Both"
+        }
+    }
+
+    func includes(_ destination: CaptureDestination) -> Bool {
+        switch self {
+        case .save: destination == .file
+        case .copy: destination == .clipboard
+        case .both: true
+        }
+    }
+
+    var savesFile: Bool { includes(.file) }
 }
 
 /// A destination for finished captures.
@@ -162,7 +191,12 @@ struct CaptureResult {
     let failures: [CaptureSinkFailure]
 
     var savedFile: URL? {
-        deliveries.lazy.compactMap { if case .file(let url) = $0 { return url } else { return nil } }.first
+        deliveries.lazy.compactMap { if case .file(let url, _) = $0 { return url } else { return nil } }.first
+    }
+
+    /// The chosen folder a saved file should have gone to, when it went to the default instead.
+    var missedFolder: String? {
+        deliveries.lazy.compactMap { if case .file(_, let missed) = $0 { return missed } else { return nil } }.first
     }
 
     var copiedToClipboard: Bool { deliveries.contains(.clipboard) }
@@ -174,7 +208,7 @@ struct CaptureResult {
 }
 
 /// Makes captures: takes the screen pixels, composites the scene over them, encodes a PNG,
-/// and hands it to each sink.
+/// and hands it to each sink the request's `afterCapture` includes.
 @MainActor
 final class CaptureService {
     let source: DisplayCapturing
@@ -219,7 +253,7 @@ final class CaptureService {
 
         var deliveries: [CaptureDelivery] = []
         var failures: [CaptureSinkFailure] = []
-        for sink in sinks {
+        for sink in sinks where request.afterCapture.includes(sink.destination) {
             do {
                 deliveries.append(try await sink.deliver(capture, png: png))
             } catch {
