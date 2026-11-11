@@ -85,7 +85,7 @@ final class CaptureDestinationsTests: XCTestCase {
     private func result(
         _ deliveries: [CaptureDelivery], failures: [CaptureSinkFailure] = []
     ) -> CaptureResult {
-        CaptureResult(capture: capture(), deliveries: deliveries, failures: failures)
+        CaptureResult(capture: capture(), png: Data(), deliveries: deliveries, failures: failures)
     }
 
     private func deliver(with sink: FileSink) async throws -> (url: URL, missedFolder: String?) {
