@@ -34,7 +34,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
     /// Makes Capture Screen's and Capture Area's images. Tests swap in one with a stub source,
     /// a temporary folder, and a private pasteboard.
-    lazy var captureService = CaptureService(source: ScreenSampler.shared, sinks: Self.captureSinks())
+    lazy var captureService = CaptureService(
+        source: ScreenSampler.shared,
+        sinks: Self.captureSinks(chosenFolder: captureFolders))
+    /// The folder chosen for captures in Settings.
+    lazy var captureFolders = CaptureFolderStore(settings: settings)
+    /// Sends the notification a finished capture gets. Tests swap in a stub.
+    lazy var captureNotifier: CaptureNotifying = SystemCaptureNotifier.forThisProcess(folders: captureFolders)
     /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
@@ -95,6 +101,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         // By now macOS has made this process frontmost, so `frontmostApplication` names Annotate.
         handoff.noteLaunch(previousApp: LinkFocusHandoff.appOwningTopmostWindow())
         linkFocusHandoff = handoff
+        // A click on a capture's notification can be what launched the app, and is dropped
+        // unless the notification center's delegate is set by the time launch finishes.
+        _ = captureNotifier
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

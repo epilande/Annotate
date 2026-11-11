@@ -146,6 +146,23 @@ extension SettingKey<ActiveCursorStyle> {
     static var activeCursorStyle: Self { .rawValue("ActiveCursorStyle", default: .none) }
 }
 
+extension SettingKey<AfterCapture> {
+    /// Where a finished capture goes: a file, the clipboard, or both.
+    static var afterCapture: Self { .rawValue("AfterCapture", default: .both) }
+}
+
+extension SettingKey<Data> {
+    /// A security-scoped bookmark of the folder chosen for captures. Empty, the default, means
+    /// the default folder. `CaptureFolderStore` is the only reader.
+    static var captureFolderBookmark: Self {
+        SettingKey(
+            name: "CaptureFolderBookmark",
+            defaultValue: Data(),
+            decode: { defaults, name in defaults.data(forKey: name) },
+            encode: { $0 })
+    }
+}
+
 extension SettingKey<NSColor> {
     static var selectedColor: Self { .archivedColor("SelectedColor", default: .systemRed) }
     static var clickRippleColor: Self { .archivedColor("ClickRippleColor", default: .systemYellow) }

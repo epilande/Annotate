@@ -16,8 +16,8 @@ enum AnnotateCommand: Hashable, Sendable {
     case toolbar(CommandSwitch)
     case fade(CommandSwitch)
     case board(CommandSwitch)
-    /// Saves an image of the display, or of an area the user drags out, with its annotations
-    /// and copies it to the clipboard. Never runs from a link.
+    /// Takes an image of the display, or of an area the user drags out, with its annotations,
+    /// and saves it, copies it, or both, as After Capture says. Never runs from a link.
     case capture(CaptureScope)
 
     /// Whether running a command changed anything.
