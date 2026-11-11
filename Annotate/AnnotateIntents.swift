@@ -266,6 +266,8 @@ extension AnnotateCaptureIntent {
         let image: CapturedImage
         do {
             image = try await appDelegate.captureForShortcuts(scope)
+        } catch let cancellation as CancellationError {
+            throw cancellation
         } catch {
             throw AnnotateIntentError(capturing: error)
         }

@@ -1821,4 +1821,125 @@ final class AnnotateCommandTests: XCTestCase {
         runLoop { opened.count == 2 }
         XCTAssertEqual(opened, [.capture, .capture])
     }
+
+    // MARK: - Cancelling capture actions
+
+    private func assertCancelled(_ task: Task<IntentFile, Error>, file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await task.value
+            XCTFail("The cancelled action must throw", file: file, line: line)
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)", file: file, line: line)
+        }
+    }
+
+    /// Holds a menu capture at the screen read, so the next capture waits its turn behind it.
+    private func holdAMenuCapture() throws -> (gate: GatedDisplayCapturing, folder: URL, pasteboard: NSPasteboard) {
+        let snapshot = CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))
+        let gate = GatedDisplayCapturing(images: [snapshot, snapshot])
+        let (folder, pasteboard) = try useStubCapture(source: gate)
+        appDelegate.captureScreen()
+        return (gate, folder, pasteboard)
+    }
+
+    private func savedFiles(in folder: URL) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    }
+
+    func testCancellingCaptureAreaClosesItsPickerAndFreesTheNextOne() async throws {
+        try useStubCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+        XCTAssertTrue(overlay.overlayView.isFadeFrozen)
+
+        task.cancel()
+        await assertCancelled(task)
+
+        XCTAssertFalse(overlay.isRegionPickerOpen, "The action's picker closes")
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen, "The fade runs again")
+        XCTAssertNil(appDelegate.captureTask, "Nothing was captured")
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen, "Capture Area works again")
+    }
+
+    func testCaptureActionCancelledBeforeItStartsOpensNothing() async throws {
+        try useStubCapture()
+        let intentFiles = try makeIntentFileFolder()
+
+        let task = Task { @MainActor in try await CaptureAreaIntent().captureFile(temporaryDirectory: intentFiles) }
+        task.cancel()
+        await assertCancelled(task)
+
+        XCTAssertTrue(visibleOverlays.isEmpty, "No overlay opens for a cancelled action")
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCancelledPickWaitingItsTurnTakesNoPictureAndLeavesANewerPicker() async throws {
+        let (gate, folder, pasteboard) = try holdAMenuCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        // The menu's own picker, opened after the action's picked and closed.
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        task.cancel()
+        await assertCancelled(task)
+        XCTAssertTrue(overlay.isRegionPickerOpen, "Cancelling closes only the action's own picker")
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1, "Only the menu capture read the screen")
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertEqual(captureNotifier.notices.count, 1)
+        XCTAssertNotNil(pasteboard.data(forType: .png), "The menu capture still copies")
+        try pressEscape()
+    }
+
+    func testCancelArrivingWithAPickTakesNoPicture() async throws {
+        let (gate, folder, _) = try holdAMenuCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+
+        // The cancel reaches the request on a later pass, after the drag has already picked.
+        task.cancel()
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        await assertCancelled(task)
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1)
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+    }
+
+    func testCancelAfterEscapeKeepsTheCancelledPickError() async throws {
+        try useStubCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+
+        try pressEscape()
+        task.cancel()
+
+        let error = await intentError(task)
+        XCTAssertEqual(error, .captureCancelled, "The action heard the first ending only")
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCancelledCaptureScreenWaitingItsTurnTakesNoPicture() async throws {
+        let (gate, folder, _) = try holdAMenuCapture()
+        let intentFiles = try makeIntentFileFolder()
+        let task = Task { @MainActor in try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles) }
+        let deadline = CACurrentMediaTime() + 3
+        while appDelegate.captureTask == nil || gate.captureCount == 0, CACurrentMediaTime() < deadline {
+            await Task.yield()
+        }
+
+        task.cancel()
+        await assertCancelled(task)
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1)
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
+    }
 }
