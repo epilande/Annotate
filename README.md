@@ -158,8 +158,8 @@ Fade mode, toolbar visibility, size stepping, Clear All, Capture Screen, and Cap
 | <kbd>Option</kbd> + <kbd>Command</kbd> + <kbd>T</kbd> | **Toggle Toolbar**   | Show or hide the floating overlay toolbar                                  |
 | <kbd>Delete</kbd>                                     | **Delete**           | Remove selected objects or most recent annotation                          |
 | <kbd>Option</kbd> + <kbd>Delete</kbd>                 | **Clear All**        | Remove all annotations                                                     |
-| <kbd>Command</kbd> + <kbd>S</kbd>                     | **Capture Screen**   | Save the display with its annotations as a PNG and copy it                 |
-| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>  | **Capture Area**     | Drag out part of the display, save it as a PNG, and copy it                |
+| <kbd>Command</kbd> + <kbd>S</kbd>                     | **Capture Screen**   | Capture the display with its annotations as a PNG (see After Capture)      |
+| <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>  | **Capture Area**     | Drag out part of the display and capture it (see After Capture)            |
 | <kbd>Command</kbd> + <kbd>Z</kbd>                     | **Undo**             | Undo the last action                                                       |
 | <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | **Redo**             | Redo the last undone action                                                |
 | Mouse Backward Button                                 | **Undo**             | Undo the last action (mouse button 3)                                      |
@@ -461,8 +461,10 @@ Cursor effects hide while the macOS screenshot selection (<kbd>Shift</kbd> + <kb
 
 ### Capture
 
-- **Folder**: Capture Screen and Capture Area save to `~/Pictures/Annotate` and also copy the image to the clipboard. **Show in Finder** opens the folder, and says so here if it can't create it.
-- **Capture Area**: Drag out the part of the display to save. Escape cancels. Annotations hold their fade while you drag, and the image shows them as they were. With no overlay open, including in Always-On Mode, Capture Area opens the overlay first.
+- **After Capture**: Choose what Capture Screen and Capture Area do with the image: **Save to folder**, **Copy to clipboard**, or **Both** (the default). Copy to clipboard writes no file.
+- **Folder**: Captures save to `~/Pictures/Annotate` unless you pick another folder with **Choose…**. **Use Default** goes back to `~/Pictures/Annotate`. If the chosen folder is unavailable (deleted, in the Trash, or on a drive that isn't connected), captures save to `~/Pictures/Annotate` and Annotate says so, and the chosen folder is used again once it is back. **Show in Finder** opens the folder, and says so here if it can't create it.
+- **Notifications**: Each capture sends a notification with a preview. A saved capture's notification has **Show in Finder**, and clicking it does the same. Annotate asks for permission only from this pane (**Allow Notifications**), never from the overlay, where the system prompt would be hidden. If notifications are turned off, **Open System Settings** goes to Annotate's notification settings.
+- **Capture Area**: Drag out the part of the display to capture. Escape cancels. Annotations hold their fade while you drag, and the image shows them as they were. With no overlay open, including in Always-On Mode, Capture Area opens the overlay first.
 - **Screen Recording**: Shows whether Annotate has Screen Recording permission, with a shortcut to System Settings. Capture Screen, Capture Area, and the Redact tool's Pixelate and Blur styles need it. Capture works without it while a fully opaque board is showing, since the board hides the screen. If you capture without it otherwise, Annotate closes the overlay and opens this pane, which asks for access.
 
 ### Shortcuts
