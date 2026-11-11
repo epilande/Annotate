@@ -514,6 +514,13 @@ final class AnnotateCommandTests: XCTestCase {
         return (folder, pasteboard)
     }
 
+    /// Waits for every capture asked for so far, and for the alerts they report, which show
+    /// from a run-loop pass of their own.
+    private func finishCaptures() async {
+        await appDelegate.captureTask?.value
+        runLoop { !self.appDelegate.isPresentingCaptureProblems }
+    }
+
     /// A 40 point solid redaction at the display's bottom-left corner.
     private var solidRedactionInTheCorner: Rectangle {
         Rectangle(
@@ -528,7 +535,7 @@ final class AnnotateCommandTests: XCTestCase {
         let (folder, _) = try useStubCapture()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
@@ -542,7 +549,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "No file means no folder either")
@@ -557,7 +564,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(pasteboard.data(forType: .png))
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
@@ -572,7 +579,7 @@ final class AnnotateCommandTests: XCTestCase {
             sinks: [FailingSink(destination: .file)])
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
         let detail = try XCTUnwrap(captureProblemDetails.first)
@@ -602,7 +609,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(
             feedbackText(on: overlay), "📁 Can't Reach \(chosen.lastPathComponent). Saved to Default Folder")
@@ -614,9 +621,39 @@ final class AnnotateCommandTests: XCTestCase {
         let chosen = try useCaptureWhoseChosenFolderIsGone()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Can't Reach \(chosen.lastPathComponent). Saved to Default Folder"])
+    }
+
+    func testAnAlertLeftOpenDoesNotHoldUpTheNextCapture() throws {
+        let chosen = try useCaptureWhoseChosenFolderIsGone()
+        let standard = try XCTUnwrap(
+            (appDelegate.captureService.sinks.first as? FileSink)?.folder, "The fallback folder")
+        let missed = "Can't Reach \(chosen.lastPathComponent). Saved to Default Folder"
+        var savedWhileTheFirstAlertWasUp: Int?
+        var alertsOpenAtOnce = 0
+        var openAlerts = 0
+        // Stands in for `runModal`: the main queue drains while the alert is up, until it closes.
+        appDelegate.showCaptureProblemAlert = { [unowned self] message, _ in
+            self.captureProblemAlerts.append(message)
+            openAlerts += 1
+            alertsOpenAtOnce = max(alertsOpenAtOnce, openAlerts)
+            defer { openAlerts -= 1 }
+            guard self.captureProblemAlerts.count == 1 else { return }
+            let savedCount = { (try? FileManager.default.contentsOfDirectory(atPath: standard.path).count) ?? 0 }
+            self.runLoop { savedCount() == 2 }
+            savedWhileTheFirstAlertWasUp = savedCount()
+        }
+
+        appDelegate.captureScreen()
+        appDelegate.captureScreen()
+        runLoop { self.captureProblemAlerts.count == 2 && !self.appDelegate.isPresentingCaptureProblems }
+
+        XCTAssertEqual(savedWhileTheFirstAlertWasUp, 2, "The second capture finished while the first alert was up")
+        XCTAssertEqual(captureProblemAlerts, [missed, missed])
+        XCTAssertEqual(alertsOpenAtOnce, 1, "The second alert waits for the first to close")
+        XCTAssertEqual(captureNotifier.notices.count, 2)
     }
 
     func testCaptureSavesAndCopiesTheDisplayWithItsAnnotations() async throws {
@@ -625,7 +662,7 @@ final class AnnotateCommandTests: XCTestCase {
         overlay.overlayView.rectangles = [solidRedactionInTheCorner]
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         XCTAssertEqual(files.count, 1)
@@ -654,7 +691,7 @@ final class AnnotateCommandTests: XCTestCase {
         endEvent()
 
         run(.capture(.screen))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(view.activeTextField)
         XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
@@ -690,7 +727,7 @@ final class AnnotateCommandTests: XCTestCase {
 
         // AppKit offers a Command chord to the window as a key equivalent before the field editor.
         XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(view.activeTextField)
         XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
@@ -713,7 +750,7 @@ final class AnnotateCommandTests: XCTestCase {
         overlay.overlayView.rectangles = [solidRedactionInTheCorner]
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first)
@@ -739,7 +776,7 @@ final class AnnotateCommandTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertEqual(source.captureCount, 1, "The second capture must wait for the first to finish")
         source.open()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
         // Unordered, the held capture would still be running here; let it finish too, so the
         // assertions below see where it lands.
         var files: [URL] = []
@@ -909,7 +946,7 @@ final class AnnotateCommandTests: XCTestCase {
 
         // The status menu item, as in the live check.
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
         XCTAssertEqual(captureProblemDetails, ["Annotate couldn't finish the capture. Try again in a moment."])
@@ -921,7 +958,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(feedbackText(on: overlay))
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"], "A failure is never silent")
@@ -932,7 +969,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(feedbackText(on: overlay), "⚠️ Capture Failed")
         XCTAssertTrue(captureProblemAlerts.isEmpty)
@@ -952,7 +989,7 @@ final class AnnotateCommandTests: XCTestCase {
             sinks: [FileSink(folder: blocker), ClipboardSink(pasteboard: pasteboard)])
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
@@ -977,7 +1014,7 @@ final class AnnotateCommandTests: XCTestCase {
         let folder = try useCaptureWhoseCopyFails()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Copy. Saved \(file)"])
@@ -989,7 +1026,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
         XCTAssertEqual(feedbackText(on: overlay), "⚠️ Couldn't Copy. Saved \(file)")
@@ -1043,7 +1080,7 @@ final class AnnotateCommandTests: XCTestCase {
         // Up and to the left, from (80, 60) to the display's bottom-left corner.
         try drag(from: NSPoint(x: 80, y: 60), to: .zero)
         XCTAssertFalse(overlay.isRegionPickerOpen)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         XCTAssertEqual(files.count, 1)
@@ -1101,7 +1138,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(view.isFadeFrozen)
         XCTAssertEqual(view.fadeClock(), clock, "The fade runs on the real clock again")
         XCTAssertTrue(view.rectangles.isEmpty, "Once the picker closes the outline is past its fade")
-        await appDelegate.captureTask?.value
+        await finishCaptures()
         let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
         let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
         XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "Captured as the picker showed it: \(corner)")
@@ -1149,7 +1186,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(view.rectangles.count, 1, "Leaving Always-On must not expire what it showed")
 
         try drag(from: .zero, to: NSPoint(x: 80, y: 60))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
         let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
@@ -1266,7 +1303,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
         view.updateCursor()
         XCTAssertTrue(manager.isCursorHidden)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
     }
 
     /// Sends a cursor update the way AppKit does: to the owner of each cursor-update tracking
@@ -1663,6 +1700,7 @@ final class AnnotateCommandTests: XCTestCase {
         let intentFiles = try makeIntentFileFolder()
 
         let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+        await finishCaptures()
 
         XCTAssertTrue(file.removedOnCompletion)
         XCTAssertEqual(try contents(of: file), try XCTUnwrap(pasteboard.data(forType: .png)))
@@ -1684,6 +1722,7 @@ final class AnnotateCommandTests: XCTestCase {
         } catch AnnotateIntentError.captureFailed(let detail) {
             XCTAssertTrue(detail.hasPrefix("Annotate couldn't deliver the image."), detail)
         }
+        await finishCaptures()
         XCTAssertTrue(captureProblemAlerts.isEmpty, "Shortcuts shows the error, so the app doesn't")
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
     }

@@ -225,15 +225,15 @@ extension AppDelegate {
         let previous = captureTask
         captureTask = Task { @MainActor [weak self] in
             await previous?.value
-            // The caller hears first: a problem alert is modal, and a Shortcuts action
-            // shouldn't wait on it.
+            // Reporting never waits on an alert (see `queueCaptureProblemAlert`), so this task
+            // ends once the image is delivered and the next capture can start.
             do {
                 let result = try await service.capture(request)
-                completion?(.success(result))
                 self?.reportCapture(result, on: overlay)
+                completion?(.success(result))
             } catch {
-                completion?(.failure(error))
                 self?.reportCaptureFailure(error, on: overlay, alerts: alertsOnFailure)
+                completion?(.failure(error))
             }
         }
     }
@@ -292,8 +292,33 @@ extension AppDelegate {
         if let overlay, overlay.isVisible, !settings[.hideToolFeedback] {
             overlay.showToggleFeedback(problem.title, icon: problem.icon)
         } else if alerts {
+            queueCaptureProblemAlert(problem)
+        }
+    }
+
+    /// Shows the alert after any still open, one at a time in capture order. The alert is
+    /// modal, and a modal session started inside a main-queue job, as every main-actor task
+    /// is, drains nothing from the main queue until it closes: the capture queue, Shortcuts
+    /// actions, and every other task would wait on the user. So the alerts run from a run-loop
+    /// pass of their own, where the main queue keeps draining inside the modal session and
+    /// later captures go on finishing while an alert is up.
+    func queueCaptureProblemAlert(_ problem: CaptureProblem) {
+        pendingCaptureProblems.append(problem)
+        guard !isPresentingCaptureProblems else { return }
+        isPresentingCaptureProblems = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.presentPendingCaptureProblems()
+            }
+        }
+    }
+
+    private func presentPendingCaptureProblems() {
+        while !pendingCaptureProblems.isEmpty {
+            let problem = pendingCaptureProblems.removeFirst()
             showCaptureProblemAlert(problem.title, problem.detail)
         }
+        isPresentingCaptureProblems = false
     }
 
     /// Never asks from here: the system prompt would open under the overlay. Says so on the

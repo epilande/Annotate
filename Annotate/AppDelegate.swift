@@ -43,6 +43,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     lazy var captureNotifier: CaptureNotifying = SystemCaptureNotifier.forThisProcess(folders: captureFolders)
     /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
+    /// Capture problems waiting for their alert, oldest first. See `queueCaptureProblemAlert`.
+    var pendingCaptureProblems: [CaptureProblem] = []
+    /// Whether a run-loop pass is scheduled, or running, to show `pendingCaptureProblems`.
+    /// Tests wait for it to clear.
+    var isPresentingCaptureProblems = false
     /// How long the Screen Recording HUD stays up before the overlay closes for Settings.
     var screenRecordingNoticeDelay: TimeInterval = 1.5
     /// Reports a capture problem when no overlay HUD can show it. Tests replace it.
