@@ -271,21 +271,33 @@ extension AnnotateCaptureIntent {
         } catch {
             throw AnnotateIntentError(capturing: error)
         }
-        return try CaptureIntentFile.make(for: image, temporaryDirectory: temporaryDirectory)
+        return try CaptureIntentFile.make(
+            for: image, temporaryDirectory: temporaryDirectory, shareableFolder: appDelegate.captureDefaultFolder)
     }
 }
 
 /// The file a capture action returns.
 enum CaptureIntentFile {
-    /// The saved file when there is one this process can read. Otherwise, as with After Capture
-    /// set to Copy to clipboard, the PNG goes to a temporary file, never into the capture folder,
-    /// which the system removes once the shortcut is done with it. Both carry the name a saved
+    /// The saved file when it is in `shareableFolder`, the default capture folder. Otherwise,
+    /// as with After Capture set to Copy to clipboard or a folder chosen in Settings, the PNG
+    /// goes to a temporary file, never into the capture folder, which the system removes once
+    /// the shortcut is done with it. Both carry the saved file's name, or the name a saved
     /// capture would have.
-    static func make(for image: CapturedImage, temporaryDirectory: URL) throws -> IntentFile {
-        if let saved = image.savedFile, FileManager.default.isReadableFile(atPath: saved.path) {
+    ///
+    /// Shortcuts gets a file through a sandbox extension Annotate issues for it. Annotate reaches
+    /// the default folder through its Pictures entitlement, and that extension works. A chosen
+    /// folder is reached through the folder chooser or its security-scoped bookmark, and
+    /// Shortcuts rejects an extension for a file there ("scope is neither usable nor
+    /// self-consistent") and silently drops the file, even though Annotate itself can still
+    /// read it. So readability here decides nothing; the folder does.
+    static func make(for image: CapturedImage, temporaryDirectory: URL, shareableFolder: URL?) throws -> IntentFile {
+        if let saved = image.savedFile, let shareableFolder, isFile(saved, in: shareableFolder),
+            FileManager.default.isReadableFile(atPath: saved.path)
+        {
             return IntentFile(fileURL: saved, filename: saved.lastPathComponent, type: .png)
         }
-        let name = FileSink.fileName(FileSink.baseName(for: image.capturedAt), attempt: 1)
+        let name =
+            image.savedFile?.lastPathComponent ?? FileSink.fileName(FileSink.baseName(for: image.capturedAt), attempt: 1)
         let temporary = temporaryDirectory.appendingPathComponent("Annotate-\(UUID().uuidString).png", isDirectory: false)
         do {
             try image.png.write(to: temporary, options: .withoutOverwriting)
@@ -296,6 +308,12 @@ enum CaptureIntentFile {
         var file = IntentFile(fileURL: temporary, filename: name, type: .png)
         file.removedOnCompletion = true
         return file
+    }
+
+    /// Whether `file` sits directly in `folder`, comparing real paths.
+    static func isFile(_ file: URL, in folder: URL) -> Bool {
+        file.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path
+            == folder.resolvingSymlinksInPath().standardizedFileURL.path
     }
 }
 

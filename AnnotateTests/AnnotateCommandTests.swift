@@ -1730,16 +1730,94 @@ final class AnnotateCommandTests: XCTestCase {
     func testCaptureIntentFileFallsBackToATemporaryCopyOfAnUnreadableSave() throws {
         let intentFiles = try makeIntentFileFolder()
         let png = Data([0x89, 0x50, 0x4E, 0x47])
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
         let gone = intentFiles.appendingPathComponent("Gone/Annotate.png")
 
         let file = try CaptureIntentFile.make(
-            for: CapturedImage(png: png, savedFile: gone, capturedAt: date), temporaryDirectory: intentFiles)
+            for: CapturedImage(png: png, savedFile: gone, capturedAt: Date()),
+            temporaryDirectory: intentFiles,
+            shareableFolder: gone.deletingLastPathComponent())
 
         XCTAssertNotEqual(file.fileURL, gone)
         XCTAssertTrue(file.removedOnCompletion)
-        XCTAssertEqual(file.filename, FileSink.fileName(FileSink.baseName(for: date), attempt: 1))
+        XCTAssertEqual(file.filename, "Annotate.png", "The copy keeps the saved file's name")
         XCTAssertEqual(try contents(of: file), png)
+    }
+
+    func testCaptureIntentFileWithNoSaveIsNamedLikeACapture() throws {
+        let intentFiles = try makeIntentFileFolder()
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let file = try CaptureIntentFile.make(
+            for: CapturedImage(png: Data([1]), savedFile: nil, capturedAt: date),
+            temporaryDirectory: intentFiles,
+            shareableFolder: intentFiles)
+
+        XCTAssertEqual(file.filename, FileSink.fileName(FileSink.baseName(for: date), attempt: 1))
+        XCTAssertTrue(file.removedOnCompletion)
+    }
+
+    /// Shortcuts drops a file Annotate reaches only through a folder chosen in Settings, even
+    /// though Annotate can read it, so such a save goes to Shortcuts as a temporary copy.
+    func testCaptureIntentFileCopiesAReadableSaveOutsideTheDefaultFolder() throws {
+        let intentFiles = try makeIntentFileFolder()
+        let chosen = intentFiles.appendingPathComponent("Chosen", isDirectory: true)
+        let standard = intentFiles.appendingPathComponent("Default", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        let saved = chosen.appendingPathComponent("Annotate 2026-11-12 at 19.35.32.png")
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D])
+        try png.write(to: saved)
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: saved.path))
+
+        let file = try CaptureIntentFile.make(
+            for: CapturedImage(png: png, savedFile: saved, capturedAt: Date()),
+            temporaryDirectory: intentFiles,
+            shareableFolder: standard)
+
+        let url = try XCTUnwrap(file.fileURL)
+        XCTAssertNotEqual(url.standardizedFileURL, saved.standardizedFileURL)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, intentFiles.standardizedFileURL)
+        XCTAssertEqual(file.filename, saved.lastPathComponent)
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(try contents(of: file), png)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path), "The saved capture stays")
+    }
+
+    func testCaptureIntentFileMatchesTheDefaultFolderThroughSymlinks() throws {
+        let intentFiles = try makeIntentFileFolder()
+        // `/var` is a symlink to `/private/var`, where the temporary folder really lives.
+        let real = intentFiles.resolvingSymlinksInPath()
+        let saved = real.appendingPathComponent("Annotate.png")
+        try Data([1]).write(to: saved)
+        let linked = URL(fileURLWithPath: real.path.replacingOccurrences(of: "/private/var/", with: "/var/"))
+
+        XCTAssertTrue(CaptureIntentFile.isFile(saved, in: linked))
+        XCTAssertTrue(CaptureIntentFile.isFile(saved, in: real))
+        XCTAssertFalse(CaptureIntentFile.isFile(saved, in: real.deletingLastPathComponent()))
+    }
+
+    func testCaptureScreenIntentWithAChosenFolderReturnsATemporaryCopy() async throws {
+        let (standard, pasteboard) = try useStubCapture()
+        let chosen = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateChosen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: chosen) }
+        let folders = CaptureFolderStore(settings: testDefaults.settings)
+        try folders.choose(chosen)
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(
+                snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: standard, chosenFolder: folders), ClipboardSink(pasteboard: pasteboard)])
+        let intentFiles = try makeIntentFileFolder()
+
+        let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+
+        let saved = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: chosen.path).first)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: standard.path), "The capture went to the chosen folder")
+        let url = try XCTUnwrap(file.fileURL)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, intentFiles.standardizedFileURL)
+        XCTAssertEqual(file.filename, saved)
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(try contents(of: file), try Data(contentsOf: chosen.appendingPathComponent(saved)))
     }
 
     func testCaptureAreaIntentOpensThePickerAndReturnsTheDraggedArea() async throws {

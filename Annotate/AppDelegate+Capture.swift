@@ -96,6 +96,13 @@ extension AppDelegate {
         return [file, ClipboardSink(pasteboard: pasteboard)]
     }
 
+    /// The folder captures save to when no other is chosen, or reached: `FileSink.defaultFolder`
+    /// outside tests. The only folder a Shortcuts action hands a saved capture from; see
+    /// `CaptureIntentFile`.
+    var captureDefaultFolder: URL? {
+        captureService.sinks.lazy.compactMap { $0 as? FileSink }.first?.folder
+    }
+
     var captureTargetScreen: NSScreen? {
         let keyOverlay = alwaysOnMode
             ? nil : overlayWindows.first { $0.value.isVisible && $0.value.isKeyWindow }?.key
