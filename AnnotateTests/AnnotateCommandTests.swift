@@ -514,6 +514,13 @@ final class AnnotateCommandTests: XCTestCase {
         return (folder, pasteboard)
     }
 
+    /// Waits for every capture asked for so far, and for the alerts they report, which show
+    /// from a run-loop pass of their own.
+    private func finishCaptures() async {
+        await appDelegate.captureTask?.value
+        runLoop { !self.appDelegate.isPresentingCaptureProblems }
+    }
+
     /// A 40 point solid redaction at the display's bottom-left corner.
     private var solidRedactionInTheCorner: Rectangle {
         Rectangle(
@@ -528,7 +535,7 @@ final class AnnotateCommandTests: XCTestCase {
         let (folder, _) = try useStubCapture()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
@@ -542,7 +549,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "No file means no folder either")
@@ -557,7 +564,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(pasteboard.data(forType: .png))
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
@@ -572,7 +579,7 @@ final class AnnotateCommandTests: XCTestCase {
             sinks: [FailingSink(destination: .file)])
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
         let detail = try XCTUnwrap(captureProblemDetails.first)
@@ -602,7 +609,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(
             feedbackText(on: overlay), "📁 Can't Reach \(chosen.lastPathComponent). Saved to Default Folder")
@@ -614,9 +621,39 @@ final class AnnotateCommandTests: XCTestCase {
         let chosen = try useCaptureWhoseChosenFolderIsGone()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Can't Reach \(chosen.lastPathComponent). Saved to Default Folder"])
+    }
+
+    func testAnAlertLeftOpenDoesNotHoldUpTheNextCapture() throws {
+        let chosen = try useCaptureWhoseChosenFolderIsGone()
+        let standard = try XCTUnwrap(
+            (appDelegate.captureService.sinks.first as? FileSink)?.folder, "The fallback folder")
+        let missed = "Can't Reach \(chosen.lastPathComponent). Saved to Default Folder"
+        var savedWhileTheFirstAlertWasUp: Int?
+        var alertsOpenAtOnce = 0
+        var openAlerts = 0
+        // Stands in for `runModal`: the main queue drains while the alert is up, until it closes.
+        appDelegate.showCaptureProblemAlert = { [unowned self] message, _ in
+            self.captureProblemAlerts.append(message)
+            openAlerts += 1
+            alertsOpenAtOnce = max(alertsOpenAtOnce, openAlerts)
+            defer { openAlerts -= 1 }
+            guard self.captureProblemAlerts.count == 1 else { return }
+            let savedCount = { (try? FileManager.default.contentsOfDirectory(atPath: standard.path).count) ?? 0 }
+            self.runLoop { savedCount() == 2 }
+            savedWhileTheFirstAlertWasUp = savedCount()
+        }
+
+        appDelegate.captureScreen()
+        appDelegate.captureScreen()
+        runLoop { self.captureProblemAlerts.count == 2 && !self.appDelegate.isPresentingCaptureProblems }
+
+        XCTAssertEqual(savedWhileTheFirstAlertWasUp, 2, "The second capture finished while the first alert was up")
+        XCTAssertEqual(captureProblemAlerts, [missed, missed])
+        XCTAssertEqual(alertsOpenAtOnce, 1, "The second alert waits for the first to close")
+        XCTAssertEqual(captureNotifier.notices.count, 2)
     }
 
     func testCaptureSavesAndCopiesTheDisplayWithItsAnnotations() async throws {
@@ -625,7 +662,7 @@ final class AnnotateCommandTests: XCTestCase {
         overlay.overlayView.rectangles = [solidRedactionInTheCorner]
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         XCTAssertEqual(files.count, 1)
@@ -654,7 +691,7 @@ final class AnnotateCommandTests: XCTestCase {
         endEvent()
 
         run(.capture(.screen))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(view.activeTextField)
         XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
@@ -690,7 +727,7 @@ final class AnnotateCommandTests: XCTestCase {
 
         // AppKit offers a Command chord to the window as a key equivalent before the field editor.
         XCTAssertTrue(overlay.performKeyEquivalent(with: try keyDown("s", modifiers: .command)))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(view.activeTextField)
         XCTAssertEqual(view.textAnnotations.map(\.text), ["Hello"])
@@ -713,7 +750,7 @@ final class AnnotateCommandTests: XCTestCase {
         overlay.overlayView.rectangles = [solidRedactionInTheCorner]
 
         XCTAssertEqual(run(.capture(.screen)), .ran)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first)
@@ -739,7 +776,7 @@ final class AnnotateCommandTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertEqual(source.captureCount, 1, "The second capture must wait for the first to finish")
         source.open()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
         // Unordered, the held capture would still be running here; let it finish too, so the
         // assertions below see where it lands.
         var files: [URL] = []
@@ -909,7 +946,7 @@ final class AnnotateCommandTests: XCTestCase {
 
         // The status menu item, as in the live check.
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
         XCTAssertEqual(captureProblemDetails, ["Annotate couldn't finish the capture. Try again in a moment."])
@@ -921,7 +958,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNil(feedbackText(on: overlay))
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"], "A failure is never silent")
@@ -932,7 +969,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertEqual(feedbackText(on: overlay), "⚠️ Capture Failed")
         XCTAssertTrue(captureProblemAlerts.isEmpty)
@@ -952,7 +989,7 @@ final class AnnotateCommandTests: XCTestCase {
             sinks: [FileSink(folder: blocker), ClipboardSink(pasteboard: pasteboard)])
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         XCTAssertNotNil(pasteboard.data(forType: .png))
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
@@ -977,7 +1014,7 @@ final class AnnotateCommandTests: XCTestCase {
         let folder = try useCaptureWhoseCopyFails()
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Copy. Saved \(file)"])
@@ -989,7 +1026,7 @@ final class AnnotateCommandTests: XCTestCase {
         run(.show)
 
         appDelegate.captureScreen()
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let file = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
         XCTAssertEqual(feedbackText(on: overlay), "⚠️ Couldn't Copy. Saved \(file)")
@@ -1043,7 +1080,7 @@ final class AnnotateCommandTests: XCTestCase {
         // Up and to the left, from (80, 60) to the display's bottom-left corner.
         try drag(from: NSPoint(x: 80, y: 60), to: .zero)
         XCTAssertFalse(overlay.isRegionPickerOpen)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         XCTAssertEqual(files.count, 1)
@@ -1101,7 +1138,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertFalse(view.isFadeFrozen)
         XCTAssertEqual(view.fadeClock(), clock, "The fade runs on the real clock again")
         XCTAssertTrue(view.rectangles.isEmpty, "Once the picker closes the outline is past its fade")
-        await appDelegate.captureTask?.value
+        await finishCaptures()
         let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
         let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
         XCTAssertTrue(corner.isClose(to: RGBA(r: 255, g: 0, b: 0, a: 255), tolerance: 40), "Captured as the picker showed it: \(corner)")
@@ -1149,7 +1186,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(view.rectangles.count, 1, "Leaving Always-On must not expire what it showed")
 
         try drag(from: .zero, to: NSPoint(x: 80, y: 60))
-        await appDelegate.captureTask?.value
+        await finishCaptures()
 
         let image = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(pasteboard.data(forType: .png)))?.cgImage)
         let corner = CaptureTestImages.pixel(image, x: 2, y: image.height - 2)
@@ -1266,7 +1303,7 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertTrue(manager.shouldShowActiveCursorOnScreen(screen))
         view.updateCursor()
         XCTAssertTrue(manager.isCursorHidden)
-        await appDelegate.captureTask?.value
+        await finishCaptures()
     }
 
     /// Sends a cursor update the way AppKit does: to the owner of each cursor-update tracking
@@ -1526,6 +1563,8 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(SetToolbarIntent(state: .off).command, .toolbar(.off))
         XCTAssertEqual(SetFadeModeIntent(state: .on).command, .fade(.on))
         XCTAssertEqual(SetBoardIntent(state: .toggle).command, .board(.toggle))
+        XCTAssertEqual(CaptureScreenIntent().command, .capture(.screen))
+        XCTAssertEqual(CaptureAreaIntent().command, .capture(.area))
     }
 
     func testIntentRunsItsCommandInTheApp() async throws {
@@ -1545,5 +1584,440 @@ final class AnnotateCommandTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? AnnotateIntentError, .appNotReady)
         }
+    }
+
+    // MARK: - Capture intents
+
+    /// A folder of its own for the files capture actions hand to Shortcuts.
+    private func makeIntentFileFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateIntentFiles-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        return folder
+    }
+
+    private func contents(of file: IntentFile) throws -> Data {
+        try Data(contentsOf: try XCTUnwrap(file.fileURL))
+    }
+
+    /// Starts Capture Area as Shortcuts does, and returns once its picker is open.
+    private func startCaptureAreaIntent(
+        handingFilesTo folder: URL
+    ) async throws -> Task<IntentFile, Error> {
+        let task = Task { @MainActor in try await CaptureAreaIntent().captureFile(temporaryDirectory: folder) }
+        let deadline = CACurrentMediaTime() + 3
+        while !overlay.isRegionPickerOpen, CACurrentMediaTime() < deadline {
+            await Task.yield()
+        }
+        XCTAssertTrue(overlay.isRegionPickerOpen, "Capture Area waits on the picker")
+        return task
+    }
+
+    private func intentError(_ task: Task<IntentFile, Error>) async -> AnnotateIntentError? {
+        do {
+            _ = try await task.value
+            XCTFail("The capture action must throw")
+            return nil
+        } catch {
+            return error as? AnnotateIntentError
+        }
+    }
+
+    func testCaptureIntentsAreTitledAsTheMenuItems() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let screenItem = try XCTUnwrap(menu.items.first { $0.action == #selector(AppDelegate.captureScreen) })
+        let areaItem = try XCTUnwrap(menu.items.first { $0.action == #selector(AppDelegate.captureArea) })
+        XCTAssertEqual(String(localized: CaptureScreenIntent.title), screenItem.title)
+        XCTAssertEqual(String(localized: CaptureAreaIntent.title), areaItem.title)
+        for description in [CaptureScreenIntent.description, CaptureAreaIntent.description] {
+            XCTAssertTrue(
+                String(localized: description.descriptionText).contains("After Capture"),
+                "The description says where else the image goes")
+        }
+    }
+
+    func testCaptureIntentErrorsSayWhatWentWrong() {
+        let cases: [(Error, AnnotateIntentError)] = [
+            (CaptureError.screenRecordingOff, .screenRecordingOff),
+            (CaptureError.cancelled, .captureCancelled),
+            (CaptureError.pickerUnavailable, .captureAreaUnavailable),
+            (CaptureError.snapshotFailed, .captureFailed(detail: CaptureProblem.failed.detail)),
+            (
+                CocoaError(.fileWriteNoPermission),
+                .captureFailed(detail: CaptureProblem.undelivered(error: CocoaError(.fileWriteNoPermission)).detail)
+            ),
+        ]
+        for (error, expected) in cases {
+            let intentError = AnnotateIntentError(capturing: error)
+            XCTAssertEqual(intentError, expected)
+            XCTAssertFalse(String(localized: intentError.localizedStringResource).isEmpty)
+        }
+        XCTAssertEqual(
+            String(localized: AnnotateIntentError.captureCancelled.localizedStringResource),
+            "Capture Area was cancelled before an area was picked.")
+    }
+
+    func testCaptureScreenIntentReturnsTheSavedFile() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        let intentFiles = try makeIntentFileFolder()
+
+        let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+
+        let saved = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(file.fileURL?.standardizedFileURL, folder.appendingPathComponent(saved).standardizedFileURL)
+        XCTAssertEqual(file.filename, saved)
+        XCTAssertEqual(file.type, .png)
+        XCTAssertFalse(file.removedOnCompletion, "The saved capture stays")
+        XCTAssertEqual(try contents(of: file), pasteboard.data(forType: .png))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
+        XCTAssertEqual(captureNotifier.notices.count, 1, "The notification goes out as from the menu")
+    }
+
+    func testCaptureScreenIntentWithCopyToClipboardReturnsATemporaryFile() async throws {
+        let (folder, pasteboard) = try useStubCapture()
+        testDefaults.settings[.afterCapture] = .copy
+        let intentFiles = try makeIntentFileFolder()
+
+        let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "Nothing goes in the capture folder")
+        let url = try XCTUnwrap(file.fileURL)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, intentFiles.standardizedFileURL)
+        XCTAssertTrue(file.removedOnCompletion, "The system removes the temporary file")
+        XCTAssertTrue(file.filename.hasPrefix("Annotate "), file.filename)
+        XCTAssertTrue(file.filename.hasSuffix(".png"), file.filename)
+        XCTAssertEqual(try contents(of: file), try XCTUnwrap(pasteboard.data(forType: .png)))
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
+    }
+
+    func testCaptureIntentWhoseSaveFailedReturnsTheCopiedImage() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(
+                snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FailingSink(destination: .file), ClipboardSink(pasteboard: pasteboard)])
+        let intentFiles = try makeIntentFileFolder()
+
+        let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+        await finishCaptures()
+
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(try contents(of: file), try XCTUnwrap(pasteboard.data(forType: .png)))
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"], "The action succeeds, so the app says what failed")
+    }
+
+    func testCaptureIntentThatDeliveredNothingThrowsWithoutAnAlert() async throws {
+        try useStubCapture()
+        testDefaults.settings[.afterCapture] = .save
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(
+                snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FailingSink(destination: .file)])
+        let intentFiles = try makeIntentFileFolder()
+
+        do {
+            _ = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+            XCTFail("A capture that went nowhere must throw")
+        } catch AnnotateIntentError.captureFailed(let detail) {
+            XCTAssertTrue(detail.hasPrefix("Annotate couldn't deliver the image."), detail)
+        }
+        await finishCaptures()
+        XCTAssertTrue(captureProblemAlerts.isEmpty, "Shortcuts shows the error, so the app doesn't")
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
+    }
+
+    func testCaptureIntentFileFallsBackToATemporaryCopyOfAnUnreadableSave() throws {
+        let intentFiles = try makeIntentFileFolder()
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let gone = intentFiles.appendingPathComponent("Gone/Annotate.png")
+
+        let file = try CaptureIntentFile.make(
+            for: CapturedImage(png: png, savedFile: gone, capturedAt: Date()),
+            temporaryDirectory: intentFiles,
+            shareableFolder: gone.deletingLastPathComponent())
+
+        XCTAssertNotEqual(file.fileURL, gone)
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(file.filename, "Annotate.png", "The copy keeps the saved file's name")
+        XCTAssertEqual(try contents(of: file), png)
+    }
+
+    func testCaptureIntentFileWithNoSaveIsNamedLikeACapture() throws {
+        let intentFiles = try makeIntentFileFolder()
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let file = try CaptureIntentFile.make(
+            for: CapturedImage(png: Data([1]), savedFile: nil, capturedAt: date),
+            temporaryDirectory: intentFiles,
+            shareableFolder: intentFiles)
+
+        XCTAssertEqual(file.filename, FileSink.fileName(FileSink.baseName(for: date), attempt: 1))
+        XCTAssertTrue(file.removedOnCompletion)
+    }
+
+    /// Shortcuts drops a file Annotate reaches only through a folder chosen in Settings, even
+    /// though Annotate can read it, so such a save goes to Shortcuts as a temporary copy.
+    func testCaptureIntentFileCopiesAReadableSaveOutsideTheDefaultFolder() throws {
+        let intentFiles = try makeIntentFileFolder()
+        let chosen = intentFiles.appendingPathComponent("Chosen", isDirectory: true)
+        let standard = intentFiles.appendingPathComponent("Default", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        let saved = chosen.appendingPathComponent("Annotate 2026-11-12 at 19.35.32.png")
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D])
+        try png.write(to: saved)
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: saved.path))
+
+        let file = try CaptureIntentFile.make(
+            for: CapturedImage(png: png, savedFile: saved, capturedAt: Date()),
+            temporaryDirectory: intentFiles,
+            shareableFolder: standard)
+
+        let url = try XCTUnwrap(file.fileURL)
+        XCTAssertNotEqual(url.standardizedFileURL, saved.standardizedFileURL)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, intentFiles.standardizedFileURL)
+        XCTAssertEqual(file.filename, saved.lastPathComponent)
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(try contents(of: file), png)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path), "The saved capture stays")
+    }
+
+    func testCaptureIntentFileMatchesTheDefaultFolderThroughSymlinks() throws {
+        let intentFiles = try makeIntentFileFolder()
+        // `/var` is a symlink to `/private/var`, where the temporary folder really lives.
+        let real = intentFiles.resolvingSymlinksInPath()
+        let saved = real.appendingPathComponent("Annotate.png")
+        try Data([1]).write(to: saved)
+        let linked = URL(fileURLWithPath: real.path.replacingOccurrences(of: "/private/var/", with: "/var/"))
+
+        XCTAssertTrue(CaptureIntentFile.isFile(saved, in: linked))
+        XCTAssertTrue(CaptureIntentFile.isFile(saved, in: real))
+        XCTAssertFalse(CaptureIntentFile.isFile(saved, in: real.deletingLastPathComponent()))
+    }
+
+    func testCaptureScreenIntentWithAChosenFolderReturnsATemporaryCopy() async throws {
+        let (standard, pasteboard) = try useStubCapture()
+        let chosen = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnnotateChosen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: chosen) }
+        let folders = CaptureFolderStore(settings: testDefaults.settings)
+        try folders.choose(chosen)
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(
+                snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FileSink(folder: standard, chosenFolder: folders), ClipboardSink(pasteboard: pasteboard)])
+        let intentFiles = try makeIntentFileFolder()
+
+        let file = try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+
+        let saved = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: chosen.path).first)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: standard.path), "The capture went to the chosen folder")
+        let url = try XCTUnwrap(file.fileURL)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL, intentFiles.standardizedFileURL)
+        XCTAssertEqual(file.filename, saved)
+        XCTAssertTrue(file.removedOnCompletion)
+        XCTAssertEqual(try contents(of: file), try Data(contentsOf: chosen.appendingPathComponent(saved)))
+    }
+
+    func testCaptureAreaIntentOpensThePickerAndReturnsTheDraggedArea() async throws {
+        let (folder, _) = try useStubCapture()
+        let intentFiles = try makeIntentFileFolder()
+        XCTAssertTrue(visibleOverlays.isEmpty)
+
+        let task = try await startCaptureAreaIntent(handingFilesTo: intentFiles)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen, "As from the menu, the overlay opens first")
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        let file = try await task.value
+
+        let saved = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertEqual(file.filename, saved)
+        let image = try XCTUnwrap(NSBitmapImageRep(data: try contents(of: file))?.cgImage)
+        let scale = screen.backingScaleFactor
+        XCTAssertEqual(image.width, Int(80 * scale))
+        XCTAssertEqual(image.height, Int(60 * scale))
+    }
+
+    func testCancelledCaptureAreaIntentThrows() async throws {
+        let (folder, _) = try useStubCapture()
+        let intentFiles = try makeIntentFileFolder()
+
+        let task = try await startCaptureAreaIntent(handingFilesTo: intentFiles)
+        try pressEscape()
+
+        let error = await intentError(task)
+        XCTAssertEqual(error, .captureCancelled)
+        XCTAssertNil(appDelegate.captureTask, "Nothing was captured")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen, "Escape closes only the picker")
+    }
+
+    func testClosingTheOverlayWhilePickingCancelsTheCaptureAreaIntent() async throws {
+        try useStubCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+
+        appDelegate.hideAllOverlays()
+
+        let error = await intentError(task)
+        XCTAssertEqual(error, .captureCancelled)
+    }
+
+    func testCaptureAreaIntentWhileAPickerIsOpenThrowsAtOnce() async throws {
+        try useStubCapture()
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        let error = await intentError(
+            Task { @MainActor in try await CaptureAreaIntent().captureFile(temporaryDirectory: try makeIntentFileFolder()) })
+
+        XCTAssertEqual(error, .captureAreaUnavailable)
+        XCTAssertTrue(overlay.isRegionPickerOpen, "The picker already open keeps going")
+    }
+
+    func testCaptureIntentsWithoutScreenRecordingThrowAndOpenCaptureSettings() async throws {
+        try useStubCapture(canCapture: false)
+        appDelegate.screenRecordingNoticeDelay = 0
+        var opened: [SettingsPane] = []
+        appDelegate.openSettingsPane = { pane, _, onClose in
+            opened.append(pane)
+            onClose()
+        }
+        let intentFiles = try makeIntentFileFolder()
+
+        for scope in CaptureScope.allCases {
+            let task = Task { @MainActor () -> IntentFile in
+                switch scope {
+                case .screen: return try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles)
+                case .area: return try await CaptureAreaIntent().captureFile(temporaryDirectory: intentFiles)
+                }
+            }
+            let error = await intentError(task)
+            XCTAssertEqual(error, .screenRecordingOff, "\(scope)")
+        }
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        runLoop { opened.count == 2 }
+        XCTAssertEqual(opened, [.capture, .capture])
+    }
+
+    // MARK: - Cancelling capture actions
+
+    private func assertCancelled(_ task: Task<IntentFile, Error>, file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await task.value
+            XCTFail("The cancelled action must throw", file: file, line: line)
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)", file: file, line: line)
+        }
+    }
+
+    /// Holds a menu capture at the screen read, so the next capture waits its turn behind it.
+    private func holdAMenuCapture() throws -> (gate: GatedDisplayCapturing, folder: URL, pasteboard: NSPasteboard) {
+        let snapshot = CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))
+        let gate = GatedDisplayCapturing(images: [snapshot, snapshot])
+        let (folder, pasteboard) = try useStubCapture(source: gate)
+        appDelegate.captureScreen()
+        return (gate, folder, pasteboard)
+    }
+
+    private func savedFiles(in folder: URL) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    }
+
+    func testCancellingCaptureAreaClosesItsPickerAndFreesTheNextOne() async throws {
+        try useStubCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+        XCTAssertTrue(overlay.overlayView.isFadeFrozen)
+
+        task.cancel()
+        await assertCancelled(task)
+
+        XCTAssertFalse(overlay.isRegionPickerOpen, "The action's picker closes")
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen, "The fade runs again")
+        XCTAssertNil(appDelegate.captureTask, "Nothing was captured")
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen, "Capture Area works again")
+    }
+
+    func testCaptureActionCancelledBeforeItStartsOpensNothing() async throws {
+        try useStubCapture()
+        let intentFiles = try makeIntentFileFolder()
+
+        let task = Task { @MainActor in try await CaptureAreaIntent().captureFile(temporaryDirectory: intentFiles) }
+        task.cancel()
+        await assertCancelled(task)
+
+        XCTAssertTrue(visibleOverlays.isEmpty, "No overlay opens for a cancelled action")
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCancelledPickWaitingItsTurnTakesNoPictureAndLeavesANewerPicker() async throws {
+        let (gate, folder, pasteboard) = try holdAMenuCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        XCTAssertFalse(overlay.isRegionPickerOpen)
+        // The menu's own picker, opened after the action's picked and closed.
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        task.cancel()
+        await assertCancelled(task)
+        XCTAssertTrue(overlay.isRegionPickerOpen, "Cancelling closes only the action's own picker")
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1, "Only the menu capture read the screen")
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertEqual(captureNotifier.notices.count, 1)
+        XCTAssertNotNil(pasteboard.data(forType: .png), "The menu capture still copies")
+        try pressEscape()
+    }
+
+    func testCancelArrivingWithAPickTakesNoPicture() async throws {
+        let (gate, folder, _) = try holdAMenuCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+
+        // The cancel reaches the request on a later pass, after the drag has already picked.
+        task.cancel()
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        await assertCancelled(task)
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1)
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertFalse(overlay.overlayView.isFadeFrozen)
+    }
+
+    func testCancelAfterEscapeKeepsTheCancelledPickError() async throws {
+        try useStubCapture()
+        let task = try await startCaptureAreaIntent(handingFilesTo: try makeIntentFileFolder())
+
+        try pressEscape()
+        task.cancel()
+
+        let error = await intentError(task)
+        XCTAssertEqual(error, .captureCancelled, "The action heard the first ending only")
+        XCTAssertNil(appDelegate.captureTask)
+    }
+
+    func testCancelledCaptureScreenWaitingItsTurnTakesNoPicture() async throws {
+        let (gate, folder, _) = try holdAMenuCapture()
+        let intentFiles = try makeIntentFileFolder()
+        let task = Task { @MainActor in try await CaptureScreenIntent().captureFile(temporaryDirectory: intentFiles) }
+        let deadline = CACurrentMediaTime() + 3
+        while appDelegate.captureTask == nil || gate.captureCount == 0, CACurrentMediaTime() < deadline {
+            await Task.yield()
+        }
+
+        task.cancel()
+        await assertCancelled(task)
+        gate.open()
+        await finishCaptures()
+
+        XCTAssertEqual(gate.captureCount, 1)
+        XCTAssertEqual(savedFiles(in: folder).count, 1)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: intentFiles.path).isEmpty)
     }
 }

@@ -181,12 +181,18 @@ enum CaptureError: Error, Equatable {
     case renderFailed
     /// The area to keep lies off the display or is less than a pixel across.
     case emptyRegion
+    /// Capture Area's picker closed before an area was picked.
+    case cancelled
+    /// Capture Area had no overlay to pick on, or its picker was already open.
+    case pickerUnavailable
 }
 
 /// The outcome of a capture that produced an image. `failures` holds the sinks that threw;
 /// a capture with no delivery at all throws instead.
 struct CaptureResult {
     let capture: Capture
+    /// The PNG every sink was handed.
+    let png: Data
     let deliveries: [CaptureDelivery]
     let failures: [CaptureSinkFailure]
 
@@ -262,7 +268,7 @@ final class CaptureService {
             }
         }
         if deliveries.isEmpty, let first = failures.first { throw first.error }
-        return CaptureResult(capture: capture, deliveries: deliveries, failures: failures)
+        return CaptureResult(capture: capture, png: png, deliveries: deliveries, failures: failures)
     }
 }
 

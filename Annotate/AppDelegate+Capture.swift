@@ -3,7 +3,70 @@ import os
 
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
 
-/// Capture Screen and Capture Area from the menu, the overlay shortcuts, and
+/// One capture a Shortcuts action asked for. It hears how the capture ended exactly once:
+/// with the result when the image went anywhere, or with the error that stopped it. When the
+/// action is cancelled, it ends with `CancellationError`, closes the picker it opened, and
+/// keeps its capture from starting if that is still waiting its turn. A capture already under
+/// way finishes and reports as usual, since its file and clipboard copy are already being made.
+@MainActor
+final class ShortcutCaptureRequest {
+    private var completion: ((Result<CaptureResult, Error>) -> Void)?
+    private var hasFinished = false
+    private(set) var isCancelled = false
+    /// The picker this request opened, and its overlay, while it is open.
+    private weak var picker: RegionPicker?
+    private weak var pickerOverlay: OverlayWindow?
+
+    /// Starts listening. Call once, before the capture starts.
+    func onFinish(_ completion: @escaping (Result<CaptureResult, Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func finish(_ result: Result<CaptureResult, Error>) {
+        guard !hasFinished else { return }
+        hasFinished = true
+        let completion = self.completion
+        self.completion = nil
+        completion?(result)
+    }
+
+    /// Records the picker `overlay` just opened for this request.
+    func ownPicker(on overlay: OverlayWindow) {
+        pickerOverlay = overlay
+        picker = overlay.regionPicker
+    }
+
+    /// Ends the request with `CancellationError`. Its picker closes, letting the fade run
+    /// again. A picker opened since by anything else stays.
+    func cancel() {
+        guard !hasFinished else { return }
+        isCancelled = true
+        finish(.failure(CancellationError()))
+        if let pickerOverlay, let picker, pickerOverlay.regionPicker === picker {
+            pickerOverlay.cancelRegionPicker()
+        }
+    }
+}
+
+/// What a Shortcuts action gets back from a capture.
+struct CapturedImage: Equatable, Sendable {
+    let png: Data
+    /// The saved file, or nil when After Capture is Copy to clipboard or the save failed.
+    let savedFile: URL?
+    let capturedAt: Date
+
+    init(png: Data, savedFile: URL?, capturedAt: Date) {
+        self.png = png
+        self.savedFile = savedFile
+        self.capturedAt = capturedAt
+    }
+
+    init(_ result: CaptureResult) {
+        self.init(png: result.png, savedFile: result.savedFile, capturedAt: result.capture.capturedAt)
+    }
+}
+
+/// Capture Screen and Capture Area from the menu, the overlay shortcuts, Shortcuts actions, and
 /// `AnnotateCommand.capture`: picks the display, reads what its overlay shows, and reports the
 /// result on that overlay.
 extension AppDelegate {
@@ -33,6 +96,13 @@ extension AppDelegate {
         return [file, ClipboardSink(pasteboard: pasteboard)]
     }
 
+    /// The folder captures save to when no other is chosen, or reached: `FileSink.defaultFolder`
+    /// outside tests. The only folder a Shortcuts action hands a saved capture from; see
+    /// `CaptureIntentFile`.
+    var captureDefaultFolder: URL? {
+        captureService.sinks.lazy.compactMap { $0 as? FileSink }.first?.folder
+    }
+
     var captureTargetScreen: NSScreen? {
         let keyOverlay = alwaysOnMode
             ? nil : overlayWindows.first { $0.value.isVisible && $0.value.isKeyWindow }?.key
@@ -55,11 +125,43 @@ extension AppDelegate {
         }
     }
 
+    /// Runs a capture for a Shortcuts action and returns the image once it has gone where After
+    /// Capture says. It reports on the overlay and sends the notification as the menu does, but
+    /// a capture that delivered nothing throws instead of showing an alert, since Shortcuts
+    /// shows the error. Capture Area waits for the drag, and throws `CaptureError.cancelled`
+    /// when the picker closes without one. Cancelling the calling task throws
+    /// `CancellationError`; see `ShortcutCaptureRequest`.
+    func captureForShortcuts(_ scope: CaptureScope) async throws -> CapturedImage {
+        let request = ShortcutCaptureRequest()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                request.onFinish { continuation.resume(with: $0.map(CapturedImage.init)) }
+                guard !Task.isCancelled else {
+                    request.cancel()
+                    return
+                }
+                switch scope {
+                case .screen: startScreenCapture(for: request)
+                case .area: startAreaCapture(for: request)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in request.cancel() }
+        }
+    }
+
     /// Saves the display with its board and annotations, as its overlay shows them, and copies
     /// the image, as After Capture says. With the overlay hidden it takes the plain screen.
     @objc func captureScreen() {
+        startScreenCapture()
+    }
+
+    /// `request` is the Shortcuts action waiting on the capture, or nil from the menu and the
+    /// keyboard.
+    private func startScreenCapture(for request: ShortcutCaptureRequest? = nil) {
         guard let screen = captureTargetScreen, let display = DisplayInfo(screen: screen) else {
             log.error("No display to capture")
+            request?.finish(.failure(CaptureError.snapshotFailed))
             return
         }
         let overlay = overlayWindows[screen]
@@ -70,7 +172,8 @@ extension AppDelegate {
                 hostTime: CACurrentMediaTime(),
                 date: Date(),
                 afterCapture: settings[.afterCapture]),
-            on: overlay)
+            on: overlay,
+            for: request)
     }
 
     /// Lets the user drag out part of a display, then handles it with its board and annotations
@@ -78,6 +181,12 @@ extension AppDelegate {
     /// none open, including in Always-On, this opens it first. The fade holds while picking,
     /// and the capture shows each annotation at the fade the picker showed.
     @objc func captureArea() {
+        startAreaCapture()
+    }
+
+    /// `request` hears the capture's outcome, or why there was none: Screen Recording is off,
+    /// the picker couldn't open, or it closed without a pick.
+    private func startAreaCapture(for request: ShortcutCaptureRequest? = nil) {
         // Without Screen Recording the drag would come to nothing, so ask before anything opens.
         // From Always-On, the Screen Recording flow brings Always-On back afterwards, drawings
         // and all.
@@ -86,6 +195,7 @@ extension AppDelegate {
             !CaptureScene.boardCoversScreen(board.appearance, opacity: CGFloat(board.opacity))
         {
             showScreenRecordingOff(on: areaTargetScreen.flatMap { overlayWindows[$0] })
+            request?.finish(.failure(CaptureError.screenRecordingOff))
             return
         }
         var heldAlwaysOnFade: OverlayWindow?
@@ -100,15 +210,20 @@ extension AppDelegate {
             }
             showInteractiveOverlay()
         }
-        let opened = beginAreaPicker(releasingHeldFadeOf: heldAlwaysOnFade)
-        if !opened, let heldAlwaysOnFade {
-            releaseHeldAlwaysOnFade(of: heldAlwaysOnFade)
+        let opened = beginAreaPicker(releasingHeldFadeOf: heldAlwaysOnFade, for: request)
+        if !opened {
+            if let heldAlwaysOnFade {
+                releaseHeldAlwaysOnFade(of: heldAlwaysOnFade)
+            }
+            request?.finish(.failure(CaptureError.pickerUnavailable))
         }
     }
 
     /// Opens the picker on the target display, and returns whether it opened. When it does,
-    /// closing it in any way releases `held`'s Always-On fade.
-    private func beginAreaPicker(releasingHeldFadeOf held: OverlayWindow?) -> Bool {
+    /// closing it in any way releases `held`'s Always-On fade, and `request` owns the picker and
+    /// hears either the capture's outcome or, when the picker closed without a pick,
+    /// `CaptureError.cancelled`.
+    private func beginAreaPicker(releasingHeldFadeOf held: OverlayWindow?, for request: ShortcutCaptureRequest?) -> Bool {
         guard let screen = areaTargetScreen, let overlay = overlayWindows[screen],
             let display = DisplayInfo(screen: screen)
         else {
@@ -118,12 +233,19 @@ extension AppDelegate {
         guard !overlay.isRegionPickerOpen else { return false }
         // The picker reads Escape from its own overlay, and another display's may be key.
         overlay.makeKeyAndOrderFront(nil)
+        // The picker calls `onDismiss` after `onPick` too, so this tells a pick from a cancel.
+        var picked = false
         let onDismiss: () -> Void = { [weak self] in
-            guard let self, let held else { return }
-            self.releaseHeldAlwaysOnFade(of: held)
+            if let self, let held {
+                self.releaseHeldAlwaysOnFade(of: held)
+            }
+            if !picked {
+                request?.finish(.failure(CaptureError.cancelled))
+            }
         }
-        return overlay.beginRegionPicker(onDismiss: onDismiss) { [weak self, weak overlay] rect in
+        let opened = overlay.beginRegionPicker(onDismiss: onDismiss) { [weak self, weak overlay] rect in
             guard let self, let overlay else { return }
+            picked = true
             // Runs before the picker closes, so the scene's fade clock is still frozen.
             self.startCapture(
                 CaptureRequest(
@@ -133,8 +255,13 @@ extension AppDelegate {
                     hostTime: CACurrentMediaTime(),
                     date: Date(),
                     afterCapture: self.settings[.afterCapture]),
-                on: overlay)
+                on: overlay,
+                for: request)
         }
+        if opened {
+            request?.ownPicker(on: overlay)
+        }
+        return opened
     }
 
     /// Gives an overlay Capture Area opened from Always-On its Fade Mode setting back. Back in
@@ -144,7 +271,9 @@ extension AppDelegate {
         overlay.overlayView.fadeMode = settings[.fadeMode]
     }
 
-    private func startCapture(_ request: CaptureRequest, on overlay: OverlayWindow?) {
+    /// With a Shortcuts `owner`, a capture that delivered nothing is the action's error rather
+    /// than an alert, since Shortcuts shows it; the overlay's HUD still says so.
+    private func startCapture(_ request: CaptureRequest, on overlay: OverlayWindow?, for owner: ShortcutCaptureRequest?) {
         // Each capture waits for the one before it, so captures finish in the order they were
         // asked for: an older image never replaces a newer one on the clipboard or in the HUD,
         // and every capture still gets its own file. The scene above is already taken, so the
@@ -153,18 +282,31 @@ extension AppDelegate {
         let previous = captureTask
         captureTask = Task { @MainActor [weak self] in
             await previous?.value
+            // An action cancelled while its capture waited its turn takes no picture.
+            if owner?.isCancelled == true { return }
+            // Reporting never waits on an alert (see `queueCaptureProblemAlert`), so this task
+            // ends once the image is delivered and the next capture can start.
             do {
                 let result = try await service.capture(request)
                 self?.reportCapture(result, on: overlay)
-            } catch CaptureError.screenRecordingOff {
-                self?.showScreenRecordingOff(on: overlay)
-            } catch is CaptureError {
-                log.error("Capture failed")
-                self?.reportCaptureProblem(.failed, on: overlay)
+                owner?.finish(.success(result))
             } catch {
-                log.error("Capture failed: \(error.localizedDescription)")
-                self?.reportCaptureProblem(.undelivered(error: error), on: overlay)
+                self?.reportCaptureFailure(error, on: overlay, alerts: owner == nil)
+                owner?.finish(.failure(error))
             }
+        }
+    }
+
+    private func reportCaptureFailure(_ error: Error, on overlay: OverlayWindow?, alerts: Bool) {
+        switch error {
+        case CaptureError.screenRecordingOff:
+            showScreenRecordingOff(on: overlay)
+        case is CaptureError:
+            log.error("Capture failed")
+            reportCaptureProblem(.failed, on: overlay, alerts: alerts)
+        default:
+            log.error("Capture failed: \(error.localizedDescription)")
+            reportCaptureProblem(.undelivered(error: error), on: overlay, alerts: alerts)
         }
     }
 
@@ -204,13 +346,38 @@ extension AppDelegate {
 
     /// On the overlay's HUD when it is open and showing feedback. Otherwise an alert: from the
     /// status menu with the overlay closed, or with Hide Tool Feedback on, a failed capture is
-    /// never silent.
-    private func reportCaptureProblem(_ problem: CaptureProblem, on overlay: OverlayWindow?) {
+    /// never silent. `alerts` false skips the alert, for a caller that reports the problem itself.
+    private func reportCaptureProblem(_ problem: CaptureProblem, on overlay: OverlayWindow?, alerts: Bool = true) {
         if let overlay, overlay.isVisible, !settings[.hideToolFeedback] {
             overlay.showToggleFeedback(problem.title, icon: problem.icon)
-        } else {
+        } else if alerts {
+            queueCaptureProblemAlert(problem)
+        }
+    }
+
+    /// Shows the alert after any still open, one at a time in capture order. The alert is
+    /// modal, and a modal session started inside a main-queue job, as every main-actor task
+    /// is, drains nothing from the main queue until it closes: the capture queue, Shortcuts
+    /// actions, and every other task would wait on the user. So the alerts run from a run-loop
+    /// pass of their own, where the main queue keeps draining inside the modal session and
+    /// later captures go on finishing while an alert is up.
+    func queueCaptureProblemAlert(_ problem: CaptureProblem) {
+        pendingCaptureProblems.append(problem)
+        guard !isPresentingCaptureProblems else { return }
+        isPresentingCaptureProblems = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.presentPendingCaptureProblems()
+            }
+        }
+    }
+
+    private func presentPendingCaptureProblems() {
+        while !pendingCaptureProblems.isEmpty {
+            let problem = pendingCaptureProblems.removeFirst()
             showCaptureProblemAlert(problem.title, problem.detail)
         }
+        isPresentingCaptureProblems = false
     }
 
     /// Never asks from here: the system prompt would open under the overlay. Says so on the

@@ -1,4 +1,5 @@
 import AppIntents
+import UniformTypeIdentifiers
 
 // Shortcuts actions. Each one is a thin wrapper that runs an `AnnotateCommand`.
 //
@@ -22,12 +23,39 @@ extension AnnotateCommandIntent {
     }
 }
 
-enum AnnotateIntentError: Error, CustomLocalizedStringResourceConvertible {
+enum AnnotateIntentError: Error, Equatable, CustomLocalizedStringResourceConvertible {
     case appNotReady
+    case screenRecordingOff
+    /// Capture Area's picker closed before an area was picked.
+    case captureCancelled
+    /// Capture Area couldn't open its picker, most likely because one is already open.
+    case captureAreaUnavailable
+    /// The capture produced no image, or the image went nowhere. `detail` says which.
+    case captureFailed(detail: String)
+
+    /// The error a Shortcuts action shows for a capture that threw `error`.
+    init(capturing error: Error) {
+        switch error {
+        case CaptureError.screenRecordingOff: self = .screenRecordingOff
+        case CaptureError.cancelled: self = .captureCancelled
+        case CaptureError.pickerUnavailable: self = .captureAreaUnavailable
+        case is CaptureError: self = .captureFailed(detail: CaptureProblem.failed.detail)
+        default: self = .captureFailed(detail: CaptureProblem.undelivered(error: error).detail)
+        }
+    }
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .appNotReady: return "Annotate is still starting up. Try again in a moment."
+        case .appNotReady:
+            return "Annotate is still starting up. Try again in a moment."
+        case .screenRecordingOff:
+            return "Annotate needs Screen Recording permission to capture. Turn it on in Annotate's Settings, in the Capture pane."
+        case .captureCancelled:
+            return "Capture Area was cancelled before an area was picked."
+        case .captureAreaUnavailable:
+            return "Annotate couldn't start Capture Area. If an area is already being picked, finish or cancel it first."
+        case .captureFailed(let detail):
+            return "\(detail)"
         }
     }
 }
@@ -213,4 +241,104 @@ extension CommandSwitch: AppEnum {
         .off: "Off",
         .toggle: "Toggle",
     ]
+}
+
+// MARK: - Capture
+
+/// A Shortcuts action that captures and passes the PNG to the next action. It runs the same
+/// capture the menu does, so the image also goes where After Capture says, and the overlay and
+/// the notification report it. There is no `annotate://` link for capture
+/// (`AnnotateCommand.runsFromLinks`).
+protocol AnnotateCaptureIntent: AppIntent {
+    var scope: CaptureScope { get }
+}
+
+extension AnnotateCaptureIntent {
+    /// The command the menu and the overlay shortcut run for the same capture.
+    var command: AnnotateCommand { .capture(scope) }
+
+    /// Captures in the running app and returns the PNG as a file.
+    @MainActor
+    func captureFile(temporaryDirectory: URL = FileManager.default.temporaryDirectory) async throws -> IntentFile {
+        guard let appDelegate = AppDelegate.shared else {
+            throw AnnotateIntentError.appNotReady
+        }
+        let image: CapturedImage
+        do {
+            image = try await appDelegate.captureForShortcuts(scope)
+        } catch let cancellation as CancellationError {
+            throw cancellation
+        } catch {
+            throw AnnotateIntentError(capturing: error)
+        }
+        return try CaptureIntentFile.make(
+            for: image, temporaryDirectory: temporaryDirectory, shareableFolder: appDelegate.captureDefaultFolder)
+    }
+}
+
+/// The file a capture action returns.
+enum CaptureIntentFile {
+    /// The saved file when it is in `shareableFolder`, the default capture folder. Otherwise,
+    /// as with After Capture set to Copy to clipboard or a folder chosen in Settings, the PNG
+    /// goes to a temporary file, never into the capture folder, which the system removes once
+    /// the shortcut is done with it. Both carry the saved file's name, or the name a saved
+    /// capture would have.
+    ///
+    /// Shortcuts gets a file through a sandbox extension Annotate issues for it. Annotate reaches
+    /// the default folder through its Pictures entitlement, and that extension works. A chosen
+    /// folder is reached through the folder chooser or its security-scoped bookmark, and
+    /// Shortcuts rejects an extension for a file there ("scope is neither usable nor
+    /// self-consistent") and silently drops the file, even though Annotate itself can still
+    /// read it. So readability here decides nothing; the folder does.
+    static func make(for image: CapturedImage, temporaryDirectory: URL, shareableFolder: URL?) throws -> IntentFile {
+        if let saved = image.savedFile, let shareableFolder, isFile(saved, in: shareableFolder),
+            FileManager.default.isReadableFile(atPath: saved.path)
+        {
+            return IntentFile(fileURL: saved, filename: saved.lastPathComponent, type: .png)
+        }
+        let name =
+            image.savedFile?.lastPathComponent ?? FileSink.fileName(FileSink.baseName(for: image.capturedAt), attempt: 1)
+        let temporary = temporaryDirectory.appendingPathComponent("Annotate-\(UUID().uuidString).png", isDirectory: false)
+        do {
+            try image.png.write(to: temporary, options: .withoutOverwriting)
+        } catch {
+            throw AnnotateIntentError.captureFailed(
+                detail: "Annotate couldn't hand the image to Shortcuts. \(error.localizedDescription)")
+        }
+        var file = IntentFile(fileURL: temporary, filename: name, type: .png)
+        file.removedOnCompletion = true
+        return file
+    }
+
+    /// Whether `file` sits directly in `folder`, comparing real paths.
+    static func isFile(_ file: URL, in folder: URL) -> Bool {
+        file.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path
+            == folder.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+}
+
+struct CaptureScreenIntent: AnnotateCaptureIntent {
+    static let title: LocalizedStringResource = "Capture Screen"
+    static let description = IntentDescription(
+        "Captures the display with its annotations as a PNG and passes it on. Also saves it, copies it, or both, as After Capture says in Annotate's Settings.")
+
+    var scope: CaptureScope { .screen }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<IntentFile> {
+        .result(value: try await captureFile())
+    }
+}
+
+struct CaptureAreaIntent: AnnotateCaptureIntent {
+    static let title: LocalizedStringResource = "Capture Area"
+    static let description = IntentDescription(
+        "Opens the overlay so you can drag out part of the display, then captures it with its annotations as a PNG and passes it on. Also saves it, copies it, or both, as After Capture says in Annotate's Settings. Fails if the pick is cancelled.")
+
+    var scope: CaptureScope { .area }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<IntentFile> {
+        .result(value: try await captureFile())
+    }
 }

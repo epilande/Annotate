@@ -41,8 +41,8 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
 - 🧹 **Auto-Clear Option:** Automatically clear all drawings when toggling the overlay.
 - ⌨️ **Keyboard Shortcuts:** Switch between modes and toggle the overlay with customizable keyboard shortcuts.
 - ⚡ **Global Hotkey:** Toggle Annotate with a global shortcut.
-- 🤖 **Shortcuts Actions:** Open the overlay, pick a tool or color, clear, and switch the toolbar, Fade Mode, or board from the Shortcuts app.
-- 🔗 **URL Scheme:** Run the same commands from `annotate://` links in scripts, launchers, Stream Deck, or the browser.
+- 🤖 **Shortcuts Actions:** Open the overlay, pick a tool or color, clear, switch the toolbar, Fade Mode, or board, and capture the screen or an area from the Shortcuts app.
+- 🔗 **URL Scheme:** Run the same commands, except capture, from `annotate://` links in scripts, launchers, Stream Deck, or the browser.
 - 🔄 **Auto-Updates:** Automatic update checking with secure, cryptographically signed updates.
 
 ## 📦 Installation
@@ -372,12 +372,16 @@ Annotate adds these actions to the Shortcuts app, so you can run them from a sho
 | Set Toolbar       | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.              |
 | Set Fade Mode     | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit.    |
 | Set Board         | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.           |
+| Capture Screen    | Captures the display with its annotations and returns the PNG.                   |
+| Capture Area      | Opens the overlay to drag out an area, then captures it and returns the PNG.     |
 
 Select Tool, Set Color, Clear Annotations, and the Set actions show an on-screen message on any open overlay.
 
+Capture Screen and Capture Area work as they do from the menu: the image also goes where **After Capture** says, and the overlay and notification report it. With **Copy to clipboard**, the action hands Shortcuts a temporary file and nothing is saved to the capture folder. Capture Area fails with an error if you cancel the pick.
+
 ### URL Scheme
 
-Every Shortcuts action also has an `annotate://` link, so anything that can open a URL can run it:
+Every Shortcuts action except Capture Screen and Capture Area also has an `annotate://` link, so anything that can open a URL can run it:
 
 ```sh
 open "annotate://tool/arrow"
@@ -395,7 +399,7 @@ open "annotate://tool/arrow"
 | `annotate://fade/<on\|off\|toggle>`    | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit. |
 | `annotate://board/<on\|off\|toggle>`   | Turns the whiteboard (blackboard in Dark Mode) on, off, or toggles it.        |
 
-Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard or the menu bar icon instead.
+Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard, the menu bar icon, or the Shortcuts actions instead.
 
 - **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`

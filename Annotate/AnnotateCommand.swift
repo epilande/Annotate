@@ -17,7 +17,9 @@ enum AnnotateCommand: Hashable, Sendable {
     case fade(CommandSwitch)
     case board(CommandSwitch)
     /// Takes an image of the display, or of an area the user drags out, with its annotations,
-    /// and saves it, copies it, or both, as After Capture says. Never runs from a link.
+    /// and saves it, copies it, or both, as After Capture says. Never runs from a link. The
+    /// Shortcuts actions don't go through `run`, which returns before the capture finishes:
+    /// they await `AppDelegate.captureForShortcuts` for the image.
     case capture(CaptureScope)
 
     /// Whether running a command changed anything.
