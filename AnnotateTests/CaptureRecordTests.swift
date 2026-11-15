@@ -531,8 +531,8 @@ final class CaptureRecordTests: XCTestCase {
         let folder = try temporaryFolder()
         let record = record(capture(everyKind))
 
-        let first = try await FileSink.write(Data([1]), record: record, baseName: "Annotate X", in: folder)
-        let second = try await FileSink.write(Data([2]), record: record, baseName: "Annotate X", in: folder)
+        let first = try await FileSink.save(Data([1]), record: record, baseName: "Annotate X", in: folder).url
+        let second = try await FileSink.save(Data([2]), record: record, baseName: "Annotate X", in: folder).url
 
         XCTAssertEqual(
             try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted(),
@@ -554,10 +554,11 @@ final class CaptureRecordTests: XCTestCase {
         let orphan = folder.appendingPathComponent("Annotate X.json")
         try Data("old".utf8).write(to: orphan)
 
-        let image = try await FileSink.write(
+        let saved = try await FileSink.save(
             Data([1]), record: record(capture(nil)), baseName: "Annotate X", in: folder)
 
-        XCTAssertEqual(image.lastPathComponent, "Annotate X (2).png", "The image moves on so it keeps its record's name")
+        XCTAssertNil(saved.recordError)
+        XCTAssertEqual(saved.url.lastPathComponent, "Annotate X (2).png", "The image moves on so it keeps its record's name")
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Annotate X (2).json").path))
         XCTAssertEqual(try Data(contentsOf: orphan), Data("old".utf8))
     }
@@ -574,14 +575,15 @@ final class CaptureRecordTests: XCTestCase {
         let folder = try temporaryFolder()
         struct DiskFull: Error {}
 
-        let image = try await FileSink.write(
+        let saved = try await FileSink.save(
             Data([1]), record: record(capture(nil)), baseName: "Annotate X", in: folder
         ) { data, url in
             if url.lastPathComponent.hasSuffix(".json.tmp") { throw DiskFull() }
             try data.write(to: url, options: .withoutOverwriting)
         }
 
-        XCTAssertEqual(try Data(contentsOf: image), Data([1]))
+        XCTAssertTrue(saved.recordError is DiskFull, "The save says why the record is missing")
+        XCTAssertEqual(try Data(contentsOf: saved.url), Data([1]))
         XCTAssertEqual(
             try FileManager.default.contentsOfDirectory(atPath: folder.path),
             ["Annotate X.png"],
@@ -595,9 +597,31 @@ final class CaptureRecordTests: XCTestCase {
 
         let delivery = try await FileSink(folder: folder).deliver(withRecord, png: Data([1]))
 
-        guard case .file(let url, _) = delivery else { return XCTFail("Expected a file, got \(delivery)") }
+        guard case let .file(url, _, annotationDataError) = delivery else {
+            return XCTFail("Expected a file, got \(delivery)")
+        }
+        XCTAssertNil(annotationDataError)
         let saved = try JSONDecoder().decode(CaptureRecord.self, from: Data(contentsOf: FileSink.recordURL(for: url)))
         XCTAssertEqual(saved.annotations.count, 9)
         XCTAssertEqual(saved.image.file, url.lastPathComponent)
+    }
+
+    func testFileSinkSaysWhenTheRecordCouldntBeSaved() async throws {
+        let folder = try temporaryFolder()
+        var withRecord = capture(nil)
+        withRecord.record = record(withRecord)
+        var sink = FileSink(folder: folder)
+        sink.writeBytes = { data, url in
+            if url.lastPathComponent.hasSuffix(".json.tmp") { throw CocoaError(.fileWriteOutOfSpace) }
+            try data.write(to: url, options: .withoutOverwriting)
+        }
+
+        let delivery = try await sink.deliver(withRecord, png: Data([1]))
+
+        guard case let .file(url, nil, annotationDataError) = delivery else {
+            return XCTFail("Expected a file, got \(delivery)")
+        }
+        XCTAssertEqual(try Data(contentsOf: url), Data([1]), "The image is still delivered")
+        XCTAssertEqual(annotationDataError, CocoaError(.fileWriteOutOfSpace).localizedDescription)
     }
 }

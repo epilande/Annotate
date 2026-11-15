@@ -125,8 +125,9 @@ struct Capture {
 /// Where a capture went.
 enum CaptureDelivery: Equatable, Sendable {
     /// Saved at the URL. `missedFolder` names the chosen folder when it could not be reached
-    /// and the file went to the default folder instead.
-    case file(URL, missedFolder: String? = nil)
+    /// and the file went to the default folder instead. `annotationDataError` describes why the image's `CaptureRecord` couldn't be saved next
+    /// to it, when one was asked for and the image was saved without it.
+    case file(URL, missedFolder: String? = nil, annotationDataError: String? = nil)
     case clipboard
 }
 
@@ -202,12 +203,17 @@ struct CaptureResult {
     let failures: [CaptureSinkFailure]
 
     var savedFile: URL? {
-        deliveries.lazy.compactMap { if case .file(let url, _) = $0 { return url } else { return nil } }.first
+        deliveries.lazy.compactMap { if case .file(let url, _, _) = $0 { return url } else { return nil } }.first
     }
 
     /// The chosen folder a saved file should have gone to, when it went to the default instead.
     var missedFolder: String? {
-        deliveries.lazy.compactMap { if case .file(_, let missed) = $0 { return missed } else { return nil } }.first
+        deliveries.lazy.compactMap { if case .file(_, let missed, _) = $0 { return missed } else { return nil } }.first
+    }
+
+    /// Why the saved file's annotation data couldn't be saved next to it, if it couldn't.
+    var annotationDataError: String? {
+        deliveries.lazy.compactMap { if case .file(_, _, let error) = $0 { return error } else { return nil } }.first
     }
 
     var copiedToClipboard: Bool { deliveries.contains(.clipboard) }

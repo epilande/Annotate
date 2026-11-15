@@ -716,6 +716,63 @@ final class AnnotateCommandTests: XCTestCase {
         }
     }
 
+    /// Saves annotation data, with a file sink whose record writes fail and a working clipboard.
+    /// Returns the capture folder.
+    private func useFailingRecordWrites() throws -> URL {
+        let (folder, pasteboard) = try useStubCapture()
+        testDefaults.settings[.saveAnnotationData] = true
+        var sink = FileSink(folder: folder)
+        sink.writeBytes = { data, url in
+            if url.lastPathComponent.hasSuffix(".json.tmp") { throw CocoaError(.fileWriteOutOfSpace) }
+            try data.write(to: url, options: .withoutOverwriting)
+        }
+        appDelegate.captureService = CaptureService(
+            source: appDelegate.captureService.source, sinks: [sink, ClipboardSink(pasteboard: pasteboard)])
+        return folder
+    }
+
+    func testFailedAnnotationDataKeepsTheImageAndSaysSoOnTheOverlay() async throws {
+        let folder = try useFailingRecordWrites()
+        run(.show)
+
+        run(.capture(.screen))
+        await finishCaptures()
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        let image = try XCTUnwrap(files.first)
+        XCTAssertEqual(files, [image], "The image is saved, alone")
+        XCTAssertTrue(image.hasSuffix(".png"), image)
+        XCTAssertEqual(feedbackText(on: overlay), "⚠️ Couldn't Save Annotation Data. Saved \(image)")
+        XCTAssertTrue(captureProblemAlerts.isEmpty)
+    }
+
+    func testFailedAnnotationDataWithToolFeedbackHiddenShowsAnAlert() async throws {
+        let folder = try useFailingRecordWrites()
+        testDefaults.settings[.hideToolFeedback] = true
+        run(.show)
+
+        run(.capture(.screen))
+        await finishCaptures()
+
+        let image = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertNil(feedbackText(on: overlay))
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save Annotation Data. Saved \(image)"])
+        let detail = try XCTUnwrap(captureProblemDetails.first)
+        XCTAssertTrue(detail.contains("The image was saved"), detail)
+        XCTAssertTrue(detail.contains(CocoaError(.fileWriteOutOfSpace).localizedDescription), detail)
+    }
+
+    func testFailedAnnotationDataWithTheOverlayClosedShowsAnAlert() async throws {
+        let folder = try useFailingRecordWrites()
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        let image = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        XCTAssertTrue(visibleOverlays.isEmpty)
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save Annotation Data. Saved \(image)"])
+    }
+
     func testCopyToClipboardSavesNoAnnotationData() async throws {
         let (folder, pasteboard) = try useStubCapture()
         testDefaults.settings[.saveAnnotationData] = true
