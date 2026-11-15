@@ -981,6 +981,12 @@ class OverlayWindow: NSPanel {
             if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
         case .captureArea:
             if !chord.isRepeat { AppDelegate.shared?.captureArea() }
+        case .colorRed, .colorOrange, .colorYellow, .colorGreen, .colorCyan, .colorIndigo,
+            .colorMagenta, .colorWhite, .colorBlack:
+            // The same command as Shortcuts and links, so it sets every overlay and shows the HUD.
+            if !chord.isRepeat, let color = action.paletteColor, let appDelegate = AppDelegate.shared {
+                AnnotateCommand.color(color).run(on: appDelegate)
+            }
         }
         return true
     }

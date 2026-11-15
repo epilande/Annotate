@@ -187,6 +187,10 @@ struct ShortcutsSettingsView: View {
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
+                ColorShortcutsRow(
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
                 ShortcutSettingRow(
                     tool: .lineWidthPicker,
                     label: "Line Width",
@@ -403,6 +407,147 @@ struct ShortcutSettingRow: View {
             Text(description)
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// The per-color shortcuts in one row: each palette color's swatch with its keycap under it,
+/// and a button that binds them to the digits the color picker shows (#147).
+struct ColorShortcutsRow: View {
+    @Binding var shortcuts: [ShortcutKey: String]
+    @Binding var editingShortcut: ShortcutKey?
+
+    @State private var skippedMessage: String?
+    @State private var recordingError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Colors")
+                    Text("Pick a palette color in one keystroke")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Use 1–9 for colors") {
+                    let skipped = ShortcutManager.shared.assignDigitsToColors()
+                    shortcuts = ShortcutManager.shared.allShortcuts
+                    editingShortcut = nil
+                    recordingError = nil
+                    skippedMessage = Self.message(forSkipped: skipped)
+                }
+                .glassButtonStyle()
+                .help("Bind each color to the number the color picker shows under it")
+                .accessibilityIdentifier("shortcut.colors.useDigits")
+            }
+
+            HStack(spacing: 6) {
+                ForEach(PaletteColor.allCases, id: \.self) { color in
+                    ColorShortcutCell(
+                        color: color,
+                        shortcuts: $shortcuts,
+                        editingShortcut: $editingShortcut
+                    ) { error in
+                        recordingError = error
+                        skippedMessage = nil
+                    }
+                }
+            }
+
+            if let note = recordingError ?? skippedMessage {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(recordingError == nil ? Color.secondary : Color.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// What **Use 1–9 for colors** reports about the digits it left alone, or nil when it
+    /// bound every color.
+    static func message(forSkipped skipped: [ShortcutManager.SkippedColorDigit]) -> String? {
+        guard !skipped.isEmpty else { return nil }
+        let keys = skipped.map { "\($0.digit) (\($0.owner))" }
+        let list = ListFormatter.localizedString(byJoining: keys)
+        return skipped.count == 1
+            ? "Left \(list) alone because it's already assigned."
+            : "Left \(list) alone because they're already assigned."
+    }
+}
+
+/// One color in `ColorShortcutsRow`: its swatch, with a click-to-record keycap under it.
+/// Right-click clears the shortcut or restores its default.
+private struct ColorShortcutCell: View {
+    let color: PaletteColor
+    @Binding var shortcuts: [ShortcutKey: String]
+    @Binding var editingShortcut: ShortcutKey?
+    let onError: (String?) -> Void
+
+    @State private var isHoveringKey = false
+
+    private var action: ShortcutKey { .color(color) }
+    private var shortcut: String { shortcuts[action] ?? action.defaultBinding.displayValue }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            SwiftUI.Circle()
+                .fill(Color(nsColor: color.nsColor))
+                .frame(width: 20, height: 20)
+                .overlay {
+                    // White disappears against the light-mode row background without an edge.
+                    if color == .white {
+                        SwiftUI.Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1)
+                    }
+                }
+                .accessibilityHidden(true)
+
+            if editingShortcut == action {
+                ShortcutField(
+                    tool: action,
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut,
+                    compact: true,
+                    onError: onError
+                )
+            } else {
+                Button {
+                    onError(nil)
+                    editingShortcut = action
+                } label: {
+                    Text(keycap: shortcut.isEmpty ? "–" : shortcut)
+                        .font(.body.weight(.medium).monospaced())
+                        .foregroundStyle(shortcut.isEmpty ? .secondary : .primary)
+                        .frame(minWidth: 20)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(ShortcutKeycapBackground())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Record \(action.displayName) shortcut")
+                .accessibilityValue(shortcut.isEmpty ? "Not Set" : ShortcutBinding.spokenLabel(for: shortcut))
+                .accessibilityIdentifier("shortcut.\(action.rawValue).record")
+                .accessibilityAction(named: "Clear shortcut") { perform(.clear) }
+                .opacity(isHoveringKey ? 0.8 : 1.0)
+                .onHover { isHoveringKey = $0 }
+            }
+        }
+        .frame(minWidth: 32)
+        .contentShape(SwiftUI.Rectangle())
+        .help(color.displayName)
+        .contextMenu {
+            Button("Clear Shortcut") { perform(.clear) }
+                .disabled(shortcut.isEmpty)
+            Button("Restore Default") { perform(.restoreDefault) }
+                .disabled(shortcut == action.defaultBinding.displayValue)
+        }
+    }
+
+    private func perform(_ settingAction: ShortcutSettingAction) {
+        let result = settingAction.perform(tool: action)
+        shortcuts = result.shortcuts
+        editingShortcut = nil
+        onError(nil)
     }
 }
 

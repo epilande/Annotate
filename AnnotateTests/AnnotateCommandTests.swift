@@ -188,6 +188,57 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(feedbackText(on: overlay), "🎨 Indigo")
     }
 
+    // MARK: - Per-color shortcuts
+
+    func testABoundDigitSetsItsColor() throws {
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("9", for: .color(.indigo)))
+        run(.show)
+
+        overlay.sendEvent(try keyDown("8"))
+        XCTAssertTrue(appDelegate.currentColor.isClose(to: .systemRed), "An unbound digit does nothing")
+
+        overlay.sendEvent(try keyDown("9"))
+        XCTAssertEqual(appDelegate.currentColor, .systemIndigo)
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.currentColor, .systemIndigo)
+        }
+        XCTAssertEqual(feedbackText(on: overlay), "🎨 Indigo")
+    }
+
+    func testDigitsPickByPositionWhileTheColorPickerIsOpen() throws {
+        // 2 is orange in the picker. Binding it to black must not take it from the picker.
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("2", for: .color(.black)))
+        run(.show)
+        let pickerKey: (NSEvent.EventType) throws -> NSEvent = { type in
+            try XCTUnwrap(
+                TestEvents.createKeyEvent(
+                    type: type,
+                    keyCode: 8,
+                    characters: "c",
+                    windowNumber: self.overlay.windowNumber))
+        }
+        overlay.sendEvent(try pickerKey(.keyDown))
+        overlay.sendEvent(try pickerKey(.keyUp))
+        XCTAssertTrue(overlay.isQuickPickerOpen)
+
+        overlay.sendEvent(try keyDown("2"))
+
+        XCTAssertTrue(appDelegate.currentColor.isClose(to: PaletteColor.orange.nsColor))
+        XCTAssertFalse(appDelegate.currentColor.isClose(to: PaletteColor.black.nsColor))
+        overlay.cancelQuickPicker()
+    }
+
+    func testABoundDigitTypesIntoALabelWithoutChangingTheColor() throws {
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("5", for: .color(.cyan)))
+        let view = try startTypingALabel("Room ")
+
+        overlay.sendEvent(try keyDown("5"))
+        overlay.keyDown(with: try keyDown("5"))
+
+        XCTAssertTrue(appDelegate.currentColor.isClose(to: .systemRed))
+        XCTAssertNotNil(view.activeTextField, "The label stays in editing")
+    }
+
     // MARK: - Clear
 
     func testClearClearsTheOpenOverlayEvenWhenItIsNotKey() {

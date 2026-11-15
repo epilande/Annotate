@@ -124,17 +124,47 @@ enum ShortcutKey: String, CaseIterable {
     case clearAll
     case captureScreen
     case captureArea
+    // One per palette color, in palette order. Unassigned by default (#147).
+    case colorRed, colorOrange, colorYellow
+    case colorGreen, colorCyan, colorIndigo
+    case colorMagenta, colorWhite, colorBlack
+
+    /// The per-color actions, in palette order.
+    static let colorActions: [ShortcutKey] = PaletteColor.allCases.map(ShortcutKey.color)
+
+    /// The action that picks `color`.
+    static func color(_ color: PaletteColor) -> ShortcutKey {
+        switch color {
+        case .red: return .colorRed
+        case .orange: return .colorOrange
+        case .yellow: return .colorYellow
+        case .green: return .colorGreen
+        case .cyan: return .colorCyan
+        case .indigo: return .colorIndigo
+        case .magenta: return .colorMagenta
+        case .white: return .colorWhite
+        case .black: return .colorBlack
+        }
+    }
+
+    /// The palette color this action picks, or nil for every other action.
+    var paletteColor: PaletteColor? {
+        PaletteColor.allCases.first { Self.color($0) == self }
+    }
 
     /// Actions whose default binding arrived after users could already customize shortcuts.
     /// An existing custom binding on the same key wins over the new default (see `init`).
     static let newlyEditable: [ShortcutKey] = [
         .toggleFade, .toggleToolbar, .decreaseSize, .increaseSize, .clearAll, .redact, .captureScreen,
         .captureArea,
-    ]
+    ] + colorActions
 
     var defaultBinding: ShortcutBinding {
         switch self {
         case .toggleBackgroundDimming: return .unassigned
+        case .colorRed, .colorOrange, .colorYellow, .colorGreen, .colorCyan, .colorIndigo,
+            .colorMagenta, .colorWhite, .colorBlack:
+            return .unassigned
         case .toggleFade: return ShortcutBinding(" ")
         case .toggleToolbar: return ShortcutBinding("t", modifiers: [.option, .command])
         case .decreaseSize: return ShortcutBinding("[")
@@ -173,6 +203,9 @@ enum ShortcutKey: String, CaseIterable {
         case .clearAll: return "Clear All"
         case .captureScreen: return "Capture Screen"
         case .captureArea: return "Capture Area"
+        case .colorRed, .colorOrange, .colorYellow, .colorGreen, .colorCyan, .colorIndigo,
+            .colorMagenta, .colorWhite, .colorBlack:
+            return "\(paletteColor?.displayName ?? "") Color"
         }
     }
 }
@@ -195,7 +228,9 @@ class ShortcutManager: @unchecked Sendable {
         // Existing assignments win over newly introduced defaults. Persist the unbound state
         // so clearing the old assignment later does not silently enable a second action.
         // Every other action counts, including other newly editable ones a user already customized.
-        for action in ShortcutKey.newlyEditable where !settings.hasValue(for: .shortcut(action)) {
+        // An unassigned default can't conflict, so there is nothing to persist for it.
+        for action in ShortcutKey.newlyEditable
+        where !action.defaultBinding.key.isEmpty && !settings.hasValue(for: .shortcut(action)) {
             if ShortcutKey.allCases.contains(where: { $0 != action && binding(for: $0) == action.defaultBinding })
                 || globalShortcutConflict(for: action.defaultBinding) != nil {
                 settings[.shortcut(action)] = .unassigned
@@ -255,6 +290,46 @@ class ShortcutManager: @unchecked Sendable {
             }
         }
         NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
+    }
+
+    /// A digit that **Use 1–9 for colors** left alone because another action already had it.
+    struct SkippedColorDigit: Equatable {
+        let color: PaletteColor
+        let digit: String
+        /// The display name of the action or global shortcut that has the digit.
+        let owner: String
+    }
+
+    /// Binds each palette color to the digit the color picker shows under its swatch (1 for
+    /// the first color, and so on). A digit already bound to any other action stays where it
+    /// is, and that color keeps its current binding. A digit held by another color moves once
+    /// that color takes its own digit. Returns the digits that were left alone.
+    @discardableResult
+    func assignDigitsToColors() -> [SkippedColorDigit] {
+        let digits = Dictionary(
+            uniqueKeysWithValues: PaletteColor.allCases.prefix(9).enumerated().map { index, color in
+                (color, ShortcutBinding(String(index + 1)))
+            })
+        var pending = PaletteColor.allCases.filter { digits[$0] != nil }
+        // Repeat while progress is made, so a color can take a digit another color frees.
+        var madeProgress = true
+        while madeProgress && !pending.isEmpty {
+            let before = pending.count
+            pending = pending.filter { color in
+                guard let digit = digits[color] else { return false }
+                let action = ShortcutKey.color(color)
+                return binding(for: action) != digit && !setShortcut(digit, for: action)
+            }
+            madeProgress = pending.count < before
+        }
+        return pending.compactMap { color in
+            guard let digit = digits[color] else { return nil }
+            let owner = ShortcutKey.allCases.first { $0 != .color(color) && binding(for: $0) == digit }
+            return SkippedColorDigit(
+                color: color,
+                digit: digit.key,
+                owner: owner?.displayName ?? globalShortcutConflict(for: digit) ?? "")
+        }
     }
 
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {

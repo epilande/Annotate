@@ -246,6 +246,50 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(manager.getShortcut(for: .arrow), "")
     }
     
+    func testColorShortcutsAreUnassignedAndFollowThePalette() {
+        XCTAssertEqual(ShortcutKey.colorActions.compactMap(\.paletteColor), PaletteColor.allCases)
+        for action in ShortcutKey.colorActions {
+            XCTAssertEqual(action.defaultBinding, .unassigned, action.displayName)
+            XCTAssertTrue(ShortcutKey.newlyEditable.contains(action), action.displayName)
+        }
+        XCTAssertEqual(ShortcutKey.color(.indigo).displayName, "Indigo Color")
+        XCTAssertNil(ShortcutKey.colorPicker.paletteColor)
+    }
+
+    func testUseDigitsForColorsBindsThePaletteInOrder() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults) { _ in nil }
+
+        XCTAssertEqual(manager.assignDigitsToColors(), [])
+
+        for (index, color) in PaletteColor.allCases.enumerated() {
+            XCTAssertEqual(manager.binding(for: .color(color)), ShortcutBinding(String(index + 1)), "\(color)")
+        }
+    }
+
+    func testUseDigitsForColorsLeavesExistingDigitBindingsAlone() {
+        let defaults = TestUserDefaults.create()
+        defer { TestUserDefaults.removeSuite() }
+        let manager = ShortcutManager(userDefaults: defaults) { _ in nil }
+        XCTAssertTrue(manager.setShortcut("3", for: .pen))
+        XCTAssertTrue(manager.setShortcut("j", for: .color(.yellow)))
+        // A digit another color holds moves to its own color.
+        XCTAssertTrue(manager.setShortcut("1", for: .color(.orange)))
+
+        let skipped = manager.assignDigitsToColors()
+
+        XCTAssertEqual(skipped, [.init(color: .yellow, digit: "3", owner: "Pen")])
+        XCTAssertEqual(manager.binding(for: .pen), ShortcutBinding("3"))
+        XCTAssertEqual(manager.binding(for: .color(.yellow)), ShortcutBinding("j"), "Yellow keeps its binding")
+        XCTAssertEqual(manager.binding(for: .color(.red)), ShortcutBinding("1"))
+        XCTAssertEqual(manager.binding(for: .color(.orange)), ShortcutBinding("2"))
+        XCTAssertEqual(manager.binding(for: .color(.black)), ShortcutBinding("9"))
+        XCTAssertEqual(
+            ColorShortcutsRow.message(forSkipped: skipped),
+            "Left 3 (Pen) alone because it's already assigned.")
+    }
+
     func testAllDefaultShortcuts() {
         // Test all default keyboard shortcuts
         XCTAssertEqual(ShortcutKey.pen.defaultKey, "p", "Pen should be 'p'")
