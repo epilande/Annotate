@@ -1447,4 +1447,153 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertNotNil(overlayView.textAnnotations[0].wrapWidth)
         overlayView.endTextResize()
     }
+
+    // MARK: - Annotation ids
+
+    /// One annotation of every kind, selected. Fade is off, since their creation times are long
+    /// past and a paste would otherwise compact them away.
+    private func placeOneOfEachKindSelected() {
+        overlayView.fadeMode = false
+        overlayView.currentTool = .select
+        let points = [NSPoint(x: 300, y: 300), NSPoint(x: 340, y: 320)].enumerated().map {
+            TimedPoint(point: $0.element, timestamp: CFTimeInterval($0.offset))
+        }
+        overlayView.arrows = [
+            Arrow(
+                startPoint: NSPoint(x: 100, y: 100),
+                endPoint: NSPoint(x: 150, y: 150),
+                color: .red,
+                lineWidth: 2,
+                creationTime: 1)
+        ]
+        overlayView.lines = [
+            Line(
+                startPoint: NSPoint(x: 100, y: 200),
+                endPoint: NSPoint(x: 150, y: 200),
+                color: .red,
+                lineWidth: 2,
+                creationTime: 2)
+        ]
+        overlayView.paths = [DrawingPath(points: points, color: .red, lineWidth: 2, creationTime: 3)]
+        overlayView.highlightPaths = [
+            DrawingPath(
+                points: points.map { TimedPoint(point: NSPoint(x: $0.point.x, y: $0.point.y + 60), timestamp: 0) },
+                color: .yellow,
+                lineWidth: 2,
+                creationTime: 4)
+        ]
+        overlayView.rectangles = [
+            Rectangle(
+                startPoint: NSPoint(x: 400, y: 100),
+                endPoint: NSPoint(x: 450, y: 150),
+                color: .red,
+                lineWidth: 2,
+                creationTime: 5)
+        ]
+        overlayView.circles = [
+            Circle(
+                startPoint: NSPoint(x: 500, y: 100),
+                endPoint: NSPoint(x: 550, y: 150),
+                color: .red,
+                lineWidth: 2,
+                creationTime: 6)
+        ]
+        overlayView.textAnnotations = [
+            TextAnnotation(text: "Label", position: NSPoint(x: 100, y: 450), color: .red, fontSize: 18, creationTime: 7)
+        ]
+        overlayView.counterAnnotations = [
+            CounterAnnotation(number: 1, position: NSPoint(x: 600, y: 450), color: .red, creationTime: 8)
+        ]
+        overlayView.nextCounterNumber = 2
+        overlayView.selectAllObjects()
+    }
+
+    /// Every annotation's id, kind by kind.
+    private var annotationIds: [UUID] {
+        overlayView.arrows.map(\.id) + overlayView.lines.map(\.id) + overlayView.paths.map(\.id)
+            + overlayView.highlightPaths.map(\.id) + overlayView.rectangles.map(\.id) + overlayView.circles.map(\.id)
+            + overlayView.textAnnotations.map(\.id) + overlayView.counterAnnotations.map(\.id)
+    }
+
+    func testEveryAnnotationGetsItsOwnId() {
+        placeOneOfEachKindSelected()
+
+        XCTAssertEqual(Set(annotationIds).count, 8)
+    }
+
+    func testIdsAreNotPartOfEquality() {
+        let arrow = Arrow(
+            startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .red, lineWidth: 2, creationTime: 1)
+        var twin = arrow
+        twin.id = UUID()
+
+        XCTAssertEqual(arrow, twin, "Two arrows that look the same are equal")
+    }
+
+    func testIdsStayThroughMovesDeletesClearsAndUndo() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        placeOneOfEachKindSelected()
+        let ids = annotationIds
+
+        overlayView.moveSelectedObjects(by: NSPoint(x: 30, y: -20))
+        XCTAssertEqual(annotationIds, ids, "Moving keeps every id")
+
+        let arrow = overlayView.arrows[0]
+        asOneStep(undoManager) {
+            overlayView.registerMoveUndo(
+                object: .arrow(index: 0),
+                from: (NSPoint(x: 100, y: 100), NSPoint(x: 150, y: 150)),
+                to: (arrow.startPoint, arrow.endPoint))
+        }
+        undoManager.undo()
+        XCTAssertEqual(overlayView.arrows[0].startPoint, NSPoint(x: 100, y: 100))
+        XCTAssertEqual(annotationIds, ids, "Undoing a move keeps every id")
+
+        overlayView.selectAllObjects()
+        asOneStep(undoManager) { overlayView.deleteSelectedObjects() }
+        XCTAssertTrue(annotationIds.isEmpty)
+        undoManager.undo()
+        XCTAssertEqual(Set(annotationIds), Set(ids), "Undoing a delete brings back the same annotations")
+
+        asOneStep(undoManager) { _ = overlayView.clearAll() }
+        XCTAssertTrue(annotationIds.isEmpty)
+        undoManager.undo()
+        XCTAssertEqual(Set(annotationIds), Set(ids), "Undoing Clear All brings back the same annotations")
+        undoManager.redo()
+        undoManager.undo()
+        XCTAssertEqual(Set(annotationIds), Set(ids), "and so does undoing it again after a redo")
+    }
+
+    func testPastedAndDuplicatedCopiesGetFreshIds() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        placeOneOfEachKindSelected()
+        let originals = annotationIds
+
+        asOneStep(undoManager) { overlayView.duplicateSelectedObjects() }
+
+        let afterDuplicate = annotationIds
+        XCTAssertEqual(afterDuplicate.count, 16)
+        XCTAssertEqual(Set(afterDuplicate).count, 16, "Every copy, of every kind, has an id of its own")
+        XCTAssertTrue(Set(originals).isSubset(of: Set(afterDuplicate)), "The originals keep theirs")
+
+        overlayView.copySelectedObjects()
+        asOneStep(undoManager) { overlayView.pasteObjects() }
+        XCTAssertEqual(Set(annotationIds).count, 24, "Pasting the same clipboard again makes new ids again")
+    }
+
+    func testCutThenPasteGivesFreshIds() {
+        let (window, undoManager) = makeUndoWindow()
+        _ = window
+        placeOneOfEachKindSelected()
+        let originals = Set(annotationIds)
+
+        asOneStep(undoManager) { overlayView.cutSelectedObjects() }
+        XCTAssertTrue(annotationIds.isEmpty)
+        asOneStep(undoManager) { overlayView.pasteObjects() }
+
+        XCTAssertEqual(annotationIds.count, 8)
+        XCTAssertTrue(Set(annotationIds).isDisjoint(with: originals), "A paste is a new annotation, even after a cut")
+    }
 }
