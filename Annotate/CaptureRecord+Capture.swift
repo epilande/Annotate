@@ -49,25 +49,32 @@ extension CaptureRecord {
     ) -> [Annotation] {
         let document = scene.document
         let redactions = document.rectangles.filter(\.isRedaction)
-        /// Whether the image shows an item drawn over `bounds` and created at `time`: it hasn't
-        /// faded out, it reaches the region, and no newer redaction overlaps it. A redaction
-        /// hides what is under it, so a label it covers must not reappear in the record.
-        /// Redactions never fade, so for outlined rectangles this matches `alpha(for:)`.
-        func shows(_ bounds: NSRect, at time: CFTimeInterval?) -> Bool {
+        /// Whether the image shows an item painted within `bounds`, inked as `ink`, and created
+        /// at `time`: it hasn't faded out, it reaches the region, and no newer redaction covers
+        /// any of its ink. An item that only comes near a redaction stays. Outlined rectangles
+        /// fade like everything else, so `alpha(creationTime:)` is `alpha(for:)` for them.
+        func shows(_ bounds: NSRect, at time: CFTimeInterval?, ink: () -> CGPath) -> Bool {
             guard scene.fade.alpha(creationTime: time, at: scene.now) != nil, !bounds.isNull,
                 bounds.intersects(region)
             else { return false }
             let created = OverlayDocument.RedactionLayer.time(of: time)
-            return !redactions.contains {
+            let covering = redactions.filter {
                 OverlayDocument.RedactionLayer.time(of: $0.creationTime) > created && $0.bounds.intersects(bounds)
             }
+            guard !covering.isEmpty else { return true }
+            let drawn = ink()
+            return !covering.contains { drawn.intersects(CGPath(rect: $0.bounds, transform: nil)) }
         }
-        /// The items of one kind that paint in `layer` and show in the image.
+        /// The items of one kind that paint in `layer` and show in the image. `bounds`, the
+        /// padded paint bounds, decides whether an item reaches the region and which redactions
+        /// its ink is tested against.
         func shown<Item>(
             _ items: [Item], in layer: OverlayDocument.RedactionLayer,
-            time: (Item) -> CFTimeInterval?, bounds: (Item) -> NSRect
+            time: (Item) -> CFTimeInterval?, bounds: (Item) -> NSRect, ink: (Item) -> CGPath
         ) -> [Item] {
-            items.filter { layer.contains(time($0)) && shows(bounds($0), at: time($0)) }
+            items.filter { item in
+                layer.contains(time(item)) && shows(bounds(item), at: time(item)) { ink(item) }
+            }
         }
 
         var annotations: [Annotation] = []
@@ -76,38 +83,62 @@ extension CaptureRecord {
             case let .content(content, layer, _):
                 switch content {
                 case .arrows:
-                    annotations += shown(document.arrows, in: layer, time: \.creationTime, bounds: \.redrawBounds)
-                        .map { .arrow(Segment($0, space: space)) }
+                    annotations += shown(
+                        document.arrows, in: layer, time: \.creationTime, bounds: \.redrawBounds, ink: \.ink
+                    )
+                    .map { .arrow(Segment($0, space: space)) }
                 case .lines:
-                    annotations += shown(document.lines, in: layer, time: \.creationTime, bounds: \.redrawBounds)
-                        .map { .line(Segment($0, space: space)) }
+                    annotations += shown(
+                        document.lines, in: layer, time: \.creationTime, bounds: \.redrawBounds, ink: \.ink
+                    )
+                    .map { .line(Segment($0, space: space)) }
                 case .penStrokes:
-                    annotations += shown(document.paths, in: layer, time: \.creationTime) { $0.redrawBounds(tool: .pen) }
-                        .map { .pen(Stroke($0, tool: .pen, space: space)) }
+                    annotations += shown(
+                        document.paths,
+                        in: layer,
+                        time: \.creationTime,
+                        bounds: { $0.redrawBounds(tool: .pen) },
+                        ink: { $0.ink(tool: .pen) }
+                    )
+                    .map { .pen(Stroke($0, tool: .pen, space: space)) }
                 case .highlights:
-                    annotations += shown(document.highlightPaths, in: layer, time: \.creationTime) {
-                        $0.redrawBounds(tool: .highlighter)
-                    }
+                    annotations += shown(
+                        document.highlightPaths,
+                        in: layer,
+                        time: \.creationTime,
+                        bounds: { $0.redrawBounds(tool: .highlighter) },
+                        ink: { $0.ink(tool: .highlighter) }
+                    )
                     .map { .highlighter(Stroke($0, tool: .highlighter, space: space)) }
                 case .outlines:
                     let outlines = document.rectangles.filter { !$0.isRedaction }
-                    annotations += shown(outlines, in: layer, time: \.creationTime, bounds: \.redrawBounds)
-                        .map { .rectangle(Shape($0, space: space)) }
+                    annotations += shown(
+                        outlines, in: layer, time: \.creationTime, bounds: \.redrawBounds, ink: \.ink
+                    )
+                    .map { .rectangle(Shape($0, space: space)) }
                 case .circles:
-                    annotations += shown(document.circles, in: layer, time: \.creationTime, bounds: \.redrawBounds)
-                        .map { .ellipse(Shape($0, space: space)) }
+                    annotations += shown(
+                        document.circles, in: layer, time: \.creationTime, bounds: \.redrawBounds, ink: \.ink
+                    )
+                    .map { .ellipse(Shape($0, space: space)) }
                 case .labels:
                     for (index, label) in document.textAnnotations.enumerated()
                     where index != document.editingTextAnnotationIndex && layer.contains(label.creationTime) {
                         let size = textSize(label)
                         let bounds = label.bounds(textSize: size, fallbackInsets: AnnotationRenderer.plainLabelSlop)
-                        if shows(bounds, at: label.creationTime) {
+                        // A label is hidden when a newer redaction touches any of its box,
+                        // pill or not, so none of its text can reappear here.
+                        if shows(bounds, at: label.creationTime, ink: { CGPath(rect: bounds, transform: nil) }) {
                             annotations.append(.text(Label(label, textSize: size, space: space)))
                         }
                     }
                 case .counters:
                     annotations += shown(
-                        document.counterAnnotations, in: layer, time: \.creationTime, bounds: \.badgeRect
+                        document.counterAnnotations,
+                        in: layer,
+                        time: \.creationTime,
+                        bounds: { $0.ink.boundingBoxOfPath },
+                        ink: \.ink
                     )
                     .map { .pin(Pin($0, space: space)) }
                 }

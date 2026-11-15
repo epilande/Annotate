@@ -382,6 +382,109 @@ final class CaptureRecordTests: XCTestCase {
             "The label under the redaction stays hidden; the one placed over it shows")
     }
 
+    /// A solid redaction from (100, 100) to (200, 140) in view points, made at time 2, over
+    /// `items` made at time 1.
+    private func recordWithNewerRedaction(_ fill: (inout OverlayDocument) -> Void) -> (CaptureRecord, Rectangle) {
+        var document = OverlayDocument()
+        fill(&document)
+        let redaction = Rectangle(
+            startPoint: NSPoint(x: 100, y: 100),
+            endPoint: NSPoint(x: 200, y: 140),
+            color: .black,
+            lineWidth: 1,
+            creationTime: 2,
+            style: .solid)
+        document.rectangles.append(redaction)
+        return (record(capture(document)), redaction)
+    }
+
+    func testAnnotationsBesideANewerRedactionStay() {
+        // Each paints within a few points of the redaction without touching it, so their padded
+        // paint bounds reach it but their ink doesn't.
+        let arrow = Arrow(
+            startPoint: NSPoint(x: 100, y: 160),
+            endPoint: NSPoint(x: 200, y: 160),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        let line = Line(
+            startPoint: NSPoint(x: 100, y: 95),
+            endPoint: NSPoint(x: 200, y: 95),
+            color: .red,
+            lineWidth: 4,
+            creationTime: 1)
+        let stroke = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 203, y: 100), timestamp: 0),
+                TimedPoint(point: NSPoint(x: 203, y: 140), timestamp: 0),
+            ],
+            color: .red,
+            lineWidth: 3,
+            creationTime: 1)
+        // An outline drawn around the redaction: only its stroke is ink, and that misses it.
+        let frame = Rectangle(
+            startPoint: NSPoint(x: 80, y: 80),
+            endPoint: NSPoint(x: 220, y: 160),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+
+        let (record, redaction) = recordWithNewerRedaction {
+            $0.arrows = [arrow]
+            $0.lines = [line]
+            $0.paths = [stroke]
+            $0.rectangles = [frame]
+        }
+
+        let expected: [UUID] = [arrow.id, line.id, stroke.id, frame.id, redaction.id]
+        XCTAssertEqual(Set(record.annotations.map(\.id)), Set(expected.map(\.uuidString)))
+    }
+
+    func testAnnotationsANewerRedactionOverlapsAreLeftOut() {
+        let crossing = Arrow(
+            startPoint: NSPoint(x: 50, y: 120),
+            endPoint: NSPoint(x: 250, y: 120),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        // Its shaft stops short of the redaction, but the head's tip reaches into it.
+        let headOnly = Arrow(
+            startPoint: NSPoint(x: 150, y: 200),
+            endPoint: NSPoint(x: 150, y: 138),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        let dot = DrawingPath(
+            points: [TimedPoint(point: NSPoint(x: 150, y: 120), timestamp: 0)],
+            color: .red,
+            lineWidth: 3,
+            creationTime: 1)
+        let edge = Rectangle(
+            startPoint: NSPoint(x: 190, y: 110),
+            endPoint: NSPoint(x: 260, y: 130),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        let ellipse = Circle(
+            startPoint: NSPoint(x: 60, y: 100),
+            endPoint: NSPoint(x: 110, y: 140),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        let label = TextAnnotation(
+            text: "hunter2", position: NSPoint(x: 195, y: 90), color: .red, fontSize: 16, creationTime: 1)
+
+        let (record, redaction) = recordWithNewerRedaction {
+            $0.arrows = [crossing, headOnly]
+            $0.paths = [dot]
+            $0.rectangles = [edge]
+            $0.circles = [ellipse]
+            $0.textAnnotations = [label]
+        }
+
+        XCTAssertEqual(record.annotations.map(\.id), [redaction.id.uuidString], "Only the redaction is left")
+    }
+
     func testPlainScreenCaptureHasNoAnnotationsOrBoard() {
         let record = record(capture(nil))
 
