@@ -1998,6 +1998,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         for (item, pasteTime) in zip(clipboard, pasteTimes) {
             switch item {
             case .arrow(var arrow):
+                arrow.id = UUID()
                 arrow.startPoint = NSPoint(x: arrow.startPoint.x + offsetX, y: arrow.startPoint.y + offsetY)
                 arrow.endPoint = NSPoint(x: arrow.endPoint.x + offsetX, y: arrow.endPoint.y + offsetY)
                 arrow.creationTime = pasteTime
@@ -2006,6 +2007,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.arrow(index: arrows.count - 1))
 
             case .line(var line):
+                line.id = UUID()
                 line.startPoint = NSPoint(x: line.startPoint.x + offsetX, y: line.startPoint.y + offsetY)
                 line.endPoint = NSPoint(x: line.endPoint.x + offsetX, y: line.endPoint.y + offsetY)
                 line.creationTime = pasteTime
@@ -2014,6 +2016,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.line(index: lines.count - 1))
 
             case .rectangle(var rect):
+                rect.id = UUID()
                 rect.startPoint = NSPoint(x: rect.startPoint.x + offsetX, y: rect.startPoint.y + offsetY)
                 rect.endPoint = NSPoint(x: rect.endPoint.x + offsetX, y: rect.endPoint.y + offsetY)
                 rect.sample = nil
@@ -2023,6 +2026,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.rectangle(index: rectangles.count - 1))
 
             case .circle(var circle):
+                circle.id = UUID()
                 circle.startPoint = NSPoint(x: circle.startPoint.x + offsetX, y: circle.startPoint.y + offsetY)
                 circle.endPoint = NSPoint(x: circle.endPoint.x + offsetX, y: circle.endPoint.y + offsetY)
                 circle.creationTime = pasteTime
@@ -2031,6 +2035,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.circle(index: circles.count - 1))
 
             case .path(var path):
+                path.id = UUID()
                 path.points = path.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
@@ -2044,6 +2049,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.path(index: paths.count - 1))
 
             case .highlight(var highlight):
+                highlight.id = UUID()
                 highlight.points = highlight.points.map { timedPoint in
                     TimedPoint(
                         point: NSPoint(x: timedPoint.point.x + offsetX, y: timedPoint.point.y + offsetY),
@@ -2065,6 +2071,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 pastedObjects.append(.text(index: textAnnotations.count - 1))
 
             case .counter(var counter):
+                counter.id = UUID()
                 counter.position = NSPoint(x: counter.position.x + offsetX, y: counter.position.y + offsetY)
                 counter.number = nextCounterNumber
                 counter.creationTime = pasteTime

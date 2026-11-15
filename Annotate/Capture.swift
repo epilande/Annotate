@@ -93,6 +93,9 @@ struct CaptureRequest {
     var date: Date
     /// Where the finished image goes, as the setting stood when the capture was asked for.
     var afterCapture: AfterCapture = .both
+    /// Whether a saved image gets its `CaptureRecord` written next to it, as "Save annotation
+    /// data next to screenshots" stood when the capture was asked for.
+    var savesAnnotationData = false
 
     var needsScreenPixels: Bool { !(scene?.coversScreen ?? false) }
 }
@@ -109,6 +112,8 @@ struct Capture {
     let capturedAt: Date
     /// Mach host time of the capture; see `CaptureRequest.hostTime`.
     let hostTime: CFTimeInterval
+    /// The annotation data a saved image gets next to it, or nil when none is asked for.
+    var record: CaptureRecord?
 
     /// Image pixels per point.
     var scale: CGFloat { CGFloat(image.width) / region.width }
@@ -120,8 +125,9 @@ struct Capture {
 /// Where a capture went.
 enum CaptureDelivery: Equatable, Sendable {
     /// Saved at the URL. `missedFolder` names the chosen folder when it could not be reached
-    /// and the file went to the default folder instead.
-    case file(URL, missedFolder: String? = nil)
+    /// and the file went to the default folder instead. `annotationDataError` describes why the image's `CaptureRecord` couldn't be saved next
+    /// to it, when one was asked for and the image was saved without it.
+    case file(URL, missedFolder: String? = nil, annotationDataError: String? = nil)
     case clipboard
 }
 
@@ -197,12 +203,17 @@ struct CaptureResult {
     let failures: [CaptureSinkFailure]
 
     var savedFile: URL? {
-        deliveries.lazy.compactMap { if case .file(let url, _) = $0 { return url } else { return nil } }.first
+        deliveries.lazy.compactMap { if case .file(let url, _, _) = $0 { return url } else { return nil } }.first
     }
 
     /// The chosen folder a saved file should have gone to, when it went to the default instead.
     var missedFolder: String? {
-        deliveries.lazy.compactMap { if case .file(_, let missed) = $0 { return missed } else { return nil } }.first
+        deliveries.lazy.compactMap { if case .file(_, let missed, _) = $0 { return missed } else { return nil } }.first
+    }
+
+    /// Why the saved file's annotation data couldn't be saved next to it, if it couldn't.
+    var annotationDataError: String? {
+        deliveries.lazy.compactMap { if case .file(_, _, let error) = $0 { return error } else { return nil } }.first
     }
 
     var copiedToClipboard: Bool { deliveries.contains(.clipboard) }
@@ -245,13 +256,16 @@ final class CaptureService {
         else { throw CaptureError.renderFailed }
         guard let (image, region) = CaptureCompositor.crop(composite, to: request.region, display: request.display)
         else { throw CaptureError.emptyRegion }
-        let capture = Capture(
+        var capture = Capture(
             image: image,
             display: request.display,
             region: region,
             scene: scene,
             capturedAt: request.date,
             hostTime: request.hostTime)
+        if request.savesAnnotationData {
+            capture.record = CaptureRecord(capture)
+        }
 
         guard let png = await CaptureCompositor.encodePNG(image, scale: capture.scale) else {
             throw CaptureError.renderFailed

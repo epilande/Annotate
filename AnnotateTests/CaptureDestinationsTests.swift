@@ -90,7 +90,7 @@ final class CaptureDestinationsTests: XCTestCase {
 
     private func deliver(with sink: FileSink) async throws -> (url: URL, missedFolder: String?) {
         let delivery = try await sink.deliver(capture(), png: Data([1, 2, 3]))
-        guard case let .file(url, missedFolder) = delivery else {
+        guard case let .file(url, missedFolder, _) = delivery else {
             XCTFail("Expected a file, got \(delivery)")
             throw CaptureError.renderFailed
         }
@@ -123,6 +123,24 @@ final class CaptureDestinationsTests: XCTestCase {
     }
 
     // MARK: - Chosen folder
+
+    func testChosenFolderGetsTheRecordNextToTheImage() async throws {
+        let chosen = try makeFolder("Shots")
+        try folders.choose(chosen)
+        var withRecord = capture()
+        withRecord.record = CaptureRecord(withRecord)
+
+        let delivery = try await FileSink(folder: missingFolder(), chosenFolder: folders)
+            .deliver(withRecord, png: Data([1, 2, 3]))
+
+        guard case let .file(url, missedFolder, _) = delivery else { return XCTFail("Expected a file, got \(delivery)") }
+        XCTAssertNil(missedFolder)
+        XCTAssertEqual(parent(url), real(chosen))
+        XCTAssertEqual(
+            try files(in: chosen).sorted(),
+            [url.deletingPathExtension().lastPathComponent + ".json", url.lastPathComponent],
+            "The record is written while the folder's scope is held")
+    }
 
     func testChosenFolderRoundTripsThroughItsBookmark() async throws {
         let chosen = try makeFolder("Shots")
@@ -358,6 +376,32 @@ final class CaptureDestinationsTests: XCTestCase {
         XCTAssertEqual(problem.title, "Can't Reach Client Shots. Saved to Default Folder")
         XCTAssertTrue(problem.detail.contains("Shot.png"), problem.detail)
         XCTAssertTrue(problem.detail.contains("~/Pictures/Annotate"), problem.detail)
+    }
+
+    func testProblemSaysTheAnnotationDataWasntSaved() throws {
+        let file = FileSink.defaultFolder.appendingPathComponent("Shot.png")
+
+        let problem = try XCTUnwrap(
+            CaptureProblem(result([.file(file, annotationDataError: "The disk is full."), .clipboard])))
+
+        XCTAssertEqual(problem.title, "Couldn't Save Annotation Data. Saved Shot.png")
+        XCTAssertTrue(problem.detail.hasSuffix("The disk is full."), problem.detail)
+    }
+
+    func testProblemWithAnotherFailureAlsoNamesTheAnnotationData() throws {
+        let file = FileSink.defaultFolder.appendingPathComponent("Shot.png")
+        let deliveries: [CaptureDelivery] = [
+            .file(file, missedFolder: "Client Shots", annotationDataError: "The disk is full."), .clipboard,
+        ]
+
+        let problem = try XCTUnwrap(CaptureProblem(result(deliveries)))
+
+        XCTAssertEqual(
+            problem.title,
+            "Can't Reach Client Shots. Saved to Default Folder. Couldn't Save Annotation Data",
+            "The HUD shows only the title, so it names both")
+        XCTAssertTrue(problem.detail.contains("Client Shots"), problem.detail)
+        XCTAssertTrue(problem.detail.contains("annotation data"), problem.detail)
     }
 
     // MARK: - Notifications

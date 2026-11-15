@@ -5,6 +5,7 @@ struct CaptureSettingsView: View {
     private let folders: CaptureFolderStore
     private let notifier: CaptureNotifying
     @AppStorage(.afterCapture) private var afterCapture
+    @AppStorage(.saveAnnotationData) private var saveAnnotationData
     @State private var hasScreenCaptureAccess = ScreenSampler.shared.hasScreenCaptureAccess
     @State private var folderState: CaptureFolderState
     @State private var notificationAccess: CaptureNotificationAccess?
@@ -81,6 +82,12 @@ struct CaptureSettingsView: View {
                 .accessibilityIdentifier("capture.afterCapture")
                 folderRows
                     .disabled(!afterCapture.savesFile)
+                Toggle(isOn: $saveAnnotationData) {
+                    Text("Save annotation data next to screenshots")
+                    Text("Write a JSON file beside each saved PNG with every annotation's position, color, and time")
+                }
+                .accessibilityIdentifier("capture.saveAnnotationData")
+                .disabled(!afterCapture.savesFile)
                 Text(Self.captureSummary(afterCapture))
                     .font(.footnote)
                     .foregroundStyle(.secondary)

@@ -154,6 +154,9 @@ struct DrawingPath {
     /// When the stroke was committed (pen up). Fade Mode holds and fades the whole stroke from
     /// this time, like every other annotation, rather than from its point timestamps.
     var creationTime: CFTimeInterval? = nil
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 
     mutating func recacheBounds() {
         cachedBounds = DrawingPath.bounds(of: points)
@@ -181,6 +184,9 @@ struct Arrow {
     var color: NSColor
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 }
 
 /// Represents a line annotation with start and end points.
@@ -190,6 +196,9 @@ struct Line {
     var color: NSColor
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 }
 
 /// How a rectangle annotation is filled. `.outline` is the plain Rectangle tool; the
@@ -223,6 +232,9 @@ struct Rectangle {
     /// Deliberately not part of `==`: the same annotation with or without its sample is
     /// the same annotation for undo, selection and clipboard purposes.
     var sample: RedactionSample? = nil
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 
     /// Whether this rectangle hides content instead of outlining it.
     var isRedaction: Bool { style != .outline }
@@ -248,6 +260,9 @@ struct Circle {
     var color: NSColor
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 }
 
 /// Represents a text annotation.
@@ -407,6 +422,9 @@ struct CounterAnnotation {
     var fontSize: CGFloat = defaultCounterFontSize
     var style: CounterStyle = .bordered
     var creationTime: CFTimeInterval?
+    /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
+    /// equality. A pasted or duplicated copy gets a fresh one.
+    var id = UUID()
 
     /// The number color for the Filled style: white, or black on a fill light enough that a
     /// white number would wash out. The cutoff sits in the palette's gap: orange and green

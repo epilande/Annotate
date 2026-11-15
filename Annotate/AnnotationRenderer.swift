@@ -305,40 +305,12 @@ struct AnnotationRenderer {
     private func drawArrow(from start: NSPoint, to end: NSPoint, color: NSColor, lineWidth: CGFloat) {
         let adaptedColor = board.adapt(color)
 
-        // Calculate arrow head dimensions for equilateral triangle
-        // Scale arrowhead size relative to line width, with a minimum and reasonable multiplier
-        let sideLength: CGFloat = max(10.0, lineWidth * 4.0)
-
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let angle = atan2(dy, dx)
-
-        // For an equilateral triangle, the height is (sqrt(3)/2) * side_length
-        // and the base width is equal to side_length
-        let height = sideLength * sqrt(3.0) / 2.0
-        let halfBase = sideLength / 2.0
-
-        // Calculate the base center of the equilateral triangle
-        let baseCenter = NSPoint(
-            x: end.x - height * cos(angle),
-            y: end.y - height * sin(angle)
-        )
-
-        // Calculate the two base corners perpendicular to the arrow direction
-        let perpAngle = angle + .pi / 2
-        let p1 = NSPoint(
-            x: baseCenter.x + halfBase * cos(perpAngle),
-            y: baseCenter.y + halfBase * sin(perpAngle)
-        )
-        let p2 = NSPoint(
-            x: baseCenter.x - halfBase * cos(perpAngle),
-            y: baseCenter.y - halfBase * sin(perpAngle)
-        )
+        let head = Self.arrowHead(from: start, to: end, lineWidth: lineWidth)
 
         // Draw the line from start to the base center of the triangle
         let linePath = NSBezierPath()
         linePath.move(to: start)
-        linePath.line(to: baseCenter)
+        linePath.line(to: head.baseCenter)
         adaptedColor.setStroke()
         linePath.lineWidth = lineWidth
         linePath.stroke()
@@ -346,8 +318,8 @@ struct AnnotationRenderer {
         // Draw filled equilateral triangle
         let trianglePath = NSBezierPath()
         trianglePath.move(to: end)
-        trianglePath.line(to: p1)
-        trianglePath.line(to: p2)
+        trianglePath.line(to: head.left)
+        trianglePath.line(to: head.right)
         trianglePath.close()
         adaptedColor.setFill()
         trianglePath.fill()
@@ -535,6 +507,96 @@ extension AnnotationRenderer {
             width: abs(end.x - start.x),
             height: abs(end.y - start.y)
         ).insetBy(dx: -padding, dy: -padding)
+    }
+}
+
+extension AnnotationRenderer {
+    /// An arrow's head: an equilateral triangle with its tip at `end`, sized from the line
+    /// width. The shaft runs from the start to `baseCenter`.
+    nonisolated static func arrowHead(
+        from start: NSPoint, to end: NSPoint, lineWidth: CGFloat
+    ) -> (baseCenter: NSPoint, left: NSPoint, right: NSPoint) {
+        let sideLength = max(10.0, lineWidth * 4.0)
+        let angle = atan2(end.y - start.y, end.x - start.x)
+        // The triangle's height is sqrt(3)/2 of its side, and its base is one side wide.
+        let height = sideLength * sqrt(3.0) / 2.0
+        let halfBase = sideLength / 2.0
+        let baseCenter = NSPoint(x: end.x - height * cos(angle), y: end.y - height * sin(angle))
+        let perpendicular = angle + .pi / 2
+        let offset = NSPoint(x: halfBase * cos(perpendicular), y: halfBase * sin(perpendicular))
+        return (
+            baseCenter,
+            NSPoint(x: baseCenter.x + offset.x, y: baseCenter.y + offset.y),
+            NSPoint(x: baseCenter.x - offset.x, y: baseCenter.y - offset.y)
+        )
+    }
+}
+
+// MARK: - Ink
+
+// The area each annotation actually paints, with no padding: the stroke at its width with the
+// caps and joins the renderer uses, plus any fill. Unlike the paint bounds, which are padded
+// for culling, these say whether two things really overlap on screen.
+
+extension Arrow {
+    var ink: CGPath {
+        let head = AnnotationRenderer.arrowHead(from: startPoint, to: endPoint, lineWidth: lineWidth)
+        let shaft = CGMutablePath()
+        shaft.move(to: startPoint)
+        shaft.addLine(to: head.baseCenter)
+        let ink = CGMutablePath()
+        ink.addPath(shaft.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10))
+        ink.addLines(between: [endPoint, head.left, head.right])
+        ink.closeSubpath()
+        return ink
+    }
+}
+
+extension Line {
+    var ink: CGPath {
+        let line = CGMutablePath()
+        line.move(to: startPoint)
+        line.addLine(to: endPoint)
+        return line.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+    }
+}
+
+extension Rectangle {
+    /// An outline's stroke. A redaction fills its whole rect.
+    var ink: CGPath {
+        let rect = CGPath(rect: bounds, transform: nil)
+        return isRedaction
+            ? rect : rect.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+    }
+}
+
+extension Circle {
+    var ink: CGPath {
+        CGPath(ellipseIn: AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0), transform: nil)
+            .copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+    }
+}
+
+extension DrawingPath {
+    /// The stroke as `tool` draws it, with round caps and joins. A single point is a dot.
+    func ink(tool: ToolType) -> CGPath {
+        let width = lineWidth * tool.strokeWidthMultiplier
+        guard let first = points.first else { return CGMutablePath() }
+        if points.count == 1 {
+            let dot = NSRect(origin: first.point, size: .zero).insetBy(dx: -width / 2, dy: -width / 2)
+            return CGPath(ellipseIn: dot, transform: nil)
+        }
+        let line = CGMutablePath()
+        line.addLines(between: points.map(\.point))
+        return line.copy(strokingWithWidth: width, lineCap: .round, lineJoin: .round, miterLimit: 10)
+    }
+}
+
+extension CounterAnnotation {
+    /// The badge, with a bordered badge's stroke reaching past its circle.
+    var ink: CGPath {
+        let outset = style == .bordered ? strokeWidth / 2 : 0
+        return CGPath(ellipseIn: badgeRect.insetBy(dx: -outset, dy: -outset), transform: nil)
     }
 }
 

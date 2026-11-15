@@ -171,7 +171,8 @@ extension AppDelegate {
                 scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
                 hostTime: CACurrentMediaTime(),
                 date: Date(),
-                afterCapture: settings[.afterCapture]),
+                afterCapture: settings[.afterCapture],
+                savesAnnotationData: settings[.saveAnnotationData]),
             on: overlay,
             for: request)
     }
@@ -254,7 +255,8 @@ extension AppDelegate {
                     scene: self.captureScene(of: overlay),
                     hostTime: CACurrentMediaTime(),
                     date: Date(),
-                    afterCapture: self.settings[.afterCapture]),
+                    afterCapture: self.settings[.afterCapture],
+                    savesAnnotationData: self.settings[.saveAnnotationData]),
                 on: overlay,
                 for: request)
         }
@@ -491,6 +493,23 @@ struct CaptureProblem: Equatable {
             detail: "The image was saved, but Annotate couldn't copy it to the clipboard. \(error.localizedDescription)")
     }
 
+    /// The image was saved, but the annotation data asked for next to it wasn't.
+    static func annotationDataFailed(savedAs file: URL, error: String) -> CaptureProblem {
+        CaptureProblem(
+            title: "Couldn't Save Annotation Data. Saved \(file.lastPathComponent)",
+            icon: "⚠️",
+            detail: "The image was saved, but Annotate couldn't save its annotation data next to it. \(error)")
+    }
+
+    /// This problem, also saying the annotation data couldn't be saved, for a capture that
+    /// had another problem too. The HUD shows only the title, so both go in it.
+    func addingAnnotationDataFailure(_ error: String) -> CaptureProblem {
+        CaptureProblem(
+            title: "\(title). Couldn't Save Annotation Data",
+            icon: icon,
+            detail: "\(detail) Annotate also couldn't save the annotation data next to the image. \(error)")
+    }
+
     static func saveFailed(error: Error?) -> CaptureProblem {
         CaptureProblem(
             title: "Couldn't Save. Copied to Clipboard",
@@ -505,12 +524,19 @@ extension CaptureProblem {
     /// What a capture that produced an image, and got it somewhere, still has to report.
     init?(_ result: CaptureResult) {
         if let file = result.savedFile {
-            if let copyError = result.failure(of: .clipboard) {
-                self = .copyFailed(savedAs: file, error: copyError)
-            } else if let missedFolder = result.missedFolder {
-                self = .folderUnavailable(missedFolder, savedAs: file)
-            } else {
-                return nil
+            let problem: CaptureProblem? =
+                if let copyError = result.failure(of: .clipboard) {
+                    .copyFailed(savedAs: file, error: copyError)
+                } else if let missedFolder = result.missedFolder {
+                    .folderUnavailable(missedFolder, savedAs: file)
+                } else {
+                    nil
+                }
+            switch (problem, result.annotationDataError) {
+            case let (problem?, error?): self = problem.addingAnnotationDataFailure(error)
+            case let (problem?, nil): self = problem
+            case let (nil, error?): self = .annotationDataFailed(savedAs: file, error: error)
+            case (nil, nil): return nil
             }
         } else if let saveError = result.failure(of: .file), result.copiedToClipboard {
             self = .saveFailed(error: saveError)

@@ -33,6 +33,9 @@ let package = Package(
             name: "AnnotateTests",
             dependencies: ["Annotate"],
             path: "AnnotateTests",
+            resources: [
+                .copy("Fixtures")
+            ],
             swiftSettings: [
                 .unsafeFlags(["-swift-version", "5"])
             ]
