@@ -115,9 +115,11 @@ struct FileSink: CaptureSink {
 
     /// Writes the image as `write` does, and `record`, if any, next to it. With a record, a
     /// name is free only when its `.json` is free too, so the image and its record always
-    /// share a name and an old record is never replaced. The record is written after the
-    /// image, the same way. When it can't be, the image stays saved and the result says why,
-    /// so the capture can report it: the image is what the user asked for.
+    /// share a name and an old record is never replaced. When every name up to the last
+    /// attempt has a `.json` already, this throws before the image is moved into place, as it
+    /// does when every image name is taken. The record is written after the image, the same
+    /// way. When it can't be, the image stays saved and the result says why, so the capture
+    /// can report it: the image is what the user asked for.
     nonisolated static func save(
         _ data: Data, record: CaptureRecord?, baseName: String, in folder: URL,
         writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
@@ -131,7 +133,11 @@ struct FileSink: CaptureSink {
         var attempt = 1
         while true {
             let url = folder.appendingPathComponent(fileName(baseName, attempt: attempt), isDirectory: false)
-            if record != nil, attempt < maxAttempts, fileManager.fileExists(atPath: recordURL(for: url).path) {
+            let recordFile = recordURL(for: url)
+            if record != nil, fileManager.fileExists(atPath: recordFile.path) {
+                guard attempt < maxAttempts else {
+                    throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: recordFile.path])
+                }
                 attempt += 1
                 continue
             }
@@ -195,7 +201,8 @@ struct FileSink: CaptureSink {
         ".Annotate-\(UUID().uuidString).\(pathExtension).tmp"
     }
 
-    nonisolated private static let maxAttempts = 1000
+    /// How many names a save tries, from no suffix up to ` (1000)`.
+    nonisolated static let maxAttempts = 1000
 }
 
 /// Puts each capture on a pasteboard as PNG.

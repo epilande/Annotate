@@ -642,6 +642,43 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["Annotate X.png"])
     }
 
+    /// Records under every name from no suffix to ` (last)`.
+    private func takeRecordNames(in folder: URL, through last: Int) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for attempt in 1...last {
+            let image = folder.appendingPathComponent(FileSink.fileName("Annotate X", attempt: attempt))
+            try Data("old".utf8).write(to: FileSink.recordURL(for: image))
+        }
+    }
+
+    func testNoFreeRecordNameFailsBeforeTheImageIsSaved() async throws {
+        let folder = try temporaryFolder()
+        try takeRecordNames(in: folder, through: FileSink.maxAttempts)
+
+        do {
+            _ = try await FileSink.save(Data([1]), record: record(capture(nil)), baseName: "Annotate X", in: folder)
+            XCTFail("Every name's record is taken, so the save fails")
+        } catch CocoaError.fileWriteFileExists {
+        }
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        XCTAssertEqual(files.count, FileSink.maxAttempts, "No image and no temporary file")
+        XCTAssertTrue(files.allSatisfy { $0.hasSuffix(".json") })
+        let last = folder.appendingPathComponent(FileSink.fileName("Annotate X", attempt: FileSink.maxAttempts))
+        XCTAssertEqual(try Data(contentsOf: FileSink.recordURL(for: last)), Data("old".utf8), "The last record stays")
+    }
+
+    func testTheLastNameIsUsedWhenItsRecordIsFree() async throws {
+        let folder = try temporaryFolder()
+        try takeRecordNames(in: folder, through: FileSink.maxAttempts - 1)
+
+        let saved = try await FileSink.save(
+            Data([1]), record: record(capture(nil)), baseName: "Annotate X", in: folder)
+
+        XCTAssertEqual(saved.url.lastPathComponent, "Annotate X (\(FileSink.maxAttempts)).png")
+        XCTAssertNil(saved.recordError)
+    }
+
     func testARecordThatCantBeWrittenLeavesTheImageSaved() async throws {
         let folder = try temporaryFolder()
         struct DiskFull: Error {}
