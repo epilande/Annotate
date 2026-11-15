@@ -4,7 +4,8 @@ import os
 private let log = Logger(subsystem: "com.epilande.Annotate", category: "Capture")
 
 /// Saves each capture as a PNG in a folder, named after its time the way macOS names
-/// screenshots: `Annotate 2026-11-01 at 10.23.45.png`, then ` (2)`, ` (3)` on collision.
+/// screenshots: `Annotate 2026-11-01 at 10.23.45.png`, then ` (2)`, ` (3)` on collision. A
+/// capture that carries a `CaptureRecord` also gets it as JSON under the PNG's name.
 struct FileSink: CaptureSink {
     /// The default folder, which also takes a capture the chosen folder can't.
     var folder: URL
@@ -36,15 +37,18 @@ struct FileSink: CaptureSink {
 
     func deliver(_ capture: Capture, png: Data) async throws -> CaptureDelivery {
         let baseName = Self.baseName(for: capture.capturedAt)
+        let record = capture.record
         guard let chosenFolder, let bookmark = chosenFolder.bookmark else {
-            return .file(try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes))
+            return .file(
+                try await Self.write(png, record: record, baseName: baseName, in: folder, writeBytes: writeBytes))
         }
-        let chosen = await Self.write(png, baseName: baseName, bookmark: bookmark, writeBytes: writeBytes)
+        let chosen = await Self.write(
+            png, record: record, baseName: baseName, bookmark: bookmark, writeBytes: writeBytes)
         if let renewed = chosen.renewedBookmark {
             chosenFolder.renew(bookmark, with: renewed)
         }
         if let file = chosen.file { return .file(file) }
-        let file = try await Self.write(png, baseName: baseName, in: folder, writeBytes: writeBytes)
+        let file = try await Self.write(png, record: record, baseName: baseName, in: folder, writeBytes: writeBytes)
         return .file(file, missedFolder: CaptureFolderBookmark.folderName(of: bookmark))
     }
 
@@ -54,7 +58,7 @@ struct FileSink: CaptureSink {
     /// `startAccessingSecurityScopedResource` is no verdict: folders under Pictures need no
     /// scope, so the write decides.
     nonisolated static func write(
-        _ data: Data, baseName: String, bookmark: Data,
+        _ data: Data, record: CaptureRecord? = nil, baseName: String, bookmark: Data,
         writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
     ) async -> (file: URL?, renewedBookmark: Data?) {
         guard let folder = CaptureFolderBookmark.resolve(bookmark) else { return (nil, nil) }
@@ -62,7 +66,10 @@ struct FileSink: CaptureSink {
         defer { if isAccessing { folder.url.stopAccessingSecurityScopedResource() } }
         let renewed = folder.isStale ? try? CaptureFolderBookmark.make(for: folder.url) : nil
         do {
-            return (try await write(data, baseName: baseName, in: folder.url, writeBytes: writeBytes), renewed)
+            return (
+                try await write(data, record: record, baseName: baseName, in: folder.url, writeBytes: writeBytes),
+                renewed
+            )
         } catch {
             log.error("Capture couldn't be saved to the chosen folder: \(error.localizedDescription)")
             return (nil, renewed)
@@ -90,8 +97,13 @@ struct FileSink: CaptureSink {
     /// move refuses to overwrite, so two captures in the same second never replace each other.
     /// Runs off the main actor. `writeBytes` writes the temporary file; tests make it fail
     /// partway.
+    ///
+    /// With a `record`, a name is free only when its `.json` is free too, so the image and its
+    /// record always share a name and an old record is never replaced. The record is written
+    /// after the image, the same way. When it can't be, the image stays saved and the failure
+    /// is logged: the image is what the user asked for.
     nonisolated static func write(
-        _ data: Data, baseName: String, in folder: URL,
+        _ data: Data, record: CaptureRecord? = nil, baseName: String, in folder: URL,
         writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
     ) async throws -> URL {
         let fileManager = FileManager.default
@@ -103,12 +115,47 @@ struct FileSink: CaptureSink {
         var attempt = 1
         while true {
             let url = folder.appendingPathComponent(fileName(baseName, attempt: attempt), isDirectory: false)
+            if record != nil, attempt < maxAttempts, fileManager.fileExists(atPath: recordURL(for: url).path) {
+                attempt += 1
+                continue
+            }
             do {
                 try fileManager.moveItem(at: temporary, to: url)
+                if let record {
+                    writeRecord(record, nextTo: url, writeBytes: writeBytes)
+                }
                 return url
             } catch CocoaError.fileWriteFileExists where attempt < maxAttempts {
                 attempt += 1
             }
+        }
+    }
+
+    /// Where the record of the image at `url` goes: the same name, ending in `.json`.
+    nonisolated static func recordURL(for url: URL) -> URL {
+        url.deletingPathExtension().appendingPathExtension("json")
+    }
+
+    /// Writes `record` as JSON next to the image at `url`, naming the image in it, through a
+    /// temporary file like the image. Returns whether it was written.
+    @discardableResult
+    nonisolated static func writeRecord(
+        _ record: CaptureRecord, nextTo url: URL,
+        writeBytes: @Sendable (Data, URL) throws -> Void = writeWithoutOverwriting
+    ) -> Bool {
+        let fileManager = FileManager.default
+        var record = record
+        record.image.file = url.lastPathComponent
+        let temporary = url.deletingLastPathComponent()
+            .appendingPathComponent(temporaryFileName(extension: "json"), isDirectory: false)
+        defer { try? fileManager.removeItem(at: temporary) }
+        do {
+            try writeBytes(try record.jsonData(), temporary)
+            try fileManager.moveItem(at: temporary, to: recordURL(for: url))
+            return true
+        } catch {
+            log.error("Capture's annotation data couldn't be saved: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -131,8 +178,8 @@ struct FileSink: CaptureSink {
     #endif
 
     /// A hidden name no capture uses, unique per write.
-    nonisolated static func temporaryFileName() -> String {
-        ".Annotate-\(UUID().uuidString).png.tmp"
+    nonisolated static func temporaryFileName(extension pathExtension: String = "png") -> String {
+        ".Annotate-\(UUID().uuidString).\(pathExtension).tmp"
     }
 
     nonisolated private static let maxAttempts = 1000

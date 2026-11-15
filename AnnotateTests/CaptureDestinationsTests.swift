@@ -124,6 +124,24 @@ final class CaptureDestinationsTests: XCTestCase {
 
     // MARK: - Chosen folder
 
+    func testChosenFolderGetsTheRecordNextToTheImage() async throws {
+        let chosen = try makeFolder("Shots")
+        try folders.choose(chosen)
+        var withRecord = capture()
+        withRecord.record = CaptureRecord(withRecord)
+
+        let delivery = try await FileSink(folder: missingFolder(), chosenFolder: folders)
+            .deliver(withRecord, png: Data([1, 2, 3]))
+
+        guard case let .file(url, missedFolder) = delivery else { return XCTFail("Expected a file, got \(delivery)") }
+        XCTAssertNil(missedFolder)
+        XCTAssertEqual(parent(url), real(chosen))
+        XCTAssertEqual(
+            try files(in: chosen).sorted(),
+            [url.deletingPathExtension().lastPathComponent + ".json", url.lastPathComponent],
+            "The record is written while the folder's scope is held")
+    }
+
     func testChosenFolderRoundTripsThroughItsBookmark() async throws {
         let chosen = try makeFolder("Shots")
         let standard = missingFolder()

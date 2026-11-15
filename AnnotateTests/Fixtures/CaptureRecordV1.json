@@ -1,0 +1,164 @@
+{
+  "annotations" : [
+    {
+      "color" : "#0000FF",
+      "end" : {
+        "x" : 150,
+        "y" : 50
+      },
+      "id" : "00000000-0000-0000-0000-000000000003",
+      "kind" : "arrow",
+      "start" : {
+        "x" : 100,
+        "y" : 100
+      },
+      "time" : 992,
+      "width" : 4
+    },
+    {
+      "color" : "#00FF00",
+      "end" : {
+        "x" : 200,
+        "y" : 200
+      },
+      "id" : "00000000-0000-0000-0000-000000000004",
+      "kind" : "line",
+      "start" : {
+        "x" : 100,
+        "y" : 200
+      },
+      "time" : 992.5,
+      "width" : 2
+    },
+    {
+      "color" : "#FF0000",
+      "id" : "00000000-0000-0000-0000-000000000001",
+      "kind" : "pen",
+      "points" : [
+        {
+          "time" : 990,
+          "x" : 10,
+          "y" : 10
+        },
+        {
+          "time" : 990.25,
+          "x" : 20,
+          "y" : 20
+        }
+      ],
+      "time" : 990.5,
+      "width" : 3
+    },
+    {
+      "color" : "#FFFF00",
+      "id" : "00000000-0000-0000-0000-000000000002",
+      "kind" : "highlighter",
+      "points" : [
+        {
+          "time" : 991,
+          "x" : 30,
+          "y" : 50
+        },
+        {
+          "time" : 991.25,
+          "x" : 60,
+          "y" : 50
+        }
+      ],
+      "time" : 991.5,
+      "width" : 14.01
+    },
+    {
+      "color" : "#FF000080",
+      "id" : "00000000-0000-0000-0000-000000000005",
+      "kind" : "rectangle",
+      "rect" : {
+        "height" : 40,
+        "width" : 50,
+        "x" : 210,
+        "y" : 210
+      },
+      "time" : 993,
+      "width" : 3
+    },
+    {
+      "color" : "#FF8000",
+      "id" : "00000000-0000-0000-0000-000000000006",
+      "kind" : "ellipse",
+      "rect" : {
+        "height" : 50,
+        "width" : 50,
+        "x" : 300,
+        "y" : 200
+      },
+      "time" : 993.5,
+      "width" : 5
+    },
+    {
+      "id" : "00000000-0000-0000-0000-000000000007",
+      "kind" : "redaction",
+      "rect" : {
+        "height" : 20,
+        "width" : 40,
+        "x" : 20,
+        "y" : 260
+      },
+      "style" : "pixelate",
+      "time" : 994
+    },
+    {
+      "background" : true,
+      "color" : "#FFFFFF",
+      "fontSize" : 16,
+      "id" : "00000000-0000-0000-0000-000000000008",
+      "kind" : "text",
+      "rect" : {
+        "height" : 20,
+        "width" : 50,
+        "x" : 40,
+        "y" : 130
+      },
+      "text" : "Click \"Save\"",
+      "time" : 995
+    },
+    {
+      "color" : "#000000",
+      "id" : "00000000-0000-0000-0000-000000000009",
+      "kind" : "pin",
+      "number" : 1,
+      "position" : {
+        "x" : 380,
+        "y" : 280
+      },
+      "radius" : 15,
+      "style" : "filled",
+      "time" : 996
+    }
+  ],
+  "board" : {
+    "opacity" : 0.5,
+    "style" : "whiteboard"
+  },
+  "capturedAt" : "2026-11-01T16:23:45.125Z",
+  "clock" : "mach_absolute_time",
+  "display" : {
+    "height" : 300,
+    "id" : 7,
+    "scale" : 2,
+    "width" : 400
+  },
+  "format" : "annotate.capture",
+  "hostTime" : 1000.5,
+  "image" : {
+    "file" : "Annotate 2026-11-01 at 08.23.45.png",
+    "height" : 600,
+    "width" : 800
+  },
+  "region" : {
+    "height" : 300,
+    "width" : 400,
+    "x" : 0,
+    "y" : 0
+  },
+  "version" : 1
+}

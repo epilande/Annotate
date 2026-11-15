@@ -93,6 +93,9 @@ struct CaptureRequest {
     var date: Date
     /// Where the finished image goes, as the setting stood when the capture was asked for.
     var afterCapture: AfterCapture = .both
+    /// Whether a saved image gets its `CaptureRecord` written next to it, as "Save annotation
+    /// data next to screenshots" stood when the capture was asked for.
+    var savesAnnotationData = false
 
     var needsScreenPixels: Bool { !(scene?.coversScreen ?? false) }
 }
@@ -109,6 +112,8 @@ struct Capture {
     let capturedAt: Date
     /// Mach host time of the capture; see `CaptureRequest.hostTime`.
     let hostTime: CFTimeInterval
+    /// The annotation data a saved image gets next to it, or nil when none is asked for.
+    var record: CaptureRecord?
 
     /// Image pixels per point.
     var scale: CGFloat { CGFloat(image.width) / region.width }
@@ -245,13 +250,16 @@ final class CaptureService {
         else { throw CaptureError.renderFailed }
         guard let (image, region) = CaptureCompositor.crop(composite, to: request.region, display: request.display)
         else { throw CaptureError.emptyRegion }
-        let capture = Capture(
+        var capture = Capture(
             image: image,
             display: request.display,
             region: region,
             scene: scene,
             capturedAt: request.date,
             hostTime: request.hostTime)
+        if request.savesAnnotationData {
+            capture.record = CaptureRecord(capture)
+        }
 
         guard let png = await CaptureCompositor.encodePNG(image, scale: capture.scale) else {
             throw CaptureError.renderFailed

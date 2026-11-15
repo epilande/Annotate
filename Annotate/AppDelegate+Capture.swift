@@ -171,7 +171,8 @@ extension AppDelegate {
                 scene: overlay.flatMap { $0.isVisible ? captureScene(of: $0) : nil },
                 hostTime: CACurrentMediaTime(),
                 date: Date(),
-                afterCapture: settings[.afterCapture]),
+                afterCapture: settings[.afterCapture],
+                savesAnnotationData: settings[.saveAnnotationData]),
             on: overlay,
             for: request)
     }
@@ -254,7 +255,8 @@ extension AppDelegate {
                     scene: self.captureScene(of: overlay),
                     hostTime: CACurrentMediaTime(),
                     date: Date(),
-                    afterCapture: self.settings[.afterCapture]),
+                    afterCapture: self.settings[.afterCapture],
+                    savesAnnotationData: self.settings[.saveAnnotationData]),
                 on: overlay,
                 for: request)
         }
