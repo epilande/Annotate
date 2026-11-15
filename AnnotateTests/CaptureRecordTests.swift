@@ -485,6 +485,77 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(record.annotations.map(\.id), [redaction.id.uuidString], "Only the redaction is left")
     }
 
+    /// The middle 100 x 100 points of the display. Its top-left corner is at (100, 100) from
+    /// the display's top-left, and its view rect, from the bottom-left, is the same.
+    private static let area = CGRect(x: 100, y: 100, width: 100, height: 100)
+
+    func testAreaCaptureLeavesOutInkThatMissesTheArea() {
+        // Its stroke runs all the way around the area, 50 points outside it.
+        let surrounding = Rectangle(
+            startPoint: NSPoint(x: 50, y: 50),
+            endPoint: NSPoint(x: 250, y: 250),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        // Its box overlaps the area's top-left corner, but the line passes 14 points above it.
+        let diagonal = DrawingPath(
+            points: [
+                TimedPoint(point: NSPoint(x: 60, y: 180), timestamp: 0),
+                TimedPoint(point: NSPoint(x: 180, y: 300), timestamp: 0),
+            ],
+            color: .red,
+            lineWidth: 3,
+            creationTime: 1)
+        // Its text starts 5 points right of the area. Only its pill reaches in.
+        let pillOnly = TextAnnotation(
+            text: "Right",
+            position: NSPoint(x: 205, y: 150),
+            color: .red,
+            fontSize: 16,
+            hasBackground: true,
+            creationTime: 1)
+        // Its text ends 2 points below the area. Only the hit-test slop above it reaches in.
+        let slopOnly = TextAnnotation(
+            text: "Below", position: NSPoint(x: 150, y: 78), color: .red, fontSize: 16, creationTime: 1)
+        var document = OverlayDocument()
+        document.rectangles = [surrounding]
+        document.paths = [diagonal]
+        document.textAnnotations = [pillOnly, slopOnly]
+
+        let record = record(capture(document, region: Self.area))
+
+        XCTAssertEqual(record.annotations, [], "Each one's box reaches the area, but nothing it draws is in the image")
+    }
+
+    func testAreaCaptureKeepsWhatIsPartlyInside() {
+        let arrow = Arrow(
+            startPoint: NSPoint(x: 50, y: 150),
+            endPoint: NSPoint(x: 150, y: 150),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        // Its left and bottom edges cross the area.
+        let outline = Rectangle(
+            startPoint: NSPoint(x: 150, y: 150),
+            endPoint: NSPoint(x: 250, y: 250),
+            color: .red,
+            lineWidth: 2,
+            creationTime: 1)
+        let label = TextAnnotation(
+            text: "Half", position: NSPoint(x: 180, y: 150), color: .red, fontSize: 16, creationTime: 1)
+        var document = OverlayDocument()
+        document.arrows = [arrow]
+        document.rectangles = [outline]
+        document.textAnnotations = [label]
+
+        let record = record(capture(document, region: Self.area))
+
+        XCTAssertEqual(
+            record.annotations.map(\.id),
+            [arrow.id, outline.id, label.id].map(\.uuidString),
+            "Each draws partly inside the area")
+    }
+
     func testPlainScreenCaptureHasNoAnnotationsOrBoard() {
         let record = record(capture(nil))
 
