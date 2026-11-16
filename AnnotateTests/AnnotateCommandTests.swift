@@ -205,27 +205,50 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(feedbackText(on: overlay), "🎨 Indigo")
     }
 
-    func testDigitsPickByPositionWhileTheColorPickerIsOpen() throws {
-        // 2 is orange in the picker. Binding it to black must not take it from the picker.
+    func testCThenANumberPicksTheColorOnThatNumber() throws {
+        // Green takes 7, so magenta, whose usual 7 is taken, moves to green's free 4.
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("7", for: .color(.green)))
+        run(.show)
+
+        let picker = try openPicker("c", keyCode: 8)
+        XCTAssertEqual(picker.mode, .color)
+        XCTAssertEqual(picker.digits, [1, 2, 3, 7, 5, 6, 4, 8, 9])
+
+        overlay.sendEvent(try keyDown("7"))
+
+        XCTAssertTrue(appDelegate.currentColor.isClose(to: PaletteColor.green.nsColor))
+        overlay.cancelQuickPicker()
+    }
+
+    func testTheWidthPickerKeepsItsNumbers() throws {
         XCTAssertTrue(ShortcutManager.shared.setShortcut("2", for: .color(.black)))
         run(.show)
-        let pickerKey: (NSEvent.EventType) throws -> NSEvent = { type in
-            try XCTUnwrap(
-                TestEvents.createKeyEvent(
-                    type: type,
-                    keyCode: 8,
-                    characters: "c",
-                    windowNumber: self.overlay.windowNumber))
-        }
-        overlay.sendEvent(try pickerKey(.keyDown))
-        overlay.sendEvent(try pickerKey(.keyUp))
-        XCTAssertTrue(overlay.isQuickPickerOpen)
+        overlay.overlayView.currentTool = .pen
+
+        let picker = try openPicker("w", keyCode: 13)
+        XCTAssertEqual(picker.mode, .width)
+        XCTAssertEqual(picker.digits, Array(1...QuickPickerView.widthOptions.count))
 
         overlay.sendEvent(try keyDown("2"))
 
-        XCTAssertTrue(appDelegate.currentColor.isClose(to: PaletteColor.orange.nsColor))
-        XCTAssertFalse(appDelegate.currentColor.isClose(to: PaletteColor.black.nsColor))
+        XCTAssertEqual(overlay.overlayView.currentLineWidth, QuickPickerView.widthOptions[1])
+        XCTAssertTrue(appDelegate.currentColor.isClose(to: .systemRed), "The digit belongs to the picker")
         overlay.cancelQuickPicker()
+    }
+
+    /// Taps a picker key, as a user does, and returns the picker it opened.
+    private func openPicker(_ key: String, keyCode: UInt16) throws -> QuickPickerView {
+        for type: NSEvent.EventType in [.keyDown, .keyUp] {
+            overlay.sendEvent(
+                try XCTUnwrap(
+                    TestEvents.createKeyEvent(
+                        type: type,
+                        keyCode: keyCode,
+                        characters: key,
+                        windowNumber: overlay.windowNumber)))
+        }
+        XCTAssertTrue(overlay.isQuickPickerOpen)
+        return try XCTUnwrap(overlay.overlayView.subviews.lazy.compactMap { $0 as? QuickPickerView }.first)
     }
 
     func testABoundDigitTypesIntoALabelWithoutChangingTheColor() throws {

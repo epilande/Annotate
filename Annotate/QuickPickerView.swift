@@ -115,6 +115,9 @@ final class QuickPickerView: NSView {
 
     let mode: Mode
     private(set) var selectedIndex: Int
+    /// The number shown under each option, in option order. Color pickers can be given their
+    /// own (see `ShortcutManager.colorPickerNumbers`); every other picker uses 1…N.
+    let digits: [Int]
 
     var selectedColor: NSColor? {
         guard mode == .color, colorPalette.indices.contains(selectedIndex) else { return nil }
@@ -166,9 +169,18 @@ final class QuickPickerView: NSView {
         currentWidth: CGFloat,
         currentFontSize: CGFloat = defaultTextAnnotationFontSize,
         currentCounterSize: CGFloat = defaultCounterFontSize,
-        previewTool: ToolType
+        previewTool: ToolType,
+        colorNumbers: [Int]? = nil
     ) {
         self.mode = mode
+        let optionTotal = Self.itemCount(for: mode)
+        // Numbers that don't name every option exactly once would leave a swatch unreachable.
+        if mode == .color, let colorNumbers, colorNumbers.count == optionTotal,
+            Set(colorNumbers).count == optionTotal {
+            digits = colorNumbers
+        } else {
+            digits = (0..<optionTotal).map { $0 + 1 }
+        }
         previewColor = currentColor
         self.previewTool = previewTool
 
@@ -184,7 +196,7 @@ final class QuickPickerView: NSView {
         }
 
         let frame = Self.pickerFrame(
-            itemCount: Self.itemCount(for: mode),
+            itemCount: optionTotal,
             anchor: anchor,
             within: placementBounds)
         super.init(frame: frame)
@@ -285,6 +297,11 @@ final class QuickPickerView: NSView {
         return true
     }
 
+    /// The option whose number is `digit`, or nil when no option shows it.
+    func index(forDigit digit: Int) -> Int? {
+        digits.firstIndex(of: digit)
+    }
+
     func select(index: Int) {
         guard (0..<optionCount).contains(index), index != selectedIndex else { return }
         selectedIndex = index
@@ -342,7 +359,7 @@ final class QuickPickerView: NSView {
                     y: Self.padding,
                     width: Self.cellSize,
                     height: Self.cellSize))
-            cell.digit = index + 1
+            cell.digit = digits[index]
             cell.mode = mode
             cell.color = mode == .color ? colorPalette[index] : previewColor
             cell.value = mode == .color ? 0 : options[index]

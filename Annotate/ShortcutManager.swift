@@ -300,36 +300,82 @@ class ShortcutManager: @unchecked Sendable {
         let owner: String
     }
 
-    /// Binds each palette color to the digit the color picker shows under its swatch (1 for
-    /// the first color, and so on). A digit already bound to any other action stays where it
-    /// is, and that color keeps its current binding. A digit held by another color moves once
-    /// that color takes its own digit. Returns the digits that were left alone.
+    /// Binds each palette color to its palette position (1 for the first color, and so on).
+    /// It first clears every color's number key, so it always restores palette order, even
+    /// after colors swapped numbers. A digit bound to any other action stays where it is, and
+    /// that color keeps a binding that isn't a number key, or is left unassigned. Returns the
+    /// digits that were left alone.
     @discardableResult
     func assignDigitsToColors() -> [SkippedColorDigit] {
-        let digits = Dictionary(
-            uniqueKeysWithValues: PaletteColor.allCases.prefix(9).enumerated().map { index, color in
-                (color, ShortcutBinding(String(index + 1)))
-            })
-        var pending = PaletteColor.allCases.filter { digits[$0] != nil }
-        // Repeat while progress is made, so a color can take a digit another color frees.
-        var madeProgress = true
-        while madeProgress && !pending.isEmpty {
-            let before = pending.count
-            pending = pending.filter { color in
-                guard let digit = digits[color] else { return false }
-                let action = ShortcutKey.color(color)
-                return binding(for: action) != digit && !setShortcut(digit, for: action)
-            }
-            madeProgress = pending.count < before
+        for action in ShortcutKey.colorActions where Self.pickerDigit(of: binding(for: action)) != nil {
+            settings[.shortcut(action)] = .unassigned
         }
-        return pending.compactMap { color in
-            guard let digit = digits[color] else { return nil }
+        var skipped: [SkippedColorDigit] = []
+        for (index, color) in PaletteColor.allCases.prefix(9).enumerated() {
+            let digit = ShortcutBinding(String(index + 1))
+            guard !setShortcut(digit, for: .color(color)) else { continue }
             let owner = ShortcutKey.allCases.first { $0 != .color(color) && binding(for: $0) == digit }
-            return SkippedColorDigit(
-                color: color,
-                digit: digit.key,
-                owner: owner?.displayName ?? globalShortcutConflict(for: digit) ?? "")
+            skipped.append(
+                SkippedColorDigit(
+                    color: color,
+                    digit: digit.key,
+                    owner: owner?.displayName ?? globalShortcutConflict(for: digit) ?? ""))
         }
+        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
+        return skipped
+    }
+
+    /// Records `newBinding` for a color action. When another color already has it, the two
+    /// colors trade bindings, so a number moves between colors in one step. Any other conflict
+    /// is rejected, as `setShortcut` rejects it.
+    @discardableResult
+    func setColorShortcut(_ newBinding: ShortcutBinding, for action: ShortcutKey) -> Bool {
+        guard action.paletteColor != nil, !newBinding.key.isEmpty, !newBinding.isReserved,
+            globalShortcutConflict(for: newBinding) == nil,
+            let other = ShortcutKey.colorActions.first(where: { $0 != action && binding(for: $0) == newBinding })
+        else { return setShortcut(newBinding, for: action) }
+        settings[.shortcut(other)] = binding(for: action)
+        settings[.shortcut(action)] = newBinding
+        NotificationCenter.default.post(name: .shortcutsDidChange, object: nil)
+        return true
+    }
+
+    /// The number the color picker shows under each palette color, in palette order.
+    /// Worked out from the color shortcuts each time the picker opens, and never stored.
+    func colorPickerNumbers() -> [Int] {
+        Self.colorPickerNumbers(for: PaletteColor.allCases.map { binding(for: .color($0)) })
+    }
+
+    /// The color picker's numbers for these color bindings, in palette order. A color bound
+    /// to a bare digit uses that digit. Every other color keeps its palette position when no
+    /// color took it, and the colors left over take the free numbers in palette order. Only
+    /// color bindings are passed in, so a digit bound to another action doesn't move anything.
+    static func colorPickerNumbers(for bindings: [ShortcutBinding]) -> [Int] {
+        let count = bindings.count
+        var used = Set<Int>()
+        var numbers: [Int?] = bindings.map { binding in
+            guard let digit = pickerDigit(of: binding), digit <= count, used.insert(digit).inserted
+            else { return nil }
+            return digit
+        }
+        // Positions are distinct, so claiming them in any order can't collide.
+        for index in numbers.indices where numbers[index] == nil && !used.contains(index + 1) {
+            numbers[index] = index + 1
+            used.insert(index + 1)
+        }
+        var free = (1...max(count, 1)).filter { !used.contains($0) }
+        for index in numbers.indices where numbers[index] == nil && !free.isEmpty {
+            numbers[index] = free.removeFirst()
+        }
+        return numbers.map { $0 ?? 0 }
+    }
+
+    /// The digit 1–9 a binding puts on a bare number key, or nil.
+    static func pickerDigit(of binding: ShortcutBinding) -> Int? {
+        guard binding.modifiers.isEmpty, binding.key.count == 1, let digit = Int(binding.key),
+            (1...9).contains(digit)
+        else { return nil }
+        return digit
     }
 
     func isShortcutTaken(_ key: String, excluding tool: ShortcutKey) -> Bool {

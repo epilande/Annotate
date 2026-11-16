@@ -454,6 +454,11 @@ struct ColorShortcutsRow: View {
                 }
             }
 
+            Text("Colors on a number key use that number in the color picker. The rest fill the free numbers.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             if let note = recordingError ?? skippedMessage {
                 Text(note)
                     .font(.caption)

@@ -39,7 +39,11 @@ enum ShortcutRecordingEventHandler {
             return ShortcutRecordingEventResult(editingShortcut: tool, consumesEvent: true,
                 error: "This shortcut is assigned to \(conflict) in General Settings. Change it there first.")
         }
-        guard manager.setShortcut(binding, for: tool) else {
+        // A color takes a key another color has by trading with it (#147).
+        let accepted = tool.paletteColor == nil
+            ? manager.setShortcut(binding, for: tool)
+            : manager.setColorShortcut(binding, for: tool)
+        guard accepted else {
             return ShortcutRecordingEventResult(editingShortcut: tool, consumesEvent: true,
                 error: "This shortcut is already assigned. Clear it from the other action first.")
         }
