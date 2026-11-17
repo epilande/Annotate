@@ -190,6 +190,26 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         }
     }
 
+    func testColorPickerShowsAndPicksByTheNumbersItIsGiven() {
+        let numbers = [7, 3, 6, 8, 4, 9, 5, 2, 1]
+        let picker = makePicker(mode: .color, colorNumbers: numbers)
+        let cells = allSubviews(of: picker).compactMap { $0 as? QuickPickerCellView }
+
+        XCTAssertEqual(cells.map(\.digit), numbers)
+        XCTAssertEqual(picker.index(forDigit: 7), 0, "7 is red")
+        XCTAssertEqual(picker.index(forDigit: 1), 8, "1 is black")
+        XCTAssertNil(picker.index(forDigit: 0))
+    }
+
+    func testPickersIgnoreNumbersThatDoNotNameEveryColorOnce() {
+        let repeated = makePicker(mode: .color, colorNumbers: [1, 1, 3, 4, 5, 6, 7, 8, 9])
+        XCTAssertEqual(repeated.digits, Array(1...9))
+        let short = makePicker(mode: .color, colorNumbers: [1, 2])
+        XCTAssertEqual(short.digits, Array(1...9))
+        let width = makePicker(mode: .width, colorNumbers: [7, 3, 6, 8, 4, 9, 5, 2, 1])
+        XCTAssertEqual(width.digits, Array(1...width.optionCount))
+    }
+
     private func allSubviews(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap { allSubviews(of: $0) }
     }
@@ -200,7 +220,8 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
         currentWidth: CGFloat = 3,
         currentFontSize: CGFloat = defaultTextAnnotationFontSize,
         currentCounterSize: CGFloat = defaultCounterFontSize,
-        previewTool: ToolType = .pen
+        previewTool: ToolType = .pen,
+        colorNumbers: [Int]? = nil
     ) -> QuickPickerView {
         QuickPickerView(
             mode: mode,
@@ -210,6 +231,7 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
             currentWidth: currentWidth,
             currentFontSize: currentFontSize,
             currentCounterSize: currentCounterSize,
-            previewTool: previewTool)
+            previewTool: previewTool,
+            colorNumbers: colorNumbers)
     }
 }

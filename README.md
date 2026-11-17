@@ -147,6 +147,7 @@ brew install --cask annotate
 | <kbd>B</kbd> | **Board**              | Toggle whiteboard/blackboard              |
 | <kbd>K</kbd> | **Cursor Highlight**   | Toggle cursor highlight and click effects |
 | Not set      | **Background Dimming** | Toggle background dimming                 |
+| Not set      | **Colors**             | Pick a palette color in one keystroke     |
 
 #### ⚡ Quick Actions
 
@@ -218,6 +219,7 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 
 - **Color Picker**: Press <kbd>C</kbd> to open the swatch picker
 - **Size Picker**: Press <kbd>W</kbd> to open the size ladder. It adapts to the active tool: stroke widths from 1 to 24 px for drawing tools, font sizes from 12 to 120 pt for Text, and badge sizes for Counter
+- **One-Key Colors**: Bind each palette color to its own key in Settings → Shortcuts, so a single keystroke changes color. **Use 1–9 for colors** binds them in palette order. A color on a number key shows that number in the color picker too, so <kbd>C</kbd> then the number picks the same color. The other colors keep their usual number if it's free, and the rest fill the free numbers. While a picker is open, digits pick from it, and while typing in a label they insert text
 - **Choosing**: Tap the key, then click a swatch or type its digit. Or hold the key, move over your choice, and release. Press the same key or <kbd>Esc</kbd> to dismiss without changing anything
 - **Size Stepping**: Press <kbd>[</kbd> or <kbd>]</kbd> by default (customizable in Settings → Shortcuts) to step the active ladder without opening the picker. They do nothing while a picker is open, and while typing in a label they insert text; use <kbd>Command</kbd> + <kbd>+</kbd> and <kbd>Command</kbd> + <kbd>-</kbd> there instead
 - **Command + Scroll**: Hold <kbd>Command</kbd> and scroll to fine-tune the active size, stroke width from 0.5 to 24 px for drawing tools or the text and counter size for those tools, with a preview at the bottom center of the screen
@@ -479,11 +481,15 @@ Customize keys and modifier combinations for tools and utilities, organized into
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
 - **Shapes**: Rectangle, Circle
 - **Advanced Tools**: Counter, Text, Select, Eraser
-- **Utilities**: Color Picker, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All, Capture Screen, Capture Area
+- **Utilities**: Color Picker, Colors, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All, Capture Screen, Capture Area
 
 The **Built-in Shortcuts** reference lists the fixed keys: Delete, Undo (Command + Z), Redo (Shift + Command + Z), and Escape. Editable bindings cannot conflict with another assigned action or a fixed editing command. Escape cancels recording without changing the binding.
 
 Each row can clear its shortcut (Not Set) or restore that row's default; **Reset All to Default** restores default keys and modifier combinations and leaves dimming unset. Bindings cannot reuse the Activation or Always-On shortcuts in General Settings; changing either global shortcut also checks for conflicts with tool and utility bindings. Defaults already used by a global shortcut stay Not Set when resetting. Existing custom bindings and cleared shortcuts are preserved on upgrade; if a new action’s default is already assigned, the new action starts as Not Set.
+
+**Colors** has a keycap under each palette color, all unassigned by default. Click a keycap to record a key for that color. Recording a key another color already has swaps the two colors' keys; a key used by any other action is rejected. **Use 1–9 for colors** clears the colors' number keys and binds them in palette order (red, orange, yellow, green, cyan, indigo, magenta, white, black). It skips any digit already assigned to another action and says which. Right-click a color to clear its shortcut or restore its default.
+
+The color picker follows these keys: a color on a number key 1–9 shows that number under its swatch, so with red on <kbd>7</kbd>, <kbd>C</kbd> then <kbd>7</kbd> also picks red. The other colors keep their palette position if it's free, and any left over take the free numbers in palette order. Only color shortcuts count, so a digit bound to another tool doesn't change the picker's numbers. The numbers are worked out each time the picker opens. The size pickers keep 1 to N.
 
 **Toggle Background Dimming** is unassigned by default. Assign a key to use it while annotating. Turning dimming on also enables the spotlight if needed; turning it off leaves the spotlight enabled. This shortcut does not change click effects or the Dim Automatically preference.
 

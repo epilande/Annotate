@@ -660,7 +660,8 @@ class OverlayWindow: NSPanel {
             currentWidth: overlayView.currentLineWidth,
             currentFontSize: selectedLabelFontSize ?? settings[.textFontSize],
             currentCounterSize: settings[.counterFontSize],
-            previewTool: overlayView.currentTool)
+            previewTool: overlayView.currentTool,
+            colorNumbers: mode == .color ? ShortcutManager.shared.colorPickerNumbers() : nil)
 
         overlayView.addSubview(picker)
         quickPicker = picker
@@ -928,8 +929,8 @@ class OverlayWindow: NSPanel {
                 cancelQuickPicker()
                 return true
             }
-            if let digit = Int(chord.key), (1...picker.optionCount).contains(digit) {
-                picker.select(index: digit - 1)
+            if let digit = Int(chord.key), let index = picker.index(forDigit: digit) {
+                picker.select(index: index)
                 commitQuickPicker()
                 return true
             }
@@ -981,6 +982,12 @@ class OverlayWindow: NSPanel {
             if !chord.isRepeat { AppDelegate.shared?.captureScreen() }
         case .captureArea:
             if !chord.isRepeat { AppDelegate.shared?.captureArea() }
+        case .colorRed, .colorOrange, .colorYellow, .colorGreen, .colorCyan, .colorIndigo,
+            .colorMagenta, .colorWhite, .colorBlack:
+            // The same command as Shortcuts and links, so it sets every overlay and shows the HUD.
+            if !chord.isRepeat, let color = action.paletteColor, let appDelegate = AppDelegate.shared {
+                AnnotateCommand.color(color).run(on: appDelegate)
+            }
         }
         return true
     }
