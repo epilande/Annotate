@@ -116,16 +116,18 @@ final class SilentCaptureNotifier: CaptureNotifying {
 /// Finder button for a saved file.
 final class SystemCaptureNotifier: NSObject, CaptureNotifying, UNUserNotificationCenterDelegate {
     private let center: UNUserNotificationCenter
-    private let folders: CaptureFolderStore
+    /// Shows a saved file in Finder, for Show in Finder and a click on the notification.
+    private let showInFinder: @MainActor (URL) -> Void
 
     /// The real notifier inside an app bundle, and a silent one anywhere else.
-    static func forThisProcess(folders: CaptureFolderStore) -> CaptureNotifying {
-        Bundle.main.bundleURL.pathExtension == "app" ? SystemCaptureNotifier(folders: folders) : SilentCaptureNotifier()
+    static func forThisProcess(showInFinder: @escaping @MainActor (URL) -> Void) -> CaptureNotifying {
+        Bundle.main.bundleURL.pathExtension == "app"
+            ? SystemCaptureNotifier(showInFinder: showInFinder) : SilentCaptureNotifier()
     }
 
-    private init(folders: CaptureFolderStore) {
+    private init(showInFinder: @escaping @MainActor (URL) -> Void) {
         center = .current()
-        self.folders = folders
+        self.showInFinder = showInFinder
         super.init()
         center.delegate = self
         let showInFinder = UNNotificationAction(
@@ -200,13 +202,6 @@ final class SystemCaptureNotifier: NSObject, CaptureNotifying, UNUserNotificatio
             action: response.actionIdentifier, userInfo: response.notification.request.content.userInfo)
         if let file {
             await showInFinder(file)
-        }
-    }
-
-    /// Holds the chosen folder's scope, so Finder can be handed a file saved there.
-    private func showInFinder(_ file: URL) {
-        folders.withAccess { _ in
-            NSWorkspace.shared.activateFileViewerSelecting([file])
         }
     }
 }

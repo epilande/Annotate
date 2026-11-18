@@ -328,11 +328,15 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
-    /// A system notification, when allowed, and the overlay's HUD, when it is open. A problem
-    /// takes the HUD's place, and shows even with the overlay closed.
+    /// A system notification, when allowed, the status item's confirmation icon and a VoiceOver
+    /// announcement, and the overlay's HUD, when it is open. A problem takes the HUD's place,
+    /// and shows even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
         if let notice = CaptureNotice(result) {
             captureNotifier.post(notice)
+        }
+        if let confirmation = CaptureConfirmation(result) {
+            confirmCapture(confirmation)
         }
         if let problem = CaptureProblem(result) {
             reportCaptureProblem(problem, on: overlay)
@@ -343,6 +347,40 @@ extension AppDelegate {
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
             overlay.showToggleFeedback("Copied to Clipboard", icon: "📋")
+        }
+    }
+
+    /// Swaps the status item's pencil for the saved or copied icon for
+    /// `captureConfirmation.duration`, and tells VoiceOver which. A capture while the icon is up
+    /// restarts its time.
+    func confirmCapture(_ confirmation: CaptureConfirmation) {
+        shownCaptureConfirmation = confirmation
+        let wasShowing = captureConfirmation.isShowing
+        captureConfirmation.show()
+        // A first show draws the icon. One already up may now confirm something else.
+        if wasShowing {
+            renderStatusIcon()
+        }
+        announceForAccessibility(confirmation.announcement)
+    }
+
+    /// Shows a saved capture in Finder, from its notification. An interactive overlay sits
+    /// above Finder's windows, so it closes first and keeps its drawings for the next time it
+    /// opens. Always-On overlays let clicks through and stay. Holds the chosen folder's scope,
+    /// so Finder can be handed a file saved there, and so the file can be checked first: a
+    /// capture deleted since its notification leaves the overlay, and any Capture Area pick on
+    /// it, alone, since Finder would have nothing to show.
+    func showCaptureInFinder(_ file: URL) {
+        captureFolders.withAccess { _ in
+            guard FileManager.default.fileExists(atPath: file.path) else {
+                log.notice("Show in Finder: the capture is no longer there")
+                return
+            }
+            if isInteractiveOverlayOpen {
+                overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
+                hideAllOverlays()
+            }
+            revealInFinder([file])
         }
     }
 
