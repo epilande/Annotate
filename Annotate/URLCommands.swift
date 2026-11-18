@@ -78,6 +78,9 @@ private let log = Logger(subsystem: "com.epilande.Annotate", category: "URLComma
 
 extension AppDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
+        #if DEBUG || TRASH_SPIKE
+        if TrashSpike.adoptOpenedFolder(urls) { return }
+        #endif
         // A link that launches the app can arrive before launch finishes, when there is no
         // overlay to open yet. Links that arrive while those are still queued wait behind them,
         // so links run in the order they were opened.

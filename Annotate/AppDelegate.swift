@@ -150,7 +150,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
         setupBoardObservers()
 
-        #if DEBUG
+        #if DEBUG || TRASH_SPIKE
         let startUpdater = false
         #else
         let startUpdater = true
@@ -173,6 +173,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         }
         hasFinishedLaunching = true
         runPendingCommandURLs()
+        #if DEBUG || TRASH_SPIKE
+        _ = TrashSpike.runFromLaunchArguments()
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -424,6 +427,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                     title: "Capture Area",
                     action: #selector(captureArea),
                     keyEquivalent: ""))
+            #if DEBUG || TRASH_SPIKE
+            menu.addItem(TrashSpike.makeMenuItem())
+            #endif
 
             menu.addItem(NSMenuItem.separator())
 
