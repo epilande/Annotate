@@ -1,7 +1,7 @@
 import AppKit
 
-/// What the menu bar says about a capture that reached a destination: a checkmark in the
-/// status item, and this announcement for VoiceOver.
+/// What the menu bar says about a capture that reached a destination: an icon in the status
+/// item, and this announcement for VoiceOver.
 enum CaptureConfirmation: String, Equatable {
     case saved = "Capture saved"
     case copied = "Capture copied"
@@ -19,9 +19,17 @@ enum CaptureConfirmation: String, Equatable {
     }
 
     var announcement: String { rawValue }
+
+    /// The glyph the status item shows in a filled ring while this confirmation is up.
+    var symbolName: String {
+        switch self {
+        case .saved: "square.and.arrow.down"
+        case .copied: "doc.on.clipboard"
+        }
+    }
 }
 
-/// How long the status item shows its checkmark after a capture. Each capture starts the time
+/// How long the status item shows a capture's confirmation icon. Each capture starts the time
 /// over, and the end always hands the icon back through `onChange`, so the regular icon comes
 /// back drawn from the app's state at that moment, never from a copy taken before.
 @MainActor
@@ -43,10 +51,10 @@ final class StatusIconConfirmation {
     /// How expiries run. Tests set one that holds them to run by hand.
     var schedule: Schedule
     private let onChange: @MainActor () -> Void
-    /// Counts every show and end, so only the latest show's expiry ends the checkmark.
+    /// Counts every show and end, so only the latest show's expiry ends the confirmation.
     private var generation = 0
 
-    /// `onChange` runs when the checkmark goes up and again when it comes down.
+    /// `onChange` runs when the confirmation goes up and again when it comes down.
     init(
         duration: TimeInterval = 1.5,
         schedule: @escaping Schedule = StatusIconConfirmation.runLoopTimer,
@@ -57,7 +65,7 @@ final class StatusIconConfirmation {
         self.onChange = onChange
     }
 
-    /// Shows the checkmark for `duration` from now, however long it has been up already.
+    /// Shows the confirmation for `duration` from now, however long it has been up already.
     func show() {
         generation += 1
         let shown = generation
@@ -70,7 +78,7 @@ final class StatusIconConfirmation {
         onChange()
     }
 
-    /// Takes the checkmark down now, and keeps any pending expiry from doing anything.
+    /// Takes the confirmation down now, and keeps any pending expiry from doing anything.
     func end() {
         generation += 1
         guard isShowing else { return }

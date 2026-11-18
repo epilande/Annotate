@@ -16,7 +16,7 @@ final class AnnotateCommandTests: XCTestCase {
     /// The detail text of each alert in `captureProblemAlerts`.
     var captureProblemDetails: [String] = []
     var captureNotifier = StubCaptureNotifier()
-    /// Expiries of the status item's capture checkmark, which capture tests run by hand.
+    /// Expiries of the status item's capture confirmation icon, which capture tests run by hand.
     var confirmationExpiries: [@MainActor () -> Void] = []
     /// What captures announced to VoiceOver.
     var announcements: [String] = []
@@ -1242,14 +1242,17 @@ final class AnnotateCommandTests: XCTestCase {
 
     private var statusIcon: NSImage? { appDelegate.statusItem.button?.image }
 
-    /// Whether the status item shows `symbolName` in a `color` circle, compared by pixels.
-    private func statusIconShows(_ symbolName: String, in color: NSColor, file: StaticString = #filePath, line: UInt = #line) {
-        let expected = AppDelegate.statusIcon(color: color, symbolName: symbolName, description: "")
+    /// Whether the status item shows `confirmation`'s icon, or the pencil for nil, in a
+    /// `color` ring, compared by pixels.
+    private func statusIconShows(
+        _ confirmation: CaptureConfirmation?, in color: NSColor, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let expected = AppDelegate.statusIcon(color: color, showing: confirmation)
         XCTAssertNotNil(expected, file: file, line: line)
         XCTAssertEqual(
             statusIcon?.tiffRepresentation,
             expected?.tiffRepresentation,
-            "The status item should show \(symbolName) in \(color)",
+            "The status item should show \(confirmation?.symbolName ?? "pencil") in \(color)",
             file: file,
             line: line)
     }
@@ -1260,25 +1263,38 @@ final class AnnotateCommandTests: XCTestCase {
         expiries.forEach { $0() }
     }
 
-    func testCaptureShowsACheckmarkThenGivesTheIconBack() async throws {
-        try useStubCapture()
-        statusIconShows("pencil", in: .gray)
+    func testCaptureThatSavesAndCopiesShowsTheSavedIconThenGivesTheIconBack() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        XCTAssertEqual(testDefaults.settings[.afterCapture], .both)
+        statusIconShows(nil, in: .gray)
 
         appDelegate.captureScreen()
         await finishCaptures()
 
-        statusIconShows("checkmark", in: .gray)
+        XCTAssertNotNil(pasteboard.data(forType: .png), "Copied as well as saved")
+        statusIconShows(.saved, in: .gray)
         XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture saved")
         XCTAssertEqual(announcements, ["Capture saved"])
 
         runConfirmationExpiries()
 
-        statusIconShows("pencil", in: .gray)
+        statusIconShows(nil, in: .gray)
         XCTAssertEqual(statusIcon?.accessibilityDescription, "Annotate")
         XCTAssertFalse(appDelegate.captureConfirmation.isShowing)
     }
 
-    func testCopyOnlyCaptureAnnouncesTheCopy() async throws {
+    func testSaveOnlyCaptureShowsTheSavedIcon() async throws {
+        try useStubCapture()
+        testDefaults.settings[.afterCapture] = .save
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        statusIconShows(.saved, in: .gray)
+        XCTAssertEqual(announcements, ["Capture saved"])
+    }
+
+    func testCopyOnlyCaptureShowsTheCopiedIcon() async throws {
         try useStubCapture()
         testDefaults.settings[.afterCapture] = .copy
         run(.show)
@@ -1286,12 +1302,12 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(run(.capture(.screen)), .ran)
         await finishCaptures()
 
-        statusIconShows("checkmark", in: appDelegate.currentColor)
+        statusIconShows(.copied, in: appDelegate.currentColor)
         XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture copied")
         XCTAssertEqual(announcements, ["Capture copied"])
     }
 
-    func testCaptureWhoseSaveFailedConfirmsTheCopy() async throws {
+    func testCaptureWhoseSaveFailedShowsTheCopiedIcon() async throws {
         let (_, pasteboard) = try useStubCapture()
         appDelegate.captureService = CaptureService(
             source: StubDisplayCapturing(
@@ -1303,10 +1319,10 @@ final class AnnotateCommandTests: XCTestCase {
 
         XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
         XCTAssertEqual(announcements, ["Capture copied"])
-        statusIconShows("checkmark", in: .gray)
+        statusIconShows(.copied, in: .gray)
     }
 
-    func testFailedCaptureShowsNoCheckmark() async throws {
+    func testFailedCaptureShowsNoConfirmation() async throws {
         try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
 
         appDelegate.captureScreen()
@@ -1315,10 +1331,10 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
         XCTAssertTrue(announcements.isEmpty)
         XCTAssertTrue(confirmationExpiries.isEmpty)
-        statusIconShows("pencil", in: .gray)
+        statusIconShows(nil, in: .gray)
     }
 
-    func testAnotherCaptureRestartsTheCheckmark() async throws {
+    func testAnotherCaptureRestartsTheConfirmationAndSaysWhatItConfirmsNow() async throws {
         try useStubCapture()
         appDelegate.captureScreen()
         await finishCaptures()
@@ -1330,12 +1346,22 @@ final class AnnotateCommandTests: XCTestCase {
         await finishCaptures()
         firstExpiry()
 
-        statusIconShows("checkmark", in: .gray)
-        XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture copied", "The checkmark says what it confirms now")
+        statusIconShows(.copied, in: .gray)
+        XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture copied")
         XCTAssertEqual(announcements, ["Capture saved", "Capture copied"])
 
+        let copiedExpiry = try XCTUnwrap(confirmationExpiries.first)
+        confirmationExpiries = []
+        testDefaults.settings[.afterCapture] = .both
+        appDelegate.captureScreen()
+        await finishCaptures()
+        copiedExpiry()
+
+        statusIconShows(.saved, in: .gray)
+        XCTAssertEqual(announcements, ["Capture saved", "Capture copied", "Capture saved"])
+
         runConfirmationExpiries()
-        statusIconShows("pencil", in: .gray)
+        statusIconShows(nil, in: .gray)
     }
 
     func testTheIconComesBackAsTheOverlayLeftIt() async throws {
@@ -1343,39 +1369,39 @@ final class AnnotateCommandTests: XCTestCase {
         appDelegate.captureScreen()
         await finishCaptures()
 
-        // Opening the overlay under the checkmark changes its circle, not its symbol.
+        // Opening the overlay under the confirmation changes its ring color, not its glyph.
         run(.show)
-        statusIconShows("checkmark", in: appDelegate.currentColor)
+        statusIconShows(.saved, in: appDelegate.currentColor)
 
         runConfirmationExpiries()
-        statusIconShows("pencil", in: appDelegate.currentColor)
+        statusIconShows(nil, in: appDelegate.currentColor)
 
         appDelegate.captureScreen()
         await finishCaptures()
         run(.hide)
         appDelegate.setColor(.systemBlue)
-        statusIconShows("checkmark", in: .gray)
+        statusIconShows(.saved, in: .gray)
 
         runConfirmationExpiries()
-        statusIconShows("pencil", in: .gray)
+        statusIconShows(nil, in: .gray)
     }
 
-    func testTheCheckmarkEndsOnItsOwn() async throws {
+    func testTheConfirmationEndsOnItsOwn() async throws {
         try useStubCapture()
         appDelegate.captureConfirmation.schedule = StatusIconConfirmation.runLoopTimer
         appDelegate.captureConfirmation.duration = 0.05
 
         appDelegate.captureScreen()
         await finishCaptures()
-        statusIconShows("checkmark", in: .gray)
+        statusIconShows(.saved, in: .gray)
         // An async test runs inside a main-queue job, whose nested run loop runs the timer
         // but nothing queued on the main queue.
         runLoop { !self.appDelegate.captureConfirmation.isShowing }
 
-        statusIconShows("pencil", in: .gray)
+        statusIconShows(nil, in: .gray)
     }
 
-    func testCaptureAreaShowsTheCheckmark() async throws {
+    func testCaptureAreaShowsTheConfirmation() async throws {
         try useStubCapture()
         run(.capture(.area))
 
@@ -1383,17 +1409,17 @@ final class AnnotateCommandTests: XCTestCase {
         await finishCaptures()
 
         XCTAssertEqual(announcements, ["Capture saved"])
-        statusIconShows("checkmark", in: appDelegate.currentColor)
+        statusIconShows(.saved, in: appDelegate.currentColor)
     }
 
-    func testCaptureActionShowsTheCheckmark() async throws {
+    func testCaptureActionShowsTheConfirmation() async throws {
         try useStubCapture()
 
         _ = try await appDelegate.captureForShortcuts(.screen)
         await finishCaptures()
 
         XCTAssertEqual(announcements, ["Capture saved"])
-        statusIconShows("checkmark", in: .gray)
+        statusIconShows(.saved, in: .gray)
     }
 
     func testShowInFinderClosesTheInteractiveOverlayAndKeepsItsDrawings() {

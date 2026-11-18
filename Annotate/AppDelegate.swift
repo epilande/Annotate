@@ -81,11 +81,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// time they open even with Clear Drawings on Start.
     var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
     /// The circle color `updateStatusBarIcon(with:)` was last given, which the pencil comes
-    /// back in when a capture's checkmark ends.
+    /// back in when a capture's confirmation icon ends.
     private(set) var statusIconColor: NSColor = .gray
-    /// The status item's checkmark after a capture. Tests shorten it or run its expiry by hand.
+    /// The status item's confirmation icon after a capture. Tests shorten it or run its expiry
+    /// by hand.
     lazy var captureConfirmation = StatusIconConfirmation { [weak self] in self?.renderStatusIcon() }
-    /// What the checkmark showing now confirms.
+    /// What the confirmation icon showing now confirms.
     var shownCaptureConfirmation: CaptureConfirmation?
     /// Speaks a capture's confirmation to VoiceOver. Tests replace it.
     var announceForAccessibility: (String) -> Void = { message in
@@ -1164,30 +1165,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     /// Makes `color` the status item's circle color: the annotation color while an overlay is
-    /// up, gray while it is hidden. A capture's checkmark keeps showing until it ends, and the
-    /// pencil then comes back in the latest color.
+    /// up, gray while it is hidden. A capture's confirmation icon keeps showing, in this color,
+    /// until it ends, and the pencil then comes back in the latest color.
     func updateStatusBarIcon(with color: NSColor) {
         statusIconColor = color
         renderStatusIcon()
     }
 
-    /// Draws the status item from the current state: the pencil, or the checkmark while a
-    /// capture's confirmation is up.
+    /// Draws the status item from the current state: the pencil, or a capture's confirmation
+    /// icon while it is up.
     func renderStatusIcon() {
         guard let button = statusItem?.button else { return }
         let confirmation = captureConfirmation.isShowing ? shownCaptureConfirmation : nil
         // Without the symbol, the icon already showing beats an empty status item.
-        guard
-            let image = Self.statusIcon(
-                color: statusIconColor,
-                symbolName: confirmation == nil ? "pencil" : "checkmark",
-                description: confirmation?.announcement ?? "Annotate")
-        else { return }
+        guard let image = Self.statusIcon(color: statusIconColor, showing: confirmation) else { return }
         button.image = image
     }
 
-    /// A colored circle with a white symbol in it.
-    static func statusIcon(color: NSColor, symbolName: String, description: String) -> NSImage? {
+    /// The status item's icon: the pencil in a `color` ring, or `confirmation`'s glyph in a
+    /// filled `color` ring.
+    static func statusIcon(color: NSColor, showing confirmation: CaptureConfirmation?) -> NSImage? {
+        guard let confirmation else {
+            return statusIcon(color: color, symbolName: "pencil", description: "Annotate")
+        }
+        return statusIcon(
+            color: color, symbolName: confirmation.symbolName, description: confirmation.announcement, filled: true)
+    }
+
+    /// A colored circle with a white symbol in it. `filled` fills the circle and fits the
+    /// symbol in its box at its own aspect ratio. Otherwise the circle is an outline and the
+    /// symbol is stretched to the box, as the pencil has always been drawn.
+    static func statusIcon(color: NSColor, symbolName: String, description: String, filled: Bool = false) -> NSImage? {
         guard
             let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil),
             let tinted = symbol.copy() as? NSImage
@@ -1200,6 +1208,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
         // Slight inset for the stroke.
         let circlePath = NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: 16, height: 16))
+        if filled {
+            color.setFill()
+            circlePath.fill()
+        }
         color.setStroke()
         circlePath.lineWidth = 1.5
         circlePath.stroke()
@@ -1209,7 +1221,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         NSRect(origin: .zero, size: symbol.size).fill(using: .sourceIn)
         tinted.unlockFocus()
 
-        let symbolSize = NSSize(width: 11, height: 11)
+        let box = NSSize(width: 11, height: 11)
+        let symbolSize =
+            filled && symbol.size.width > 0 && symbol.size.height > 0
+            ? fitted(symbol.size, in: box) : box
         let symbolOrigin = NSPoint(
             x: (iconSize.width - symbolSize.width) / 2, y: (iconSize.height - symbolSize.height) / 2)
         tinted.draw(
@@ -1222,6 +1237,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         compositeImage.isTemplate = false
         compositeImage.accessibilityDescription = description
         return compositeImage
+    }
+
+    /// `size` scaled to fit inside `box` at its own aspect ratio.
+    static func fitted(_ size: NSSize, in box: NSSize) -> NSSize {
+        let scale = min(box.width / size.width, box.height / size.height)
+        return NSSize(width: size.width * scale, height: size.height * scale)
     }
 
     func setupApplicationMenu() {

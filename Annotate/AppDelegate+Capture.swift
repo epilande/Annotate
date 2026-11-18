@@ -328,7 +328,7 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
-    /// A system notification, when allowed, the status item's checkmark and a VoiceOver
+    /// A system notification, when allowed, the status item's confirmation icon and a VoiceOver
     /// announcement, and the overlay's HUD, when it is open. A problem takes the HUD's place,
     /// and shows even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
@@ -350,13 +350,14 @@ extension AppDelegate {
         }
     }
 
-    /// Swaps the status item's pencil for a checkmark for `captureConfirmation.duration`, and
-    /// tells VoiceOver. A capture during the checkmark restarts its time.
+    /// Swaps the status item's pencil for the saved or copied icon for
+    /// `captureConfirmation.duration`, and tells VoiceOver which. A capture while the icon is up
+    /// restarts its time.
     func confirmCapture(_ confirmation: CaptureConfirmation) {
         shownCaptureConfirmation = confirmation
         let wasShowing = captureConfirmation.isShowing
         captureConfirmation.show()
-        // A first show draws the checkmark. One already up may now confirm something else.
+        // A first show draws the icon. One already up may now confirm something else.
         if wasShowing {
             renderStatusIcon()
         }
