@@ -1183,19 +1183,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     }
 
     /// The status item's icon: the pencil in a `color` ring, or `confirmation`'s glyph in a
-    /// filled `color` ring.
+    /// filled `color` ring (see `CaptureConfirmation.statusIcon(ringColor:)`).
     static func statusIcon(color: NSColor, showing confirmation: CaptureConfirmation?) -> NSImage? {
         guard let confirmation else {
             return statusIcon(color: color, symbolName: "pencil", description: "Annotate")
         }
-        return statusIcon(
-            color: color, symbolName: confirmation.symbolName, description: confirmation.announcement, filled: true)
+        return confirmation.statusIcon(ringColor: color)
     }
 
-    /// A colored circle with a white symbol in it. `filled` fills the circle and fits the
-    /// symbol in its box at its own aspect ratio. Otherwise the circle is an outline and the
-    /// symbol is stretched to the box, as the pencil has always been drawn.
-    static func statusIcon(color: NSColor, symbolName: String, description: String, filled: Bool = false) -> NSImage? {
+    /// A colored circle with a white symbol in it.
+    static func statusIcon(color: NSColor, symbolName: String, description: String) -> NSImage? {
         guard
             let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil),
             let tinted = symbol.copy() as? NSImage
@@ -1208,10 +1205,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
         // Slight inset for the stroke.
         let circlePath = NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: 16, height: 16))
-        if filled {
-            color.setFill()
-            circlePath.fill()
-        }
         color.setStroke()
         circlePath.lineWidth = 1.5
         circlePath.stroke()
@@ -1221,10 +1214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         NSRect(origin: .zero, size: symbol.size).fill(using: .sourceIn)
         tinted.unlockFocus()
 
-        let box = NSSize(width: 11, height: 11)
-        let symbolSize =
-            filled && symbol.size.width > 0 && symbol.size.height > 0
-            ? fitted(symbol.size, in: box) : box
+        let symbolSize = NSSize(width: 11, height: 11)
         let symbolOrigin = NSPoint(
             x: (iconSize.width - symbolSize.width) / 2, y: (iconSize.height - symbolSize.height) / 2)
         tinted.draw(
@@ -1237,12 +1227,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         compositeImage.isTemplate = false
         compositeImage.accessibilityDescription = description
         return compositeImage
-    }
-
-    /// `size` scaled to fit inside `box` at its own aspect ratio.
-    static func fitted(_ size: NSSize, in box: NSSize) -> NSSize {
-        let scale = min(box.width / size.width, box.height / size.height)
-        return NSSize(width: size.width * scale, height: size.height * scale)
     }
 
     func setupApplicationMenu() {

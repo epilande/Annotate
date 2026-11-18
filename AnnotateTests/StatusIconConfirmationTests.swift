@@ -153,61 +153,139 @@ final class StatusIconConfirmationTests: XCTestCase {
 
         XCTAssertEqual(pencil.tiffRepresentation, direct.tiffRepresentation)
         // Outline ring: inside the ring, clear of the glyph, nothing is drawn.
-        XCTAssertEqual(pixel(of: pencil, atPoint: NSPoint(x: 3, y: 9)).alphaComponent, 0, accuracy: 0.01)
+        let rendered = render(pencil, scale: 2)
+        XCTAssertEqual(color(in: rendered, atPoint: NSPoint(x: 3, y: 9), scale: 2).alphaComponent, 0, accuracy: 0.01)
     }
 
     func testConfirmationIconsFillTheRingInTheStateColor() throws {
         for confirmation in [CaptureConfirmation.saved, .copied] {
-            for color in [NSColor.systemRed, .gray] {
-                let icon = try XCTUnwrap(AppDelegate.statusIcon(color: color, showing: confirmation))
-                let fill = pixel(of: icon, atPoint: NSPoint(x: 3, y: 9))
-                let expected = try XCTUnwrap(color.usingColorSpace(.deviceRGB))
-                XCTAssertEqual(fill.alphaComponent, 1, accuracy: 0.01, "\(confirmation) in \(color)")
-                XCTAssertEqual(fill.redComponent, expected.redComponent, accuracy: 0.05, "\(confirmation) in \(color)")
-                XCTAssertEqual(fill.greenComponent, expected.greenComponent, accuracy: 0.05, "\(confirmation) in \(color)")
-                XCTAssertEqual(fill.blueComponent, expected.blueComponent, accuracy: 0.05, "\(confirmation) in \(color)")
+            for ringColor in [NSColor.systemRed, .gray] {
+                let icon = try XCTUnwrap(AppDelegate.statusIcon(color: ringColor, showing: confirmation))
+                let fill = color(in: render(icon, scale: 2), atPoint: NSPoint(x: 3, y: 9), scale: 2)
+                let expected = try XCTUnwrap(ringColor.usingColorSpace(.deviceRGB))
+                let label = "\(confirmation) in \(ringColor)"
+                XCTAssertEqual(fill.alphaComponent, 1, accuracy: 0.01, label)
+                XCTAssertEqual(fill.redComponent, expected.redComponent, accuracy: 0.05, label)
+                XCTAssertEqual(fill.greenComponent, expected.greenComponent, accuracy: 0.05, label)
+                XCTAssertEqual(fill.blueComponent, expected.blueComponent, accuracy: 0.05, label)
             }
         }
     }
 
+    // MARK: - Glyph color
+
+    func testTheGlyphIsWhiteUnlessTheFillIsTooLightForIt() {
+        for fill in [NSColor.systemRed, .gray, .systemIndigo, .magenta, .black] {
+            XCTAssertEqual(ConfirmationIcon.glyphColor(onFill: fill), .white, "\(fill)")
+        }
+        for fill in [NSColor.white, .systemYellow, .cyan, .systemGreen, .systemOrange] {
+            XCTAssertEqual(ConfirmationIcon.glyphColor(onFill: fill), ConfirmationIcon.darkGlyph, "\(fill)")
+        }
+        XCTAssertEqual(
+            ConfirmationIcon.glyphColor(onFill: NSColor.white.withAlphaComponent(0.7)),
+            ConfirmationIcon.darkGlyph,
+            "Always-On's translucent ring goes by its color")
+    }
+
+    func testEveryRingColorGetsAGlyphWithAtLeastThreeToOneContrast() throws {
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            try XCTUnwrap(NSAppearance(named: appearance)).performAsCurrentDrawingAppearance {
+                for fill in colorPalette + [.gray] {
+                    let glyph = ConfirmationIcon.glyphColor(onFill: fill)
+                    guard let fillLuminance = ConfirmationIcon.relativeLuminance(of: fill),
+                        let glyphLuminance = ConfirmationIcon.relativeLuminance(of: glyph)
+                    else { return XCTFail("No luminance for \(fill)") }
+                    let contrast =
+                        (max(fillLuminance, glyphLuminance) + 0.05) / (min(fillLuminance, glyphLuminance) + 0.05)
+                    XCTAssertGreaterThanOrEqual(contrast, 3, "\(fill) in \(appearance.rawValue)")
+                }
+            }
+        }
+    }
+
+    func testTheGlyphIsDarkOnAWhiteRingAndWhiteOnTheUsualOnes() throws {
+        for confirmation in [CaptureConfirmation.saved, .copied] {
+            let onWhite = render(try XCTUnwrap(AppDelegate.statusIcon(color: .white, showing: confirmation)), scale: 2)
+            XCTAssertGreaterThan(countPixels(in: onWhite) { $0.luminance < 0.2 }, 30, "\(confirmation) on white")
+
+            for ringColor in [NSColor.systemRed, .gray] {
+                let icon = render(try XCTUnwrap(AppDelegate.statusIcon(color: ringColor, showing: confirmation)), scale: 2)
+                let label = "\(confirmation) on \(ringColor)"
+                XCTAssertGreaterThan(countPixels(in: icon) { $0.luminance > 0.9 }, 30, label)
+                XCTAssertEqual(countPixels(in: icon) { $0.luminance < 0.1 }, 0, label)
+            }
+        }
+    }
+
+    // MARK: - Glyph shape and position
+
     func testConfirmationGlyphsKeepTheirAspectRatio() throws {
+        // A fixed 8x, so the result doesn't depend on the machine's displays. Edges are found to
+        // within about a pixel, so 2 pixels (0.25 pt) of slack; stretching either glyph to the
+        // 11 pt box would add 8 to 9 pixels to its width.
+        let scale = 8
+        let tolerance: CGFloat = 2
         for confirmation in [CaptureConfirmation.saved, .copied] {
             let symbol = try XCTUnwrap(NSImage(systemSymbolName: confirmation.symbolName, accessibilityDescription: nil))
-            let icon = try XCTUnwrap(AppDelegate.statusIcon(color: .systemRed, showing: confirmation))
-            // The white glyph's ink on the red fill, against the symbol's own ink at its own shape.
-            // A stretched glyph would come out about 13% wider than its shape.
-            let glyph = try XCTUnwrap(inkBounds(of: icon, size: NSSize(width: 18, height: 18)) { $0.isGlyphOnRed })
-            let native = try XCTUnwrap(inkBounds(of: symbol, size: symbol.size) { $0.alphaComponent > 0.5 })
+            let native = try XCTUnwrap(inkBounds(in: render(symbol, size: symbol.size, scale: scale)) { $0.alphaComponent })
+            // The symbol's image fit in the 11 pt box at its own shape, worked out here rather
+            // than read from the app, in pixels per symbol pixel.
+            let fit = min(11 / symbol.size.width, 11 / symbol.size.height)
 
-            let glyphRatio = glyph.width / glyph.height
-            let nativeRatio = native.width / native.height
-            XCTAssertEqual(glyphRatio, nativeRatio, accuracy: 0.05, "\(confirmation.symbolName) is stretched")
-            XCTAssertLessThan(glyph.width, glyph.height, "\(confirmation.symbolName) is taller than wide")
-            XCTAssertLessThanOrEqual(glyph.height, 11.25, "Fits in the 11 pt box")
-            XCTAssertLessThanOrEqual(glyph.width, 11.25, "Fits in the 11 pt box")
+            for ringColor in [NSColor.systemRed, .white] {
+                let icon = render(try XCTUnwrap(AppDelegate.statusIcon(color: ringColor, showing: confirmation)), scale: scale)
+                let glyph = try XCTUnwrap(glyphBounds(in: icon, scale: scale))
+                let label = "\(confirmation.symbolName) on \(ringColor)"
+                XCTAssertEqual(glyph.width, native.width * fit, accuracy: tolerance, "\(label): width")
+                XCTAssertEqual(glyph.height, native.height * fit, accuracy: tolerance, "\(label): height")
+            }
         }
+    }
+
+    func testConfirmationGlyphsAreCenteredInTheRingAt1xAnd2x() throws {
+        for scale in [1, 2] {
+            for confirmation in [CaptureConfirmation.saved, .copied] {
+                for ringColor in [NSColor.systemRed, .gray, .white] {
+                    let icon = render(
+                        try XCTUnwrap(AppDelegate.statusIcon(color: ringColor, showing: confirmation)), scale: scale)
+                    let glyph = try XCTUnwrap(glyphBounds(in: icon, scale: scale))
+                    // The ring's middle, in pixels from the top-left, is the icon's middle.
+                    let ringMiddle = 9 * CGFloat(scale)
+                    let label = "\(confirmation.symbolName) on \(ringColor) at \(scale)x"
+                    XCTAssertEqual(glyph.midX, ringMiddle, accuracy: 0.5, label)
+                    XCTAssertEqual(glyph.midY, ringMiddle, accuracy: 0.5, label)
+                }
+            }
+        }
+    }
+
+    func testGlyphRectCentersTheInkNotTheImage() {
+        // A symbol whose ink sits in the top two thirds of its image, above baseline padding.
+        let rect = ConfirmationIcon.glyphRect(
+            symbolSize: NSSize(width: 10, height: 20), inkBounds: CGRect(x: 0, y: 6, width: 10, height: 14))
+
+        XCTAssertEqual(rect.size, NSSize(width: 5.5, height: 11))
+        XCTAssertEqual(rect.minY + 13 * 0.55, ConfirmationIcon.ring.midY, accuracy: 0.0001, "The ink's middle")
+        XCTAssertEqual(rect.midX, ConfirmationIcon.ring.midX, accuracy: 0.0001)
     }
 
     func testFittingKeepsTheAspectRatioInsideTheBox() {
         let box = NSSize(width: 11, height: 11)
 
-        XCTAssertEqual(AppDelegate.fitted(NSSize(width: 15, height: 17), in: box).width, 15 * 11 / 17, accuracy: 0.001)
-        XCTAssertEqual(AppDelegate.fitted(NSSize(width: 15, height: 17), in: box).height, 11, accuracy: 0.001)
-        XCTAssertEqual(AppDelegate.fitted(NSSize(width: 22, height: 11), in: box), NSSize(width: 11, height: 5.5))
-        XCTAssertEqual(AppDelegate.fitted(NSSize(width: 4, height: 4), in: box), box, "A small symbol grows to the box")
+        XCTAssertEqual(ConfirmationIcon.fitted(NSSize(width: 15, height: 17), in: box).width, 15 * 11 / 17, accuracy: 0.001)
+        XCTAssertEqual(ConfirmationIcon.fitted(NSSize(width: 15, height: 17), in: box).height, 11, accuracy: 0.001)
+        XCTAssertEqual(ConfirmationIcon.fitted(NSSize(width: 22, height: 11), in: box), NSSize(width: 11, height: 5.5))
+        XCTAssertEqual(ConfirmationIcon.fitted(NSSize(width: 4, height: 4), in: box), box, "A small symbol grows to the box")
     }
 
     // MARK: - Pixels
 
-    /// The icon draws into an image cached at 2x, so measuring finer only blurs its edges.
-    private static let renderScale: CGFloat = 2
-
-    /// `image` drawn at `size` points into a bitmap at `renderScale`.
-    private func bitmap(of image: NSImage, size: NSSize) -> NSBitmapImageRep {
+    /// `image` drawn at `size` points into a bitmap of exactly `scale` pixels per point.
+    private func render(_ image: NSImage, size: NSSize = NSSize(width: 18, height: 18), scale: Int) -> NSBitmapImageRep {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: Int(size.width * Self.renderScale),
-            pixelsHigh: Int(size.height * Self.renderScale),
+            pixelsWide: Int((size.width * CGFloat(scale)).rounded(.up)),
+            pixelsHigh: Int((size.height * CGFloat(scale)).rounded(.up)),
             bitsPerSample: 8,
             samplesPerPixel: 4,
             hasAlpha: true,
@@ -215,7 +293,7 @@ final class StatusIconConfirmationTests: XCTestCase {
             colorSpaceName: .deviceRGB,
             bytesPerRow: 0,
             bitsPerPixel: 0)!
-        rep.size = size
+        rep.size = NSSize(width: CGFloat(rep.pixelsWide) / CGFloat(scale), height: CGFloat(rep.pixelsHigh) / CGFloat(scale))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         image.draw(in: NSRect(origin: .zero, size: size))
@@ -224,29 +302,75 @@ final class StatusIconConfirmationTests: XCTestCase {
     }
 
     /// The color at `point`, in points from the bottom-left.
-    private func pixel(of image: NSImage, atPoint point: NSPoint) -> NSColor {
-        let rep = bitmap(of: image, size: NSSize(width: 18, height: 18))
-        let x = Int(point.x * Self.renderScale)
-        let y = rep.pixelsHigh - 1 - Int(point.y * Self.renderScale)
-        return rep.colorAt(x: x, y: y) ?? .clear
+    private func color(in rep: NSBitmapImageRep, atPoint point: NSPoint, scale: Int) -> NSColor {
+        let x = Int(point.x * CGFloat(scale))
+        let row = rep.pixelsHigh - 1 - Int(point.y * CGFloat(scale))
+        return rep.colorAt(x: x, y: row) ?? .clear
     }
 
-    /// The bounds, in points, of the pixels `isInk` picks out.
-    private func inkBounds(of image: NSImage, size: NSSize, isInk: (NSColor) -> Bool) -> CGSize? {
-        let rep = bitmap(of: image, size: size)
-        var minX = Int.max, maxX = Int.min, minY = Int.max, maxY = Int.min
-        for y in 0..<rep.pixelsHigh {
+    /// Opaque pixels inside the ring that `matches` picks out.
+    private func countPixels(in rep: NSBitmapImageRep, matching matches: (NSColor) -> Bool) -> Int {
+        var count = 0
+        for row in 0..<rep.pixelsHigh {
             for x in 0..<rep.pixelsWide {
-                guard let color = rep.colorAt(x: x, y: y), isInk(color) else { continue }
-                minX = min(minX, x)
-                maxX = max(maxX, x)
-                minY = min(minY, y)
-                maxY = max(maxY, y)
+                guard let color = rep.colorAt(x: x, y: row)?.usingColorSpace(.deviceRGB),
+                    color.alphaComponent > 0.99, matches(color)
+                else { continue }
+                count += 1
             }
         }
-        guard minX <= maxX else { return nil }
-        return CGSize(
-            width: CGFloat(maxX - minX + 1) / Self.renderScale, height: CGFloat(maxY - minY + 1) / Self.renderScale)
+        return count
+    }
+
+    /// The glyph's bounds in a rendered icon, in pixels from the top-left, with each edge placed
+    /// inside its outermost pixel by how much of that pixel the glyph covers. A pixel's coverage
+    /// is how far its color has moved from the ring's fill toward the glyph color. Only opaque
+    /// pixels count, so the ring's soft outer edge never does.
+    private func glyphBounds(in rep: NSBitmapImageRep, scale: Int) -> CGRect? {
+        guard let fill = color(in: rep, atPoint: NSPoint(x: 3, y: 9), scale: scale).usingColorSpace(.deviceRGB),
+            let glyph = ConfirmationIcon.glyphColor(onFill: fill).usingColorSpace(.deviceRGB)
+        else { return nil }
+        let span = [
+            glyph.redComponent - fill.redComponent,
+            glyph.greenComponent - fill.greenComponent,
+            glyph.blueComponent - fill.blueComponent,
+        ]
+        let spanSquared = span.reduce(0) { $0 + $1 * $1 }
+        guard spanSquared > 0.01 else { return nil }
+        return inkBounds(in: rep) { pixel in
+            guard pixel.alphaComponent > 0.99 else { return 0 }
+            let offset = [
+                pixel.redComponent - fill.redComponent,
+                pixel.greenComponent - fill.greenComponent,
+                pixel.blueComponent - fill.blueComponent,
+            ]
+            let along = zip(offset, span).reduce(0) { $0 + $1.0 * $1.1 } / spanSquared
+            return min(max(along, 0), 1)
+        }
+    }
+
+    /// The bounds of the pixels `coverage` gives more than a trace, in pixels from the top-left,
+    /// with each edge placed inside its outermost pixel by that pixel's coverage.
+    private func inkBounds(in rep: NSBitmapImageRep, coverage: (NSColor) -> CGFloat) -> CGRect? {
+        var columns = [CGFloat](repeating: 0, count: rep.pixelsWide)
+        var rows = [CGFloat](repeating: 0, count: rep.pixelsHigh)
+        for row in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let pixel = rep.colorAt(x: x, y: row)?.usingColorSpace(.deviceRGB) else { continue }
+                let covered = coverage(pixel)
+                columns[x] = max(columns[x], covered)
+                rows[row] = max(rows[row], covered)
+            }
+        }
+        func edges(_ profile: [CGFloat]) -> (CGFloat, CGFloat)? {
+            let trace: CGFloat = 0.05
+            guard let first = profile.firstIndex(where: { $0 > trace }),
+                let last = profile.lastIndex(where: { $0 > trace })
+            else { return nil }
+            return (CGFloat(first) + 1 - profile[first], CGFloat(last) + profile[last])
+        }
+        guard let (left, right) = edges(columns), let (top, bottom) = edges(rows) else { return nil }
+        return CGRect(x: left, y: top, width: right - left, height: bottom - top)
     }
 
     private func makeCapture() -> Capture {
@@ -261,9 +385,9 @@ final class StatusIconConfirmationTests: XCTestCase {
 }
 
 private extension NSColor {
-    /// At least half white over a red fill: green is about 0.25 in the red and 1 in the glyph.
-    var isGlyphOnRed: Bool {
-        guard let rgb = usingColorSpace(.deviceRGB) else { return false }
-        return rgb.alphaComponent > 0.5 && rgb.greenComponent > 0.62 && rgb.blueComponent > 0.62
+    /// Rec. 709 luma of the color's device RGB components.
+    var luminance: CGFloat {
+        guard let rgb = usingColorSpace(.deviceRGB) else { return 0 }
+        return 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent
     }
 }
