@@ -88,15 +88,18 @@ enum RecentCaptureScanner {
                 let files = try? FileManager.default.contentsOfDirectory(
                     at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
             else { continue }
+            // Each capture is named by its folder's real path, resolved once per folder.
+            let realFolder = RecentCapture.canonical(folder.appendingPathComponent("_")).deletingLastPathComponent()
             for listed in files {
-                let file = RecentCapture.canonical(listed)
-                guard parse(file.lastPathComponent) != nil,
-                    let values = try? file.resourceValues(forKeys: Set(keys)),
+                let name = listed.lastPathComponent
+                guard parse(name) != nil,
+                    let values = try? listed.resourceValues(forKeys: Set(keys)),
                     values.isRegularFile == true,
                     let createdAt = values.creationDate ?? values.contentModificationDate,
-                    createdAt > cutoff,
-                    seen.insert(file.path).inserted
+                    createdAt > cutoff
                 else { continue }
+                let file = realFolder.appendingPathComponent(name, isDirectory: false)
+                guard seen.insert(file.path).inserted else { continue }
                 found.append(RecentCapture(file: file, createdAt: createdAt))
             }
         }

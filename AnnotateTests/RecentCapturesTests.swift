@@ -419,8 +419,10 @@ final class RecentCapturesTests: XCTestCase {
         let older = RecentCapture(file: folder.appendingPathComponent(Self.name(1)), createdAt: Self.base)
         let newer = RecentCapture(file: folder.appendingPathComponent(Self.name(2)), createdAt: Self.base)
 
+        // One at a time, so the held scans are in the order they started.
         store.refresh()
         let first = try XCTUnwrap(store.scanTask)
+        try await waitForHeldScans(scans, count: 1)
         store.refresh()
         let second = try XCTUnwrap(store.scanTask)
         try await waitForHeldScans(scans, count: 2)
@@ -521,7 +523,10 @@ final class RecentCapturesTests: XCTestCase {
         while scans.count < count, Date() < deadline {
             try await Task.sleep(for: .milliseconds(5))
         }
-        XCTAssertEqual(scans.count, count)
+        // Stop the test rather than land the wrong scan and wait on one that never ends.
+        guard scans.count == count else {
+            throw CocoaError(.userCancelled, userInfo: [NSDebugDescriptionErrorKey: "Expected \(count) held scans, have \(scans.count)"])
+        }
     }
 
     // MARK: - File actions
