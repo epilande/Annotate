@@ -84,7 +84,10 @@ final class RecentCapturesMenu: NSObject, NSMenuDelegate {
         item.identifier = .recentCapture
         item.representedObject = capture.file
         item.image = RecentCaptureThumbnail.menuImage(thumbnail)
+        Self.showImage(of: item)
         item.toolTip = Self.toolTip(for: capture.file)
+        // VoiceOver doesn't read the tooltip.
+        item.setAccessibilityHelp(item.toolTip)
         let actions = NSMenu(title: item.title)
         actions.autoenablesItems = false
         for (title, action, identifier) in [
@@ -98,6 +101,16 @@ final class RecentCapturesMenu: NSObject, NSMenuDelegate {
         }
         item.submenu = actions
         return item
+    }
+
+    /// macOS 27 hides menu item images by default in apps built with its SDK, and the thumbnail
+    /// is the row's content, not decoration. Builds with an older SDK always show them.
+    private static func showImage(of item: NSMenuItem) {
+        #if compiler(>=6.4)
+            if #available(macOS 27, *) {
+                item.preferredImageVisibility = .visible
+            }
+        #endif
     }
 
     /// No key equivalents anywhere in here: one in the status menu works app-wide, overlay

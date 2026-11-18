@@ -127,6 +127,19 @@ final class RecentCapturesMenuTests: XCTestCase {
         }
     }
 
+    /// Whether AppKit draws the item's image when the menu opens. macOS 27 hides menu item
+    /// images by default in apps built with its SDK, so a row can hold its thumbnail and still
+    /// show none.
+    private func drawsImage(_ item: NSMenuItem) -> Bool {
+        guard item.image != nil else { return false }
+        #if compiler(>=6.4)
+            if #available(macOS 27, *) {
+                return item.preferredImageVisibility == .visible
+            }
+        #endif
+        return true
+    }
+
     private func allItems(in menu: NSMenu) -> [NSMenuItem] {
         menu.items.flatMap { [$0] + ($0.submenu.map(allItems(in:)) ?? []) }
     }
@@ -151,6 +164,7 @@ final class RecentCapturesMenuTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         XCTAssertNotNil(rows.first?.image)
         XCTAssertEqual(rows.first?.image?.size, RecentCaptureThumbnail.box)
+        XCTAssertTrue(try drawsImage(XCTUnwrap(rows.first)), "AppKit would hide the thumbnail")
         XCTAssertNil(recentItem?.image)
         XCTAssertFalse(statusMenu.items.contains { $0.identifier == .recentCapture })
     }
@@ -192,6 +206,7 @@ final class RecentCapturesMenuTests: XCTestCase {
         XCTAssertEqual(actions.items.map(\.title), ["Copy", "Open", "Show in Finder"])
         XCTAssertTrue(actions.items.allSatisfy { $0.representedObject as? URL == file && $0.target === appDelegate })
         XCTAssertEqual(row.toolTip, "\(file.lastPathComponent)\n\(CaptureSettingsView.displayPath(of: folder))")
+        XCTAssertEqual(row.accessibilityHelp(), row.toolTip)
     }
 
     func testNothingInTheSubmenuHasAKeyEquivalent() async throws {
@@ -298,6 +313,7 @@ final class RecentCapturesMenuTests: XCTestCase {
 
         XCTAssertEqual(rows.count, 2)
         XCTAssertTrue(zip(before, rows).allSatisfy { $0 === $1 }, "An open actions submenu stays open")
+        XCTAssertTrue(rows.allSatisfy(drawsImage))
         let newer = try makeCapture(3)
         await openStatusMenu()
         XCTAssertEqual(listedFiles.first, newer)
