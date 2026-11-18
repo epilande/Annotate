@@ -243,7 +243,7 @@ final class RecentCapturesTests: XCTestCase {
         try FileManager.default.removeItem(at: chosen)
 
         let scan = await RecentCaptureScanner.scan(
-            chosenFolder: bookmark, defaultFolder: standard, after: .distantPast, thumbnailed: [])
+            chosenFolder: bookmark, defaultFolder: standard, after: .distantPast, thumbnailed: [:])
 
         XCTAssertEqual(scan.missedFolder, "Shots")
         XCTAssertEqual(names(scan.captures), [Self.name(1)])
@@ -254,11 +254,26 @@ final class RecentCapturesTests: XCTestCase {
         let old = try makeFile(Self.name(1), in: folder, secondsAfterBase: 1)
         let new = try makeFile(Self.name(2), in: folder, secondsAfterBase: 2)
 
+        let thumbnailed = [old.path: try XCTUnwrap(FileVersion.of(old))]
         let scan = await RecentCaptureScanner.scan(
-            chosenFolder: nil, defaultFolder: folder, after: .distantPast, thumbnailed: [old.path])
+            chosenFolder: nil, defaultFolder: folder, after: .distantPast, thumbnailed: thumbnailed)
 
         XCTAssertNil(scan.missedFolder)
         XCTAssertEqual(Set(scan.thumbnails.keys), [new.path])
+    }
+
+    func testScanRemakesTheThumbnailOfAFileThatChanged() async throws {
+        let folder = try makeFolder()
+        let file = try makeFile(Self.name(1), in: folder)
+        let before = try XCTUnwrap(FileVersion.of(file))
+        try makeFile(Self.name(1), in: folder, width: 40, height: 20)
+        XCTAssertNotEqual(FileVersion.of(file), before)
+
+        let scan = await RecentCaptureScanner.scan(
+            chosenFolder: nil, defaultFolder: folder, after: .distantPast, thumbnailed: [file.path: before])
+
+        let thumbnail = try XCTUnwrap(scan.thumbnails[file.path]?.image)
+        XCTAssertEqual([thumbnail.width, thumbnail.height], [40, 20])
     }
 
     // MARK: - Thumbnails
@@ -397,6 +412,65 @@ final class RecentCapturesTests: XCTestCase {
         XCTAssertEqual(store.captures.map(\.file), [file])
     }
 
+    func testARescanRemakesTheThumbnailOfAReplacedFile() async throws {
+        let folder = try makeFolder()
+        let file = try makeFile(Self.name(1), in: folder)
+        let store = store(defaultFolder: folder)
+        store.refresh()
+        await settle(store)
+        let first = try XCTUnwrap(store.thumbnail(for: try XCTUnwrap(store.captures.first)))
+        XCTAssertEqual([first.width, first.height], [4, 4])
+
+        // Same path and creation date, new contents.
+        try makeFile(Self.name(1), in: folder, width: 1000, height: 250)
+        store.refresh()
+        await settle(store)
+
+        XCTAssertEqual(store.captures.map(\.file), [file])
+        let second = try XCTUnwrap(store.thumbnail(for: try XCTUnwrap(store.captures.first)))
+        XCTAssertEqual([second.width, second.height], [128, 32])
+    }
+
+    func testARecordedThumbnailIsKeptByAScanOfTheSameFile() async throws {
+        let folder = try makeFolder()
+        let store = store(defaultFolder: folder)
+        let scans = HeldScans()
+        let file = try makeFile(Self.name(1), in: folder, width: 400, height: 200)
+        store.record(result(saving: file))
+        await settle(store)
+        scans.hold(store)
+
+        store.refresh()
+        let scan = try XCTUnwrap(store.scanTask)
+        try await waitForHeldScans(scans, count: 1)
+        let found = RecentCapture(file: file, createdAt: Self.base, version: FileVersion.of(file))
+        scans.land(0, with: RecentCaptureScan(captures: [found]))
+        await scan.value
+
+        let thumbnail = try XCTUnwrap(store.thumbnail(for: found), "The file hasn't changed since it was recorded")
+        XCTAssertEqual([thumbnail.width, thumbnail.height], [128, 64])
+    }
+
+    func testRecordDropsTheThumbnailOfACapturePushedOffTheList() async throws {
+        let folder = try makeFolder()
+        let store = store(defaultFolder: folder)
+        var now = Self.base
+        store.now = { now }
+        let files = (0...RecentCaptureScanner.limit).map { folder.appendingPathComponent(Self.name($0)) }
+        let oldest = RecentCapture(file: files[0], createdAt: Self.base)
+
+        for (index, file) in files.enumerated() {
+            now = Self.base.addingTimeInterval(TimeInterval(index))
+            store.record(result(saving: file))
+            await settle(store)
+            if index == 0 { XCTAssertNotNil(store.thumbnail(for: oldest)) }
+        }
+
+        XCTAssertEqual(store.captures.count, RecentCaptureScanner.limit)
+        XCTAssertFalse(store.captures.contains { $0.file == files[0] })
+        XCTAssertNil(store.thumbnail(for: oldest), "Not kept past the limit until the next scan")
+    }
+
     func testRecordKeepsTheListAtEight() throws {
         let folder = try makeFolder()
         let store = store(defaultFolder: folder)
@@ -452,6 +526,25 @@ final class RecentCapturesTests: XCTestCase {
         await scan.value
 
         XCTAssertEqual(store.captures.map(\.file), [fresh, old.file])
+    }
+
+    func testACaptureFoundGoneDuringAScanStaysOutWhenItLands() async throws {
+        let folder = try makeFolder()
+        let store = store(defaultFolder: folder)
+        let scans = HeldScans()
+        scans.hold(store)
+        let gone = RecentCapture(file: folder.appendingPathComponent(Self.name(1)), createdAt: Self.base)
+        let kept = RecentCapture(file: folder.appendingPathComponent(Self.name(2)), createdAt: Self.base)
+
+        store.refresh()
+        let scan = try XCTUnwrap(store.scanTask)
+        try await waitForHeldScans(scans, count: 1)
+        store.remove(gone.file)
+        // The scan read the folder before the file went.
+        scans.land(0, with: RecentCaptureScan(captures: [kept, gone]))
+        await scan.value
+
+        XCTAssertEqual(store.captures.map(\.file), [kept.file])
     }
 
     func testARescanDropsDeletedFilesAndRemoveDropsOneAtOnce() async throws {
@@ -557,6 +650,42 @@ final class RecentCapturesTests: XCTestCase {
 
         guard case .missing = outcome else { return XCTFail("Expected missing, got \(outcome)") }
         XCTAssertNil(actions.pasteboard.data(forType: .png))
+    }
+
+    func testReadTellsAFailedReadFromAFileThatIsGone() throws {
+        let file = URL(fileURLWithPath: "/Captures/\(Self.name(1))")
+        let failing: (URL) throws -> Data = { _ in throw CocoaError(.fileReadNoPermission) }
+
+        guard case .failed(let error) = CaptureFileActions.read(file, fileExists: { _ in true }, readFile: failing) else {
+            return XCTFail("A file that is there but can't be read is a failure")
+        }
+        XCTAssertEqual((error as? CocoaError)?.code, .fileReadNoPermission)
+
+        // Gone between the check and the read.
+        var checks = 0
+        let goneDuringRead = CaptureFileActions.read(
+            file,
+            fileExists: { _ in
+                checks += 1
+                return checks == 1
+            },
+            readFile: failing)
+        guard case .missing = goneDuringRead else { return XCTFail("Expected missing, got \(goneDuringRead)") }
+
+        var reads = 0
+        let gone = CaptureFileActions.read(
+            file,
+            fileExists: { _ in false },
+            readFile: { _ in
+                reads += 1
+                return Data()
+            })
+        guard case .missing = gone else { return XCTFail("Expected missing, got \(gone)") }
+        XCTAssertEqual(reads, 0)
+
+        guard case .read(let data) = CaptureFileActions.read(file, fileExists: { _ in true }, readFile: { _ in Data([7]) })
+        else { return XCTFail("Expected the bytes") }
+        XCTAssertEqual(data, Data([7]))
     }
 
     func testCopyThatCantReadTheFileFails() async throws {

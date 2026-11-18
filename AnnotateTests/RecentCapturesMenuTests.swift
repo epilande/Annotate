@@ -206,12 +206,14 @@ final class RecentCapturesMenuTests: XCTestCase {
         XCTAssertEqual(recentItem?.keyEquivalent, "")
     }
 
-    func testTitleIsTheRelativeDayAndTime() {
+    func testTitleIsTheRelativeDayAndTime() throws {
         let locale = Locale(identifier: "en_US")
         let title = RecentCapturesMenu.title(for: Date(), locale: locale)
         XCTAssertTrue(title.hasPrefix("Today at "), title)
         XCTAssertTrue(title.hasSuffix("AM") || title.hasSuffix("PM"), title)
-        let yesterday = RecentCapturesMenu.title(for: Date().addingTimeInterval(-86_400), locale: locale)
+        // A calendar day back, which isn't always 24 hours across a daylight saving change.
+        let dayBefore = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: Date()))
+        let yesterday = RecentCapturesMenu.title(for: dayBefore, locale: locale)
         XCTAssertTrue(yesterday.hasPrefix("Yesterday at "), yesterday)
     }
 
@@ -230,6 +232,22 @@ final class RecentCapturesMenuTests: XCTestCase {
         XCTAssertFalse(note.isEnabled)
         XCTAssertEqual(submenu.items.first, note)
         XCTAssertEqual(listedFiles, [file])
+    }
+
+    func testUnreachableNoteFollowsTheChosenFolder() async throws {
+        let file = try makeCapture(1)
+        let listed = [RecentCapture(file: file, createdAt: Date())]
+        appDelegate.recentCaptures.scan = { _, _, _, _ in RecentCaptureScan(captures: listed, missedFolder: "Shots") }
+        await openStatusMenu()
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(item(.unreachableCaptureFolder)?.title, "Can't reach Shots. Showing the default folder")
+
+        appDelegate.recentCaptures.scan = { _, _, _, _ in RecentCaptureScan(captures: listed, missedFolder: "Archive") }
+        await openStatusMenu()
+
+        XCTAssertEqual(item(.unreachableCaptureFolder)?.title, "Can't reach Archive. Showing the default folder")
+        XCTAssertTrue(rows.first === row, "The same captures keep their rows")
+        XCTAssertEqual(submenu.items.filter { $0.identifier == .unreachableCaptureFolder }.count, 1)
     }
 
     func testClosingTheSubmenuLeavesOverlaysUnderTheStatusMenu() throws {
@@ -309,6 +327,31 @@ final class RecentCapturesMenuTests: XCTestCase {
 
         XCTAssertTrue(rows.isEmpty)
         XCTAssertNotNil(item(.noRecentCaptures))
+        XCTAssertTrue(alerts.isEmpty)
+    }
+
+    func testOverlappingCopiesLeaveTheLastPickOnTheClipboard() async throws {
+        let first = try makeCapture(1)
+        let second = try makeCapture(2)
+        await openStatusMenu()
+        let gate = DispatchSemaphore(value: 0)
+        let slowName = first.lastPathComponent
+        appDelegate.captureFileActions.readFile = { url in
+            // The first pick reads slowly, so without ordering it would land last.
+            if url.lastPathComponent == slowName { gate.wait() }
+            return try Data(contentsOf: url)
+        }
+
+        appDelegate.copyRecentCapture(try action(.copyRecentCapture, for: first))
+        let firstCopy = appDelegate.recentCaptureCopyTask
+        appDelegate.copyRecentCapture(try action(.copyRecentCapture, for: second))
+        let secondCopy = appDelegate.recentCaptureCopyTask
+        try await Task.sleep(for: .milliseconds(200))
+        gate.signal()
+        await firstCopy?.value
+        await secondCopy?.value
+
+        XCTAssertEqual(pasteboard.data(forType: .png), try Data(contentsOf: second))
         XCTAssertTrue(alerts.isEmpty)
     }
 

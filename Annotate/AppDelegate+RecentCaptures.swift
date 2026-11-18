@@ -39,14 +39,18 @@ final class RecentCapturesMenu: NSObject, NSMenuDelegate {
     }
 
     /// Brings the items up to date. With the same captures listed, each row keeps its item and
-    /// only its title and thumbnail change, so a scan landing while a capture's actions are open
-    /// leaves them open.
+    /// only its title and thumbnail change, as does the unreachable-folder note's title, so a
+    /// scan landing while a capture's actions are open leaves them open.
     func update() {
         let store = appDelegate.recentCaptures
         let rows = menu.items.filter { $0.identifier == .recentCapture }
         let listed = rows.compactMap { $0.representedObject as? URL }
-        let hasNote = menu.items.contains { $0.identifier == .unreachableCaptureFolder }
-        if !rows.isEmpty, listed == store.captures.map(\.file), hasNote == (store.missedFolder != nil) {
+        let note = menu.items.first { $0.identifier == .unreachableCaptureFolder }
+        if !rows.isEmpty, listed == store.captures.map(\.file), (note != nil) == (store.missedFolder != nil) {
+            // The chosen folder can change while it stays out of reach.
+            if let note, let missedFolder = store.missedFolder {
+                note.title = Self.unreachableNote(missedFolder)
+            }
             for (row, capture) in zip(rows, store.captures) {
                 row.title = Self.title(for: capture.createdAt)
                 row.image = RecentCaptureThumbnail.menuImage(store.thumbnail(for: capture))
@@ -60,8 +64,7 @@ final class RecentCapturesMenu: NSObject, NSMenuDelegate {
         let store = appDelegate.recentCaptures
         menu.removeAllItems()
         if let missedFolder = store.missedFolder {
-            menu.addItem(
-                disabledItem("Can't reach \(missedFolder). Showing the default folder", .unreachableCaptureFolder))
+            menu.addItem(disabledItem(Self.unreachableNote(missedFolder), .unreachableCaptureFolder))
         }
         if store.captures.isEmpty {
             menu.addItem(disabledItem("No Recent Captures", .noRecentCaptures))
@@ -115,6 +118,11 @@ final class RecentCapturesMenu: NSObject, NSMenuDelegate {
         return item
     }
 
+    /// The note above the list while the chosen folder can't be reached.
+    static func unreachableNote(_ folder: String) -> String {
+        "Can't reach \(folder). Showing the default folder"
+    }
+
     /// The day relative to today, and the time: "Today at 10:23 AM".
     static func title(for date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
@@ -148,12 +156,15 @@ extension AppDelegate {
     }
 
     /// Copies the capture's PNG to the clipboard. One that is gone drops out of the menu. Any
-    /// other failure says so in an alert, as a capture's would.
+    /// other failure says so in an alert, as a capture's would. Each copy waits for the one
+    /// before it, so the clipboard ends up with the capture picked last.
     @objc func copyRecentCapture(_ sender: NSMenuItem) {
         guard let file = sender.representedObject as? URL else { return }
         let actions = captureFileActions
         let folders = captureFolders
+        let previous = recentCaptureCopyTask
         recentCaptureCopyTask = Task { [weak self] in
+            await previous?.value
             switch await actions.copy(file, from: folders) {
             case .copied:
                 break

@@ -11,6 +11,8 @@ struct RecentCapture: Equatable, Sendable {
     let file: URL
     /// The file's creation date when a scan found it, or when the capture reported it saved.
     let createdAt: Date
+    /// The file's version when a scan found it. Nil for a capture recorded from its result.
+    var version: FileVersion?
 
     /// What tells two captures apart.
     var path: String { file.path }
@@ -26,6 +28,39 @@ struct RecentCapture: Equatable, Sendable {
     }
 }
 
+/// What tells two versions of a file at one path apart, so a thumbnail is made again when the
+/// file is replaced or edited.
+struct FileVersion: Equatable, Sendable {
+    let modifiedAt: Date?
+    let size: Int?
+
+    /// The version of the file at `url`, or nil when it can't be read.
+    nonisolated static func of(_ url: URL) -> FileVersion? {
+        // A URL caches the values it read, so read through a fresh copy.
+        var url = url
+        url.removeAllCachedResourceValues()
+        guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else {
+            return nil
+        }
+        return FileVersion(values)
+    }
+
+    nonisolated init(modifiedAt: Date?, size: Int?) {
+        self.modifiedAt = modifiedAt
+        self.size = size
+    }
+
+    nonisolated init(_ values: URLResourceValues) {
+        self.init(modifiedAt: values.contentModificationDate, size: values.fileSize)
+    }
+}
+
+/// A thumbnail, and the version of the file it was made from when that is known.
+struct CachedThumbnail: Sendable {
+    let image: CGImage
+    let version: FileVersion?
+}
+
 /// What one scan of the capture folders found.
 struct RecentCaptureScan: Sendable {
     /// Newest first, at most `RecentCaptureScanner.limit`.
@@ -33,8 +68,8 @@ struct RecentCaptureScan: Sendable {
     /// The chosen folder's name when it couldn't be reached, so only the default folder was
     /// scanned.
     var missedFolder: String?
-    /// Thumbnails for the captures that had none yet, by `RecentCapture.path`.
-    var thumbnails: [String: CGImage] = [:]
+    /// Thumbnails for the captures that had none of their version yet, by `RecentCapture.path`.
+    var thumbnails: [String: CachedThumbnail] = [:]
 }
 
 /// Finds saved captures in the capture folders by name: the names `FileSink` gives them.
@@ -82,7 +117,7 @@ enum RecentCaptureScanner {
     nonisolated static func captures(in folders: [URL], after cutoff: Date, limit: Int = limit) -> [RecentCapture] {
         var seen = Set<String>()
         var found: [RecentCapture] = []
-        let keys: [URLResourceKey] = [.creationDateKey, .contentModificationDateKey, .isRegularFileKey]
+        let keys: [URLResourceKey] = [.creationDateKey, .contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         for folder in folders {
             guard
                 let files = try? FileManager.default.contentsOfDirectory(
@@ -100,7 +135,7 @@ enum RecentCaptureScanner {
                 else { continue }
                 let file = realFolder.appendingPathComponent(name, isDirectory: false)
                 guard seen.insert(file.path).inserted else { continue }
-                found.append(RecentCapture(file: file, createdAt: createdAt))
+                found.append(RecentCapture(file: file, createdAt: createdAt, version: FileVersion(values)))
             }
         }
         return Array(found.sorted(by: isNewer).prefix(limit))
@@ -118,16 +153,18 @@ enum RecentCaptureScanner {
     }
 
     /// Scans the folder `bookmark` holds, when it can be reached, and `defaultFolder`, holding
-    /// the chosen folder's security scope throughout, and makes the thumbnails missing from `thumbnailed`.
-    /// Runs off the main actor.
+    /// the chosen folder's security scope throughout. Makes a thumbnail for each capture whose
+    /// version isn't the one in `thumbnailed`, by path. Runs off the main actor.
     nonisolated static func scan(
-        chosenFolder bookmark: Data?, defaultFolder: URL, after cutoff: Date, thumbnailed: Set<String>
+        chosenFolder bookmark: Data?, defaultFolder: URL, after cutoff: Date, thumbnailed: [String: FileVersion]
     ) async -> RecentCaptureScan {
         await CaptureFolderStore.withAccess(to: bookmark) { chosen in
             let captures = Self.captures(in: [chosen, defaultFolder].compactMap { $0 }, after: cutoff)
-            var thumbnails: [String: CGImage] = [:]
-            for capture in captures where !thumbnailed.contains(capture.path) {
-                thumbnails[capture.path] = RecentCaptureThumbnail.make(fromFileAt: capture.file)
+            var thumbnails: [String: CachedThumbnail] = [:]
+            for capture in captures where capture.version == nil || thumbnailed[capture.path] != capture.version {
+                if let image = RecentCaptureThumbnail.make(fromFileAt: capture.file) {
+                    thumbnails[capture.path] = CachedThumbnail(image: image, version: capture.version)
+                }
             }
             let missedFolder = chosen == nil ? bookmark.map(CaptureFolderBookmark.folderName(of:)) : nil
             return RecentCaptureScan(captures: captures, missedFolder: missedFolder, thumbnails: thumbnails)
@@ -219,16 +256,20 @@ final class RecentCaptureStore {
     /// The clock `record` and `clear` read. Tests replace it.
     var now: () -> Date = Date.init
     /// Scans the folders: the chosen folder's bookmark, the default folder, the Clear Menu
-    /// cutoff, and the paths that already have thumbnails. Tests replace it to hold a scan.
-    var scan: @Sendable (_ chosenFolder: Data?, _ defaultFolder: URL, _ cutoff: Date, _ thumbnailed: Set<String>) async
+    /// cutoff, and the file version each cached thumbnail was made from. Tests replace it to
+    /// hold a scan.
+    var scan:
+        @Sendable (_ chosenFolder: Data?, _ defaultFolder: URL, _ cutoff: Date, _ thumbnailed: [String: FileVersion]) async
         -> RecentCaptureScan = { await RecentCaptureScanner.scan(chosenFolder: $0, defaultFolder: $1, after: $2, thumbnailed: $3) }
 
     private let settings: SettingsStore
     /// The chosen folder, and the default folder, as they stand when a scan starts.
     private let folders: () -> (chosen: CaptureFolderStore, defaultFolder: URL)
-    private var thumbnails: [String: CGImage] = [:]
+    private var thumbnails: [String: CachedThumbnail] = [:]
     /// Captures recorded since the latest scan started, which it may have missed.
     private var recordedSinceScan: [RecentCapture] = []
+    /// Paths of captures found gone since the latest scan started, which it may still list.
+    private var removedSinceScan: Set<String> = []
     /// Counts scans, so only the latest one started is kept.
     private var scanGeneration = 0
 
@@ -241,7 +282,7 @@ final class RecentCaptureStore {
     private var cutoff: Date { Date(timeIntervalSince1970: settings[.recentCapturesClearedAt]) }
 
     func thumbnail(for capture: RecentCapture) -> CGImage? {
-        thumbnails[capture.path]
+        thumbnails[capture.path]?.image
     }
 
     /// Puts a capture that saved a file at the top straight away, from the result in memory,
@@ -251,10 +292,12 @@ final class RecentCaptureStore {
         guard let file = result.savedFile else { return }
         let capture = RecentCapture(file: RecentCapture.canonical(file), createdAt: now())
         recordedSinceScan.append(capture)
+        removedSinceScan.remove(capture.path)
         captures = merged([capture], into: captures)
+        prune()
         let image = result.capture.image
         thumbnailTask = Task { [weak self] in
-            let thumbnail = await Self.makeThumbnail(from: image)
+            let thumbnail = await Self.makeThumbnail(from: image, of: capture.file)
             guard let self, let thumbnail, self.captures.contains(capture) else { return }
             self.thumbnails[capture.path] = thumbnail
             self.onChange?()
@@ -262,8 +305,10 @@ final class RecentCaptureStore {
         onChange?()
     }
 
-    nonisolated private static func makeThumbnail(from image: CGImage) async -> CGImage? {
-        RecentCaptureThumbnail.make(from: image)
+    /// The thumbnail of a capture's image, with the version of the file it was saved to, so a
+    /// later scan keeps it unless the file has changed since.
+    nonisolated private static func makeThumbnail(from image: CGImage, of file: URL) async -> CachedThumbnail? {
+        RecentCaptureThumbnail.make(from: image).map { CachedThumbnail(image: $0, version: FileVersion.of(file)) }
     }
 
     /// Scans the folders again, in the background. A scan started before a later one is
@@ -272,10 +317,11 @@ final class RecentCaptureStore {
         scanGeneration += 1
         let generation = scanGeneration
         recordedSinceScan = []
+        removedSinceScan = []
         let (chosen, defaultFolder) = folders()
         let bookmark = chosen.bookmark
         let cutoff = cutoff
-        let thumbnailed = Set(thumbnails.keys)
+        let thumbnailed = thumbnails.compactMapValues(\.version)
         let scan = scan
         scanTask = Task { [weak self] in
             let found = await scan(bookmark, defaultFolder, cutoff, thumbnailed)
@@ -284,15 +330,31 @@ final class RecentCaptureStore {
     }
 
     /// Keeps what a scan found, which is the truth for every capture saved before it started.
-    /// Captures recorded since stay too, since it may have missed them.
+    /// Captures recorded since stay too, since it may have missed them, and captures found gone
+    /// since stay out, since it may have listed them.
     private func land(_ scan: RecentCaptureScan, generation: Int) {
         guard generation == scanGeneration else { return }
         missedFolder = scan.missedFolder
+        let removed = removedSinceScan
+        let found = scan.captures.filter { !removed.contains($0.path) }
+        // A capture recorded from its result keeps its thumbnail until its file changes.
+        for capture in found where scan.thumbnails[capture.path] == nil {
+            if let cached = thumbnails[capture.path], cached.version != capture.version {
+                thumbnails[capture.path] = nil
+            }
+        }
         thumbnails.merge(scan.thumbnails) { _, new in new }
-        captures = merged(recordedSinceScan, into: scan.captures)
+        captures = merged(recordedSinceScan, into: found)
+        prune()
+        onChange?()
+    }
+
+    /// Keeps the thumbnails and the captures recorded since the last scan to what is listed, so
+    /// neither grows past the limit between scans.
+    private func prune() {
         let listed = Set(captures.map(\.path))
         thumbnails = thumbnails.filter { listed.contains($0.key) }
-        onChange?()
+        recordedSinceScan.removeAll { !listed.contains($0.path) }
     }
 
     /// Clear Menu: hides every capture made until now. The files stay where they are.
@@ -309,6 +371,7 @@ final class RecentCaptureStore {
         let path = RecentCapture.canonical(file).path
         captures.removeAll { $0.path == path }
         recordedSinceScan.removeAll { $0.path == path }
+        removedSinceScan.insert(path)
         thumbnails[path] = nil
         onChange?()
     }
