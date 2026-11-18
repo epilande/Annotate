@@ -217,6 +217,36 @@ final class StatusIconConfirmationTests: XCTestCase {
         }
     }
 
+    func testAlwaysOnConfirmationIsSolidAndReadableOverALightMenuBar() throws {
+        // Always-On hands the icon its color at 70%, which over a light menu bar would blend
+        // magenta and red light enough to drop a white glyph below 3:1.
+        for background in [NSColor.white, NSColor(white: 0.93, alpha: 1)] {
+            for color in [NSColor.magenta, .systemRed] {
+                for confirmation in [CaptureConfirmation.saved, .copied] {
+                    let icon = try XCTUnwrap(
+                        AppDelegate.statusIcon(color: color.withAlphaComponent(0.7), showing: confirmation))
+                    // 4x, so the thin strokes' middles are fully inked.
+                    let rendered = render(icon, scale: 4, over: background)
+                    let label = "\(confirmation) in \(color) over \(background)"
+                    let fill = try XCTUnwrap(
+                        self.color(in: rendered, atPoint: NSPoint(x: 3, y: 9), scale: 4).usingColorSpace(.deviceRGB))
+                    let solid = try XCTUnwrap(color.usingColorSpace(.deviceRGB))
+                    XCTAssertEqual(fill.redComponent, solid.redComponent, accuracy: 0.05, "\(label): fill is solid")
+                    XCTAssertEqual(fill.greenComponent, solid.greenComponent, accuracy: 0.05, "\(label): fill is solid")
+                    XCTAssertEqual(fill.blueComponent, solid.blueComponent, accuracy: 0.05, "\(label): fill is solid")
+
+                    // The contrast on screen, between the fill and the glyph's most inked pixel.
+                    let glyph = try XCTUnwrap(mostGlyphLikePixel(in: rendered, fill: fill))
+                    let fillLuminance = try XCTUnwrap(ConfirmationIcon.relativeLuminance(of: fill))
+                    let glyphLuminance = try XCTUnwrap(ConfirmationIcon.relativeLuminance(of: glyph))
+                    let contrast =
+                        (max(fillLuminance, glyphLuminance) + 0.05) / (min(fillLuminance, glyphLuminance) + 0.05)
+                    XCTAssertGreaterThanOrEqual(contrast, 3, label)
+                }
+            }
+        }
+    }
+
     // MARK: - Glyph shape and position
 
     func testConfirmationGlyphsKeepTheirAspectRatio() throws {
@@ -280,8 +310,11 @@ final class StatusIconConfirmationTests: XCTestCase {
 
     // MARK: - Pixels
 
-    /// `image` drawn at `size` points into a bitmap of exactly `scale` pixels per point.
-    private func render(_ image: NSImage, size: NSSize = NSSize(width: 18, height: 18), scale: Int) -> NSBitmapImageRep {
+    /// `image` drawn at `size` points into a bitmap of exactly `scale` pixels per point, over
+    /// `background` when given, else over transparent pixels.
+    private func render(
+        _ image: NSImage, size: NSSize = NSSize(width: 18, height: 18), scale: Int, over background: NSColor? = nil
+    ) -> NSBitmapImageRep {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int((size.width * CGFloat(scale)).rounded(.up)),
@@ -296,6 +329,10 @@ final class StatusIconConfirmationTests: XCTestCase {
         rep.size = NSSize(width: CGFloat(rep.pixelsWide) / CGFloat(scale), height: CGFloat(rep.pixelsHigh) / CGFloat(scale))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        if let background {
+            background.setFill()
+            NSRect(origin: .zero, size: size).fill()
+        }
         image.draw(in: NSRect(origin: .zero, size: size))
         NSGraphicsContext.restoreGraphicsState()
         return rep
@@ -306,6 +343,28 @@ final class StatusIconConfirmationTests: XCTestCase {
         let x = Int(point.x * CGFloat(scale))
         let row = rep.pixelsHigh - 1 - Int(point.y * CGFloat(scale))
         return rep.colorAt(x: x, y: row) ?? .clear
+    }
+
+    /// The pixel inside the ring furthest from `fill`, which is the glyph's most inked one.
+    /// Only pixels within 6.5 pt of the middle count, inside the ring's 7.25 pt inner edge, so
+    /// the background around the icon never does.
+    private func mostGlyphLikePixel(in rep: NSBitmapImageRep, fill: NSColor) -> NSColor? {
+        let middle = CGFloat(rep.pixelsWide) / 2
+        let reach = 6.5 * CGFloat(rep.pixelsWide) / 18
+        var best: (NSColor, CGFloat)?
+        for row in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard hypot(CGFloat(x) + 0.5 - middle, CGFloat(row) + 0.5 - middle) <= reach,
+                    let pixel = rep.colorAt(x: x, y: row)?.usingColorSpace(.deviceRGB)
+                else { continue }
+                let distance = abs(pixel.redComponent - fill.redComponent) + abs(pixel.greenComponent - fill.greenComponent)
+                    + abs(pixel.blueComponent - fill.blueComponent)
+                if distance > (best?.1 ?? 0) {
+                    best = (pixel, distance)
+                }
+            }
+        }
+        return best?.0
     }
 
     /// Opaque pixels inside the ring that `matches` picks out.

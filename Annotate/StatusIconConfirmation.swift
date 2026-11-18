@@ -29,9 +29,13 @@ enum CaptureConfirmation: String, Equatable {
     }
 
     /// The status item's icon while this confirmation is up: the glyph in a ring filled with
-    /// `ringColor`. It draws at whatever scale it is shown at, so it stays sharp at 1x and 2x.
+    /// `ringColor`, made opaque. Always-On hands over its translucent color, which would let the
+    /// menu bar show through and could drop the glyph's contrast below 3:1; the Always-On pencil
+    /// keeps the translucent ring. It draws at whatever scale it is shown at, so it stays sharp
+    /// at 1x and 2x.
     @MainActor
     func statusIcon(ringColor: NSColor) -> NSImage? {
+        let ringColor = ringColor.withAlphaComponent(1)
         guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil),
             let ink = ConfirmationIcon.inkBounds(of: symbol, named: symbolName)
         else { return nil }

@@ -367,13 +367,19 @@ extension AppDelegate {
     /// Shows a saved capture in Finder, from its notification. An interactive overlay sits
     /// above Finder's windows, so it closes first and keeps its drawings for the next time it
     /// opens. Always-On overlays let clicks through and stay. Holds the chosen folder's scope,
-    /// so Finder can be handed a file saved there.
+    /// so Finder can be handed a file saved there, and so the file can be checked first: a
+    /// capture deleted since its notification leaves the overlay, and any Capture Area pick on
+    /// it, alone, since Finder would have nothing to show.
     func showCaptureInFinder(_ file: URL) {
-        if isInteractiveOverlayOpen {
-            overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
-            hideAllOverlays()
-        }
         captureFolders.withAccess { _ in
+            guard FileManager.default.fileExists(atPath: file.path) else {
+                log.notice("Show in Finder: the capture is no longer there")
+                return
+            }
+            if isInteractiveOverlayOpen {
+                overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
+                hideAllOverlays()
+            }
             revealInFinder([file])
         }
     }

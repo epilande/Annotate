@@ -1422,13 +1422,42 @@ final class AnnotateCommandTests: XCTestCase {
         statusIconShows(.saved, in: .gray)
     }
 
-    func testShowInFinderClosesTheInteractiveOverlayAndKeepsItsDrawings() {
+    func testAlwaysOnConfirmationFillsItsRingSolidAndThePencilStaysTranslucent() async throws {
+        try useStubCapture()
+        appDelegate.setColor(.magenta)
+        appDelegate.toggleAlwaysOnMode()
+        let alwaysOnColor = NSColor.magenta.withAlphaComponent(0.7)
+        statusIconShows(nil, in: alwaysOnColor)
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        statusIconShows(.saved, in: .magenta)
+        let fill = try XCTUnwrap(
+            statusIcon.flatMap { NSBitmapImageRep(data: $0.tiffRepresentation ?? Data()) }?
+                .colorAt(x: 3, y: 9))
+        XCTAssertEqual(fill.alphaComponent, 1, accuracy: 0.01, "The confirmation ring is solid in Always-On")
+
+        runConfirmationExpiries()
+        statusIconShows(nil, in: alwaysOnColor)
+    }
+
+    /// A file standing in for a saved capture, removed when the test ends.
+    private func makeSavedCaptureFile() throws -> URL {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Annotate \(UUID().uuidString).png", isDirectory: false)
+        try Data([0x89]).write(to: file)
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        return file
+    }
+
+    func testShowInFinderClosesTheInteractiveOverlayAndKeepsItsDrawings() throws {
         var revealed: [[URL]] = []
         appDelegate.revealInFinder = { revealed.append($0) }
         testDefaults.settings[.clearDrawingsOnStart] = true
         run(.show)
         overlay.overlayView.paths.append(TestFactory.createDrawingPath())
-        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+        let file = try makeSavedCaptureFile()
 
         appDelegate.showCaptureInFinder(file)
 
@@ -1438,11 +1467,11 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(overlay.overlayView.paths.count, 1, "The app closed it, so the drawings stay")
     }
 
-    func testShowInFinderLeavesAlwaysOnOverlaysUp() {
+    func testShowInFinderLeavesAlwaysOnOverlaysUp() throws {
         var revealed: [[URL]] = []
         appDelegate.revealInFinder = { revealed.append($0) }
         appDelegate.toggleAlwaysOnMode()
-        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+        let file = try makeSavedCaptureFile()
 
         appDelegate.showCaptureInFinder(file)
 
@@ -1451,16 +1480,32 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(revealed, [[file]])
     }
 
-    func testShowInFinderWithNoOverlayOnlyRevealsTheFile() {
+    func testShowInFinderWithNoOverlayOnlyRevealsTheFile() throws {
         var revealed: [[URL]] = []
         appDelegate.revealInFinder = { revealed.append($0) }
-        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+        let file = try makeSavedCaptureFile()
 
         appDelegate.showCaptureInFinder(file)
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         XCTAssertFalse(appDelegate.alwaysOnMode)
         XCTAssertEqual(revealed, [[file]])
+    }
+
+    func testShowInFinderForADeletedCaptureLeavesTheOverlayAndItsPickAlone() throws {
+        try useStubCapture()
+        var revealed: [[URL]] = []
+        appDelegate.revealInFinder = { revealed.append($0) }
+        let file = try makeSavedCaptureFile()
+        try FileManager.default.removeItem(at: file)
+        run(.capture(.area))
+        XCTAssertTrue(overlay.isRegionPickerOpen)
+
+        appDelegate.showCaptureInFinder(file)
+
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
+        XCTAssertTrue(overlay.isRegionPickerOpen, "The pick in progress goes on")
+        XCTAssertTrue(revealed.isEmpty, "Finder has nothing to show")
     }
 
     // MARK: - Capture Area
