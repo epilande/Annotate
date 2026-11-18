@@ -245,12 +245,12 @@ struct CaptureSettingsView: View {
 
     private func showFolder() {
         folders.withAccess { chosen in
-            switch Self.prepareFolder(chosen ?? FileSink.defaultFolder) {
+            switch CaptureFileActions.prepareFolder(chosen ?? FileSink.defaultFolder) {
             case .success(let folder):
                 folderError = nil
-                NSWorkspace.shared.open(folder)
+                _ = CaptureFileActions().open(folder)
             case .failure(let error):
-                folderError = Self.folderErrorMessage(error)
+                folderError = CaptureFileActions.folderErrorMessage(error)
             }
         }
     }
@@ -286,17 +286,5 @@ struct CaptureSettingsView: View {
         folders.useDefaultFolder()
         folderError = nil
         folderState = folders.state
-    }
-
-    /// Creates `folder` if it is missing, so Finder has something to open.
-    static func prepareFolder(_ folder: URL) -> Result<URL, Error> {
-        Result {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            return folder
-        }
-    }
-
-    static func folderErrorMessage(_ error: Error) -> String {
-        "Couldn't create the folder. \(error.localizedDescription)"
     }
 }

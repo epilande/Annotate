@@ -1453,7 +1453,7 @@ final class AnnotateCommandTests: XCTestCase {
 
     func testShowInFinderClosesTheInteractiveOverlayAndKeepsItsDrawings() throws {
         var revealed: [[URL]] = []
-        appDelegate.revealInFinder = { revealed.append($0) }
+        appDelegate.captureFileActions.reveal = { revealed.append($0) }
         testDefaults.settings[.clearDrawingsOnStart] = true
         run(.show)
         overlay.overlayView.paths.append(TestFactory.createDrawingPath())
@@ -1469,7 +1469,7 @@ final class AnnotateCommandTests: XCTestCase {
 
     func testShowInFinderLeavesAlwaysOnOverlaysUp() throws {
         var revealed: [[URL]] = []
-        appDelegate.revealInFinder = { revealed.append($0) }
+        appDelegate.captureFileActions.reveal = { revealed.append($0) }
         appDelegate.toggleAlwaysOnMode()
         let file = try makeSavedCaptureFile()
 
@@ -1482,7 +1482,7 @@ final class AnnotateCommandTests: XCTestCase {
 
     func testShowInFinderWithNoOverlayOnlyRevealsTheFile() throws {
         var revealed: [[URL]] = []
-        appDelegate.revealInFinder = { revealed.append($0) }
+        appDelegate.captureFileActions.reveal = { revealed.append($0) }
         let file = try makeSavedCaptureFile()
 
         appDelegate.showCaptureInFinder(file)
@@ -1495,7 +1495,7 @@ final class AnnotateCommandTests: XCTestCase {
     func testShowInFinderForADeletedCaptureLeavesTheOverlayAndItsPickAlone() throws {
         try useStubCapture()
         var revealed: [[URL]] = []
-        appDelegate.revealInFinder = { revealed.append($0) }
+        appDelegate.captureFileActions.reveal = { revealed.append($0) }
         let file = try makeSavedCaptureFile()
         try FileManager.default.removeItem(at: file)
         run(.capture(.area))

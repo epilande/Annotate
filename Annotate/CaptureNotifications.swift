@@ -62,7 +62,25 @@ struct CaptureNotice {
         let ratio = min(1, CGFloat(maxPixels) / CGFloat(longestSide))
         let width = max(1, Int((CGFloat(image.width) * ratio).rounded()))
         let height = max(1, Int((CGFloat(image.height) * ratio).rounded()))
-        let space = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
+        let url = folder.appendingPathComponent("AnnotateCapture-\(UUID().uuidString).png", isDirectory: false)
+        guard let thumbnail = image.resized(width: width, height: height),
+            let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(destination, thumbnail, nil)
+        return CGImageDestinationFinalize(destination) ? url : nil
+    }
+
+    static let showInFinderAction = "com.epilande.Annotate.capture.showInFinder"
+    static let savedCategory = "com.epilande.Annotate.capture.saved"
+    static let filePathKey = "filePath"
+    static let thumbnailMaxPixels = 640
+}
+
+extension CGImage {
+    /// This image redrawn at `width` by `height` pixels with high-quality interpolation, in its
+    /// own RGB color space. Nil for an image in any other color model.
+    nonisolated func resized(width: Int, height: Int) -> CGImage? {
+        let space = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
         guard let space, space.model == .rgb,
             let context = CGContext(
                 data: nil,
@@ -74,19 +92,9 @@ struct CaptureNotice {
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
         else { return nil }
         context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        let url = folder.appendingPathComponent("AnnotateCapture-\(UUID().uuidString).png", isDirectory: false)
-        guard let thumbnail = context.makeImage(),
-            let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
-        else { return nil }
-        CGImageDestinationAddImage(destination, thumbnail, nil)
-        return CGImageDestinationFinalize(destination) ? url : nil
+        context.draw(self, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
-
-    static let showInFinderAction = "com.epilande.Annotate.capture.showInFinder"
-    static let savedCategory = "com.epilande.Annotate.capture.saved"
-    static let filePathKey = "filePath"
-    static let thumbnailMaxPixels = 640
 }
 
 /// Sends the notification a finished capture gets. Only the Capture pane may ask for
