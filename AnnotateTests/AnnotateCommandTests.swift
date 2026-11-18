@@ -16,6 +16,10 @@ final class AnnotateCommandTests: XCTestCase {
     /// The detail text of each alert in `captureProblemAlerts`.
     var captureProblemDetails: [String] = []
     var captureNotifier = StubCaptureNotifier()
+    /// Expiries of the status item's capture checkmark, which capture tests run by hand.
+    var confirmationExpiries: [@MainActor () -> Void] = []
+    /// What captures announced to VoiceOver.
+    var announcements: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -580,6 +584,10 @@ final class AnnotateCommandTests: XCTestCase {
             self.captureProblemDetails.append(detail)
         }
         appDelegate.privacyPromptPollInterval = 0.02
+        confirmationExpiries = []
+        announcements = []
+        appDelegate.captureConfirmation.schedule = { [unowned self] _, expiry in self.confirmationExpiries.append(expiry) }
+        appDelegate.announceForAccessibility = { [unowned self] in self.announcements.append($0) }
         captureNotifier = StubCaptureNotifier()
         appDelegate.captureNotifier = captureNotifier
         appDelegate.captureService = CaptureService(
@@ -1228,6 +1236,205 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(item.title, "Capture Screen")
         XCTAssertEqual(item.keyEquivalent, "s")
         XCTAssertEqual(item.keyEquivalentModifierMask, .command)
+    }
+
+    // MARK: - Capture confirmation
+
+    private var statusIcon: NSImage? { appDelegate.statusItem.button?.image }
+
+    /// Whether the status item shows `symbolName` in a `color` circle, compared by pixels.
+    private func statusIconShows(_ symbolName: String, in color: NSColor, file: StaticString = #filePath, line: UInt = #line) {
+        let expected = AppDelegate.statusIcon(color: color, symbolName: symbolName, description: "")
+        XCTAssertNotNil(expected, file: file, line: line)
+        XCTAssertEqual(
+            statusIcon?.tiffRepresentation,
+            expected?.tiffRepresentation,
+            "The status item should show \(symbolName) in \(color)",
+            file: file,
+            line: line)
+    }
+
+    private func runConfirmationExpiries() {
+        let expiries = confirmationExpiries
+        confirmationExpiries = []
+        expiries.forEach { $0() }
+    }
+
+    func testCaptureShowsACheckmarkThenGivesTheIconBack() async throws {
+        try useStubCapture()
+        statusIconShows("pencil", in: .gray)
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        statusIconShows("checkmark", in: .gray)
+        XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture saved")
+        XCTAssertEqual(announcements, ["Capture saved"])
+
+        runConfirmationExpiries()
+
+        statusIconShows("pencil", in: .gray)
+        XCTAssertEqual(statusIcon?.accessibilityDescription, "Annotate")
+        XCTAssertFalse(appDelegate.captureConfirmation.isShowing)
+    }
+
+    func testCopyOnlyCaptureAnnouncesTheCopy() async throws {
+        try useStubCapture()
+        testDefaults.settings[.afterCapture] = .copy
+        run(.show)
+
+        XCTAssertEqual(run(.capture(.screen)), .ran)
+        await finishCaptures()
+
+        statusIconShows("checkmark", in: appDelegate.currentColor)
+        XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture copied")
+        XCTAssertEqual(announcements, ["Capture copied"])
+    }
+
+    func testCaptureWhoseSaveFailedConfirmsTheCopy() async throws {
+        let (_, pasteboard) = try useStubCapture()
+        appDelegate.captureService = CaptureService(
+            source: StubDisplayCapturing(
+                snapshotImage: CaptureTestImages.solid(width: 32, height: 20, RGBA(r: 0, g: 0, b: 255, a: 255))),
+            sinks: [FailingSink(destination: .file), ClipboardSink(pasteboard: pasteboard)])
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        XCTAssertEqual(captureProblemAlerts, ["Couldn't Save. Copied to Clipboard"])
+        XCTAssertEqual(announcements, ["Capture copied"])
+        statusIconShows("checkmark", in: .gray)
+    }
+
+    func testFailedCaptureShowsNoCheckmark() async throws {
+        try useStubCapture(source: StubDisplayCapturing(snapshotImage: nil))
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        XCTAssertEqual(captureProblemAlerts, ["Capture Failed"])
+        XCTAssertTrue(announcements.isEmpty)
+        XCTAssertTrue(confirmationExpiries.isEmpty)
+        statusIconShows("pencil", in: .gray)
+    }
+
+    func testAnotherCaptureRestartsTheCheckmark() async throws {
+        try useStubCapture()
+        appDelegate.captureScreen()
+        await finishCaptures()
+        let firstExpiry = try XCTUnwrap(confirmationExpiries.first)
+        confirmationExpiries = []
+
+        testDefaults.settings[.afterCapture] = .copy
+        appDelegate.captureScreen()
+        await finishCaptures()
+        firstExpiry()
+
+        statusIconShows("checkmark", in: .gray)
+        XCTAssertEqual(statusIcon?.accessibilityDescription, "Capture copied", "The checkmark says what it confirms now")
+        XCTAssertEqual(announcements, ["Capture saved", "Capture copied"])
+
+        runConfirmationExpiries()
+        statusIconShows("pencil", in: .gray)
+    }
+
+    func testTheIconComesBackAsTheOverlayLeftIt() async throws {
+        try useStubCapture()
+        appDelegate.captureScreen()
+        await finishCaptures()
+
+        // Opening the overlay under the checkmark changes its circle, not its symbol.
+        run(.show)
+        statusIconShows("checkmark", in: appDelegate.currentColor)
+
+        runConfirmationExpiries()
+        statusIconShows("pencil", in: appDelegate.currentColor)
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+        run(.hide)
+        appDelegate.setColor(.systemBlue)
+        statusIconShows("checkmark", in: .gray)
+
+        runConfirmationExpiries()
+        statusIconShows("pencil", in: .gray)
+    }
+
+    func testTheCheckmarkEndsOnItsOwn() async throws {
+        try useStubCapture()
+        appDelegate.captureConfirmation.schedule = StatusIconConfirmation.runLoopTimer
+        appDelegate.captureConfirmation.duration = 0.05
+
+        appDelegate.captureScreen()
+        await finishCaptures()
+        statusIconShows("checkmark", in: .gray)
+        // An async test runs inside a main-queue job, whose nested run loop runs the timer
+        // but nothing queued on the main queue.
+        runLoop { !self.appDelegate.captureConfirmation.isShowing }
+
+        statusIconShows("pencil", in: .gray)
+    }
+
+    func testCaptureAreaShowsTheCheckmark() async throws {
+        try useStubCapture()
+        run(.capture(.area))
+
+        try drag(from: NSPoint(x: 80, y: 60), to: .zero)
+        await finishCaptures()
+
+        XCTAssertEqual(announcements, ["Capture saved"])
+        statusIconShows("checkmark", in: appDelegate.currentColor)
+    }
+
+    func testCaptureActionShowsTheCheckmark() async throws {
+        try useStubCapture()
+
+        _ = try await appDelegate.captureForShortcuts(.screen)
+        await finishCaptures()
+
+        XCTAssertEqual(announcements, ["Capture saved"])
+        statusIconShows("checkmark", in: .gray)
+    }
+
+    func testShowInFinderClosesTheInteractiveOverlayAndKeepsItsDrawings() {
+        var revealed: [[URL]] = []
+        appDelegate.revealInFinder = { revealed.append($0) }
+        testDefaults.settings[.clearDrawingsOnStart] = true
+        run(.show)
+        overlay.overlayView.paths.append(TestFactory.createDrawingPath())
+        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+
+        appDelegate.showCaptureInFinder(file)
+
+        XCTAssertFalse(appDelegate.isInteractiveOverlayOpen, "The overlay would cover Finder")
+        XCTAssertEqual(revealed, [[file]])
+        run(.show)
+        XCTAssertEqual(overlay.overlayView.paths.count, 1, "The app closed it, so the drawings stay")
+    }
+
+    func testShowInFinderLeavesAlwaysOnOverlaysUp() {
+        var revealed: [[URL]] = []
+        appDelegate.revealInFinder = { revealed.append($0) }
+        appDelegate.toggleAlwaysOnMode()
+        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+
+        appDelegate.showCaptureInFinder(file)
+
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(revealed, [[file]])
+    }
+
+    func testShowInFinderWithNoOverlayOnlyRevealsTheFile() {
+        var revealed: [[URL]] = []
+        appDelegate.revealInFinder = { revealed.append($0) }
+        let file = URL(fileURLWithPath: "/tmp/Annotate 2026-11-17.png")
+
+        appDelegate.showCaptureInFinder(file)
+
+        XCTAssertTrue(visibleOverlays.isEmpty)
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertEqual(revealed, [[file]])
     }
 
     // MARK: - Capture Area

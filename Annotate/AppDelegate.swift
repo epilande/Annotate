@@ -40,7 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// The folder chosen for captures in Settings.
     lazy var captureFolders = CaptureFolderStore(settings: settings)
     /// Sends the notification a finished capture gets. Tests swap in a stub.
-    lazy var captureNotifier: CaptureNotifying = SystemCaptureNotifier.forThisProcess(folders: captureFolders)
+    lazy var captureNotifier: CaptureNotifying = SystemCaptureNotifier.forThisProcess { [weak self] file in
+        self?.showCaptureInFinder(file)
+    }
     /// The latest capture. The next one waits for it, and tests await it.
     var captureTask: Task<Void, Never>?
     /// Capture problems waiting for their alert, oldest first. See `queueCaptureProblemAlert`.
@@ -78,6 +80,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// Overlays closed by the app rather than the user, which keep their drawings the next
     /// time they open even with Clear Drawings on Start.
     var overlaysKeepingDrawings: Set<ObjectIdentifier> = []
+    /// The circle color `updateStatusBarIcon(with:)` was last given, which the pencil comes
+    /// back in when a capture's checkmark ends.
+    private(set) var statusIconColor: NSColor = .gray
+    /// The status item's checkmark after a capture. Tests shorten it or run its expiry by hand.
+    lazy var captureConfirmation = StatusIconConfirmation { [weak self] in self?.renderStatusIcon() }
+    /// What the checkmark showing now confirms.
+    var shownCaptureConfirmation: CaptureConfirmation?
+    /// Speaks a capture's confirmation to VoiceOver. Tests replace it.
+    var announceForAccessibility: (String) -> Void = { message in
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ])
+    }
+    /// Shows files in Finder. Tests replace it so Finder stays put.
+    var revealInFinder: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
     /// Overlays Capture Area opened from Always-On. They keep Always-On's Persist fade until
     /// the picker closes, so drawings Always-On still shows past their fade stay for the pick
     /// and the capture.
@@ -194,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         localMouseClickMonitor = nil
         localMouseUpMonitor = nil
         localFlagsChangedMonitor = nil
+        captureConfirmation.end()
     }
 
     @MainActor
@@ -1141,56 +1163,67 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         SettingsWindowManager.shared.show()
     }
 
-    /// Updates the status bar icon by layering a colored circle with a pencil.
-    /// - Parameter color: The color to apply to the circle.
+    /// Makes `color` the status item's circle color: the annotation color while an overlay is
+    /// up, gray while it is hidden. A capture's checkmark keeps showing until it ends, and the
+    /// pencil then comes back in the latest color.
     func updateStatusBarIcon(with color: NSColor) {
-        let pencilSymbolName = "pencil"
-        let iconSize = NSSize(width: 18, height: 18)
+        statusIconColor = color
+        renderStatusIcon()
+    }
 
+    /// Draws the status item from the current state: the pencil, or the checkmark while a
+    /// capture's confirmation is up.
+    func renderStatusIcon() {
+        guard let button = statusItem?.button else { return }
+        let confirmation = captureConfirmation.isShowing ? shownCaptureConfirmation : nil
+        // Without the symbol, the icon already showing beats an empty status item.
+        guard
+            let image = Self.statusIcon(
+                color: statusIconColor,
+                symbolName: confirmation == nil ? "pencil" : "checkmark",
+                description: confirmation?.announcement ?? "Annotate")
+        else { return }
+        button.image = image
+    }
+
+    /// A colored circle with a white symbol in it.
+    static func statusIcon(color: NSColor, symbolName: String, description: String) -> NSImage? {
+        guard
+            let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil),
+            let tinted = symbol.copy() as? NSImage
+        else {
+            return nil
+        }
+        let iconSize = NSSize(width: 18, height: 18)
         let compositeImage = NSImage(size: iconSize)
         compositeImage.lockFocus()
 
-        // Draw the circle outline
-        let circleFrame = NSRect(origin: NSPoint(x: 1, y: 1), size: NSSize(width: 16, height: 16))  // Slight inset for stroke
-        let circlePath = NSBezierPath(ovalIn: circleFrame)
+        // Slight inset for the stroke.
+        let circlePath = NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: 16, height: 16))
         color.setStroke()
         circlePath.lineWidth = 1.5
         circlePath.stroke()
 
-        // Load the pencil image
-        guard
-            let pencilImage = NSImage(
-                systemSymbolName: pencilSymbolName, accessibilityDescription: "Pencil")
-        else {
-            print("Failed to load system symbol: \(pencilSymbolName)")
-            return
-        }
-
-        let coloredPencil = pencilImage.copy() as! NSImage
-        coloredPencil.lockFocus()
+        tinted.lockFocus()
         NSColor.white.set()
-        let pencilBounds = NSRect(origin: .zero, size: pencilImage.size)
-        pencilBounds.fill(using: .sourceIn)  // Tint the image white
-        coloredPencil.unlockFocus()
+        NSRect(origin: .zero, size: symbol.size).fill(using: .sourceIn)
+        tinted.unlockFocus()
 
-        // Center and draw the white pencil icon
-        let pencilSize = NSSize(width: 11, height: 11)
-        let pencilOrigin = NSPoint(
-            x: (iconSize.width - pencilSize.width) / 2, y: (iconSize.height - pencilSize.height) / 2
-        )
-        coloredPencil.draw(
-            in: NSRect(origin: pencilOrigin, size: pencilSize),
+        let symbolSize = NSSize(width: 11, height: 11)
+        let symbolOrigin = NSPoint(
+            x: (iconSize.width - symbolSize.width) / 2, y: (iconSize.height - symbolSize.height) / 2)
+        tinted.draw(
+            in: NSRect(origin: symbolOrigin, size: symbolSize),
             from: .zero,
             operation: .sourceOver,
             fraction: 1.0)
 
         compositeImage.unlockFocus()
         compositeImage.isTemplate = false
-
-        // Set the composite image to the status bar button
-        statusItem?.button?.image = compositeImage
+        compositeImage.accessibilityDescription = description
+        return compositeImage
     }
-    
+
     func setupApplicationMenu() {
         guard let mainMenu = NSApp.mainMenu,
               let appMenuItem = mainMenu.items.first,

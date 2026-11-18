@@ -328,11 +328,15 @@ extension AppDelegate {
             now: view.fadeClock())
     }
 
-    /// A system notification, when allowed, and the overlay's HUD, when it is open. A problem
-    /// takes the HUD's place, and shows even with the overlay closed.
+    /// A system notification, when allowed, the status item's checkmark and a VoiceOver
+    /// announcement, and the overlay's HUD, when it is open. A problem takes the HUD's place,
+    /// and shows even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
         if let notice = CaptureNotice(result) {
             captureNotifier.post(notice)
+        }
+        if let confirmation = CaptureConfirmation(result) {
+            confirmCapture(confirmation)
         }
         if let problem = CaptureProblem(result) {
             reportCaptureProblem(problem, on: overlay)
@@ -343,6 +347,33 @@ extension AppDelegate {
             overlay.showToggleFeedback("Saved \(file.lastPathComponent)", icon: "📸")
         } else if result.copiedToClipboard {
             overlay.showToggleFeedback("Copied to Clipboard", icon: "📋")
+        }
+    }
+
+    /// Swaps the status item's pencil for a checkmark for `captureConfirmation.duration`, and
+    /// tells VoiceOver. A capture during the checkmark restarts its time.
+    func confirmCapture(_ confirmation: CaptureConfirmation) {
+        shownCaptureConfirmation = confirmation
+        let wasShowing = captureConfirmation.isShowing
+        captureConfirmation.show()
+        // A first show draws the checkmark. One already up may now confirm something else.
+        if wasShowing {
+            renderStatusIcon()
+        }
+        announceForAccessibility(confirmation.announcement)
+    }
+
+    /// Shows a saved capture in Finder, from its notification. An interactive overlay sits
+    /// above Finder's windows, so it closes first and keeps its drawings for the next time it
+    /// opens. Always-On overlays let clicks through and stay. Holds the chosen folder's scope,
+    /// so Finder can be handed a file saved there.
+    func showCaptureInFinder(_ file: URL) {
+        if isInteractiveOverlayOpen {
+            overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
+            hideAllOverlays()
+        }
+        captureFolders.withAccess { _ in
+            revealInFinder([file])
         }
     }
 

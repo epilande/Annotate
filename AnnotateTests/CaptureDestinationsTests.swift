@@ -482,7 +482,7 @@ final class CaptureDestinationsTests: XCTestCase {
     func testSwiftPMTestProcessGetsTheSilentNotifier() throws {
         try XCTSkipIf(Bundle.main.bundleURL.pathExtension == "app", "Xcode hosts tests inside Annotate.app")
 
-        XCTAssertTrue(SystemCaptureNotifier.forThisProcess(folders: folders) is SilentCaptureNotifier)
+        XCTAssertTrue(SystemCaptureNotifier.forThisProcess { _ in } is SilentCaptureNotifier)
     }
 
     // MARK: - Capture pane
