@@ -2354,7 +2354,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 window.invalidateCursorRects(for: window.overlayView)
                 window.overlayView.updateCursor()
             }
-            appDelegate.updateCurrentToolMenuItem(to: ToolType.select.displayName)
+            appDelegate.updateCurrentToolMenuItem(to: .select)
         } else {
             currentTool = .select
         }
