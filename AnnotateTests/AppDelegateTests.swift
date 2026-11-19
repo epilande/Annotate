@@ -170,6 +170,51 @@ final class AppDelegateTests: XCTestCase, Sendable {
         try assertToolMenuShows(.eraser)
     }
 
+    /// The status menu reads the overlay on the pointer's display, then the key overlay, then the
+    /// main screen's, then the rest in display order, never whichever the dictionary yields first.
+    /// Integers stand in for displays.
+    func testOverlaysByMenuPreferenceFavorThePointerThenTheKeyOverlay() throws {
+        let overlays = (0..<5).map { _ in
+            KeyReportingOverlayWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false)
+        }
+        defer { overlays.forEach { $0.close() } }
+        let byScreen = Dictionary(uniqueKeysWithValues: overlays.enumerated().map { ($0.offset, $0.element) })
+        func first(pointer: Int?, main: Int?, screens: [Int] = [4, 3, 2, 1, 0]) -> OverlayWindow? {
+            AppDelegate.overlaysByMenuPreference(in: byScreen, pointerScreen: pointer, mainScreen: main, screens: screens)
+                .first
+        }
+
+        XCTAssertTrue(first(pointer: 3, main: 0) === overlays[3], "The pointer's display comes first")
+        overlays[1].reportsKey = true
+        XCTAssertTrue(first(pointer: 3, main: 0) === overlays[3], "The pointer's display beats the key overlay")
+        XCTAssertTrue(first(pointer: nil, main: 0) === overlays[1], "Off every display, the key overlay")
+        XCTAssertTrue(first(pointer: 9, main: 0) === overlays[1], "A pointer display with no overlay falls through")
+        overlays[1].reportsKey = false
+        XCTAssertTrue(first(pointer: nil, main: 0) === overlays[0], "With none key, the main screen's")
+        XCTAssertTrue(first(pointer: nil, main: nil) === overlays[4], "Then display order")
+        XCTAssertNil(first(pointer: nil, main: nil, screens: []), "Nothing to fall back to")
+    }
+
+    /// The Tool item reads the overlays, not the stored tool, as the menu opens: OverlayView and
+    /// the configured default tool change them without storing it.
+    func testToolItemReadsThePointersOverlayAsTheMenuOpens() throws {
+        let mainScreen = try XCTUnwrap(NSScreen.main)
+        let overlay = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])
+        appDelegate.pointerLocationOverride = NSPoint(x: mainScreen.frame.midX, y: mainScreen.frame.midY)
+        defer { appDelegate.pointerLocationOverride = nil }
+
+        overlay.overlayView.currentTool = .circle
+        try openStatusMenu()
+        appDelegate.menuDidClose(try XCTUnwrap(appDelegate.statusItem.menu))
+
+        try assertToolMenuShows(.circle)
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .pen)
+    }
+
     func testPickingAToolFromTheSubmenuSwitchesToIt() throws {
         for tool in [ToolType.rectangle, .text, .arrow] {
             try click(try toolItem(tool))
@@ -1125,6 +1170,12 @@ final class AppDelegateTests: XCTestCase, Sendable {
 
 @MainActor
 final class MockAppDelegate: AppDelegate {}
+
+/// An overlay that reports itself key when told to. XCTest can't make an overlay key.
+final class KeyReportingOverlayWindow: OverlayWindow {
+    var reportsKey = false
+    override var isKeyWindow: Bool { reportsKey }
+}
 
 /// Records requests to become key, which AppKit may refuse while the test host isn't active.
 /// `makeKeyAndOrderFront` can call `makeKey`, so this is a flag rather than a count.

@@ -492,18 +492,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
             ?? overlayWindows.values.contains { $0.isVisible && $0.isKeyWindow }
     }
 
-    /// The visible overlay the quick pickers open on: the one on the display under the pointer,
-    /// then the key overlay, then the one on the main screen, then any other. Choosing a menu
-    /// item leaves the pointer on the menu's display, which is the overlay the menu opened from.
-    /// `NSScreen.main` can't come first: on macOS 27 it names the display with the menu bar even
-    /// while the key window is an overlay on another display, so a menu opened from that other
-    /// display's overlay greyed out the pickers (#122).
+    /// The overlays in the order the status menu reads them: the one on the display under the
+    /// pointer, then the key overlay, then the one on the main screen, then the rest in display
+    /// order. Opening the status menu or choosing one of its items leaves the pointer on the
+    /// menu's display, which is the overlay the menu opened from. `NSScreen.main` can't come
+    /// first: on macOS 27 it names the display with the menu bar even while the key window is an
+    /// overlay on another display, so a menu opened from that other display's overlay greyed out
+    /// the pickers (#122).
+    private var overlaysByMenuPreference: [OverlayWindow] {
+        Self.overlaysByMenuPreference(
+            in: overlayWindows, pointerScreen: getCurrentScreen(), mainScreen: NSScreen.main, screens: NSScreen.screens)
+    }
+
+    /// `overlaysByMenuPreference` for any kind of screen key, so tests can stand in for displays
+    /// a single-display Mac doesn't have.
+    static func overlaysByMenuPreference<Screen: Hashable>(
+        in overlays: [Screen: OverlayWindow], pointerScreen: Screen?, mainScreen: Screen?, screens: [Screen]
+    ) -> [OverlayWindow] {
+        let keyOverlay = overlays.values.first { $0.isKeyWindow }
+        let candidates = [pointerScreen.flatMap { overlays[$0] }, keyOverlay, mainScreen.flatMap { overlays[$0] }]
+            + screens.map { overlays[$0] }
+        return candidates.compactMap { $0 }
+    }
+
+    /// The visible overlay the quick pickers open on, the first in `overlaysByMenuPreference`.
     private var pickerOverlayWindow: OverlayWindow? {
-        let pointerOverlay = getCurrentScreen().flatMap { overlayWindows[$0] }
-        let mainOverlay = NSScreen.main.flatMap { overlayWindows[$0] }
-        let candidates = [pointerOverlay, NSApp.keyWindow as? OverlayWindow, mainOverlay]
-            + NSScreen.screens.map { overlayWindows[$0] }
-        return candidates.lazy.compactMap { $0 }.first { $0.isVisible }
+        overlaysByMenuPreference.first { $0.isVisible }
     }
 
     private func showQuickPicker(_ mode: QuickPickerView.Mode) {
@@ -806,8 +820,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     /// overlay, the cursor highlight, and the tool also change from shortcuts, Settings, and links.
     func refreshStatusMenu() {
         updateOverlayMenuItem()
+        // Overlays can disagree: a display connected later starts on the last-used tool, while
+        // the others may be on a default tool that isn't stored.
         updateCurrentToolMenuItem(
-            to: overlayWindows.values.first?.overlayView.currentTool ?? settings[.lastUsedTool])
+            to: overlaysByMenuPreference.first?.overlayView.currentTool ?? settings[.lastUsedTool])
         updateBoardMenuItems()
         updateClickEffectsMenuItems()
         updateFadeModeMenuItems()
