@@ -329,8 +329,8 @@ extension AppDelegate {
     }
 
     /// A system notification, when allowed, the status item's confirmation icon and a VoiceOver
-    /// announcement, and the overlay's HUD, when it is open. A problem takes the HUD's place,
-    /// and shows even with the overlay closed.
+    /// announcement, the top of Recent Captures for a saved file, and the overlay's HUD, when it
+    /// is open. A problem takes the HUD's place, and shows even with the overlay closed.
     private func reportCapture(_ result: CaptureResult, on overlay: OverlayWindow?) {
         if let notice = CaptureNotice(result) {
             captureNotifier.post(notice)
@@ -338,6 +338,7 @@ extension AppDelegate {
         if let confirmation = CaptureConfirmation(result) {
             confirmCapture(confirmation)
         }
+        recentCaptures.record(result)
         if let problem = CaptureProblem(result) {
             reportCaptureProblem(problem, on: overlay)
             return
@@ -370,18 +371,28 @@ extension AppDelegate {
     /// so Finder can be handed a file saved there, and so the file can be checked first: a
     /// capture deleted since its notification leaves the overlay, and any Capture Area pick on
     /// it, alone, since Finder would have nothing to show.
-    func showCaptureInFinder(_ file: URL) {
+    /// Returns whether the file was there to show.
+    @discardableResult
+    func showCaptureInFinder(_ file: URL) -> Bool {
+        var shown = false
         captureFolders.withAccess { _ in
-            guard FileManager.default.fileExists(atPath: file.path) else {
+            guard captureFileActions.fileExists(file) else {
                 log.notice("Show in Finder: the capture is no longer there")
                 return
             }
-            if isInteractiveOverlayOpen {
-                overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
-                hideAllOverlays()
-            }
-            revealInFinder([file])
+            closeInteractiveOverlayKeepingDrawings()
+            captureFileActions.reveal([file])
+            shown = true
         }
+        return shown
+    }
+
+    /// Closes the interactive overlay so a window it would cover can come up, keeping its
+    /// drawings for the next time it opens. Always-On overlays let clicks through and stay.
+    func closeInteractiveOverlayKeepingDrawings() {
+        guard isInteractiveOverlayOpen else { return }
+        overlaysKeepingDrawings.formUnion(overlayWindows.values.filter(\.isVisible).map(ObjectIdentifier.init))
+        hideAllOverlays()
     }
 
     /// On the overlay's HUD when it is open and showing feedback. Otherwise an alert: from the
@@ -453,9 +464,7 @@ extension AppDelegate {
     private func moveOverlaysAsideForPermission() {
         let visible = overlayWindows.values.filter(\.isVisible)
         guard alwaysOnMode else {
-            guard isInteractiveOverlayOpen else { return }
-            overlaysKeepingDrawings.formUnion(visible.map(ObjectIdentifier.init))
-            hideAllOverlays()
+            closeInteractiveOverlayKeepingDrawings()
             return
         }
         guard !visible.isEmpty else { return }

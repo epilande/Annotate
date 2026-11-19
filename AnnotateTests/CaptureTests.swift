@@ -689,13 +689,13 @@ final class CaptureTests: XCTestCase {
         let blocker = try temporaryFolder()
         try Data().write(to: blocker)
 
-        guard case .failure(let error) = CaptureSettingsView.prepareFolder(blocker) else {
+        guard case .failure(let error) = CaptureFileActions.prepareFolder(blocker) else {
             return XCTFail("Expected the folder to fail")
         }
-        XCTAssertTrue(CaptureSettingsView.folderErrorMessage(error).hasPrefix("Couldn't create the folder."))
+        XCTAssertTrue(CaptureFileActions.folderErrorMessage(error).hasPrefix("Couldn't create the folder."))
 
         let folder = try temporaryFolder()
-        guard case .success(let created) = CaptureSettingsView.prepareFolder(folder) else {
+        guard case .success(let created) = CaptureFileActions.prepareFolder(folder) else {
             return XCTFail("Expected the folder to be created")
         }
         XCTAssertEqual(created, folder)

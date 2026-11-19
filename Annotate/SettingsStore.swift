@@ -87,6 +87,10 @@ extension SettingKey<Double> {
     static var fadeDelay: Self {
         .double("FadeDelay", default: defaultFadeDelay) { $0 > 0 ? $0.clamped(to: fadeDelayRange) : nil }
     }
+    /// When Clear Menu last emptied Recent Captures, in seconds since 1970. The menu hides
+    /// captures made at or before it. 0, the default, hides nothing. `RecentCaptureStore` is
+    /// the only reader.
+    static var recentCapturesClearedAt: Self { .double("RecentCapturesClearedAt", default: 0) }
 }
 
 extension SettingKey<CGFloat> {

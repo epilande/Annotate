@@ -98,8 +98,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 .priority: NSAccessibilityPriorityLevel.high.rawValue,
             ])
     }
-    /// Shows files in Finder. Tests replace it so Finder stays put.
-    var revealInFinder: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
+    /// Opens, copies, and shows saved captures, and opens the capture folder. Tests replace
+    /// its system calls so Finder and the default apps stay put.
+    var captureFileActions = CaptureFileActions()
+    /// The saved captures the status menu's Recent Captures lists.
+    lazy var recentCaptures = RecentCaptureStore(settings: settings) { [unowned self] in
+        (self.captureFolders, self.captureDefaultFolder ?? FileSink.defaultFolder)
+    }
+    /// The Recent Captures submenu, made with the status menu.
+    var recentCapturesMenu: RecentCapturesMenu?
+    /// The latest Copy from Recent Captures. Tests await it.
+    var recentCaptureCopyTask: Task<Void, Never>?
     /// Overlays Capture Area opened from Always-On. They keep Always-On's Persist fade until
     /// the picker closes, so drawings Always-On still shows past their fade stay for the pick
     /// and the capture.
@@ -447,6 +456,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                     title: "Capture Area",
                     action: #selector(captureArea),
                     keyEquivalent: ""))
+            menu.addItem(makeRecentCapturesItem())
 
             menu.addItem(NSMenuItem.separator())
 
@@ -565,6 +575,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
     // Every display's overlay yields, since the menu bar can be on any of them.
     func menuWillOpen(_ menu: NSMenu) {
         overlayWindows.values.forEach { $0.setYieldsToMenus(true) }
+        recentCaptures.refresh()
     }
 
     func menuDidClose(_ menu: NSMenu) {

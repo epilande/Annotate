@@ -137,6 +137,8 @@ final class AppDelegateTests: XCTestCase, Sendable {
         let overlays = Array(appDelegate.overlayWindows.values)
         XCTAssertFalse(overlays.isEmpty)
         let popUpLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        // Opening the menu scans for recent captures; keep it off the real capture folders.
+        appDelegate.recentCaptures.scan = { _, _, _, _ in RecentCaptureScan(captures: []) }
 
         appDelegate.menuWillOpen(menu)
         for overlay in overlays {

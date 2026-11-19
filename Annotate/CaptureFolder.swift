@@ -98,4 +98,25 @@ struct CaptureFolderStore {
         defer { if isAccessing { folder.url.stopAccessingSecurityScopedResource() } }
         body(folder.url)
     }
+
+    /// `withAccess` for work that awaits: the scope stays held until `body` returns, across
+    /// every suspension in it. The bookmark is read on the caller's actor, then resolved off
+    /// it, and `body` runs off it too, so a scan or a file read never holds up a menu.
+    func withAccess<T: Sendable>(
+        isolation: isolated (any Actor)? = #isolation, _ body: @Sendable (URL?) async throws -> T
+    ) async rethrows -> T {
+        try await Self.withAccess(to: bookmark, body)
+    }
+
+    /// The same for a bookmark read earlier, or nil for no chosen folder.
+    nonisolated static func withAccess<T: Sendable>(
+        to bookmark: Data?, _ body: @Sendable (URL?) async throws -> T
+    ) async rethrows -> T {
+        guard let folder = bookmark.flatMap(CaptureFolderBookmark.resolve) else {
+            return try await body(nil)
+        }
+        let isAccessing = folder.url.startAccessingSecurityScopedResource()
+        defer { if isAccessing { folder.url.stopAccessingSecurityScopedResource() } }
+        return try await body(folder.url)
+    }
 }
