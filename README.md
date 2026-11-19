@@ -110,8 +110,8 @@ brew install --cask annotate
 4. Press <kbd>Esc</kbd> to exit the overlay.
 
 > [!TIP]
-> The application provides a menu bar item that lets you select tools, open the color and size pickers on the active overlay, and perform actions like undo and redo.
-> It also shows the application's active state, current color selection, tool, and mode.
+> The menu bar icon's menu opens and closes the overlay (**Show Overlay** / **Hide Overlay**), opens the color and size pickers on the active overlay, picks a tool from the **Tool** submenu, toggles the board, **Cursor Highlight**, **Fade Mode**, **Always-On Mode**, and the toolbar, and runs actions like undo, redo, and capture.
+> The icon shows whether the overlay is up and the current color. The menu shows the current tool, with checkmarks on the modes that are on.
 
 <img width="250" alt="image" src="https://github.com/user-attachments/assets/40a94d67-29f1-49a6-9a3a-453d7f3d89e1" />
 
@@ -333,7 +333,7 @@ The Eraser tool allows you to remove specific annotations by dragging over them:
 
 ### Drawing Modes
 
-Toggle between modes with <kbd>Space</kbd> by default, or rebind **Toggle Fade Mode** in Settings → Shortcuts.
+Toggle between modes with <kbd>Space</kbd> by default, or rebind **Toggle Fade Mode** in Settings → Shortcuts. The menu bar's **Fade Mode** item is checked while fade mode is on and toggles it while the overlay is open.
 
 #### Fade Mode
 
@@ -350,7 +350,7 @@ Always-On Mode displays your annotations persistently without any user interacti
 #### How to use:
 
 1. Create your annotations in normal interactive mode
-2. Toggle always-on mode via the global hotkey (configurable in Settings) or menu bar
+2. Toggle always-on mode via the global hotkey (configurable in Settings) or the menu bar's **Always-On Mode** item, which is checked while it is on
 3. Annotations become persistent and non-interactive
 4. Use the same hotkey or menu option to exit always-on mode and resume editing
 
