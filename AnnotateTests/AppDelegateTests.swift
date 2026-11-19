@@ -66,7 +66,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
                 "---",
                 "Show \(board)", "Cursor Highlight", "Fade Mode", "Always-On Mode", "Hide Toolbar",
                 "---",
-                "Clear All", "Undo", "Redo",
+                "Undo", "Redo", "Clear All",
                 "---",
                 "Capture Screen", "Capture Area", "Recent Captures",
                 "---",

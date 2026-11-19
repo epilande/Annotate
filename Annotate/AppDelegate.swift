@@ -291,9 +291,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
 
             menu.addItem(NSMenuItem.separator())
 
-            menu.addItem(NSMenuItem(title: "Clear All", action: #selector(clearAllAnnotations), keyEquivalent: ""))
             menu.addItem(NSMenuItem(title: "Undo", action: #selector(undo), keyEquivalent: "z"))
             menu.addItem(NSMenuItem(title: "Redo", action: #selector(redo), keyEquivalent: "Z"))
+            menu.addItem(NSMenuItem(title: "Clear All", action: #selector(clearAllAnnotations), keyEquivalent: ""))
 
             menu.addItem(NSMenuItem.separator())
 
