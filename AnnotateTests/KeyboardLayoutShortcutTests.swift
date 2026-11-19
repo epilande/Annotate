@@ -65,7 +65,7 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         for (layout, keyCode): (String, UInt16) in [("QWERTY", 13), ("AZERTY", 6)] {
             addUndoableArrow()
 
-            window.keyDown(with: try keyEvent("w", keyCode: keyCode))
+            XCTAssertTrue(window.performKeyEquivalent(with: try keyEvent("w", keyCode: keyCode)))
 
             XCTAssertEqual(appDelegate.closeCount, 1, "Cmd+W must close the overlay on \(layout)")
             XCTAssertEqual(window.overlayView.arrows.count, 1, "Cmd+W must not undo on \(layout)")
@@ -83,7 +83,9 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         }
     }
 
-    func testAzertyUndoRedoAndCloseThroughSendEvent() throws {
+    /// Undo and Redo go through `sendEvent`, as AppKit sends them. Command+W is a key
+    /// equivalent, which AppKit offers the window before `sendEvent`.
+    func testAzertyUndoRedoThroughSendEventAndClose() throws {
         addUndoableArrow()
 
         window.sendEvent(try keyEvent("z", keyCode: 13))
@@ -94,7 +96,7 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         XCTAssertEqual(window.overlayView.arrows.count, 1)
         XCTAssertEqual(appDelegate.closeCount, 0)
 
-        window.sendEvent(try keyEvent("w", keyCode: 6))
+        XCTAssertTrue(window.performKeyEquivalent(with: try keyEvent("w", keyCode: 6)))
         XCTAssertEqual(appDelegate.closeCount, 1)
         XCTAssertEqual(window.overlayView.arrows.count, 1)
     }
@@ -125,7 +127,8 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
     func testDvorakQwertyCommandLayerClosesWithoutUndoing() throws {
         addUndoableArrow()
 
-        window.keyDown(with: try keyEvent("w", keyCode: 13, charactersIgnoringModifiers: ","))
+        XCTAssertTrue(
+            window.performKeyEquivalent(with: try keyEvent("w", keyCode: 13, charactersIgnoringModifiers: ",")))
 
         XCTAssertEqual(
             appDelegate.closeCount, 1, "Cmd+W must close the overlay on Dvorak - QWERTY ⌘")
@@ -175,6 +178,7 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         window.overlayView.currentTool = .counter
         window.overlayView.nextCounterNumber = 5
 
+        XCTAssertFalse(window.performKeyEquivalent(with: try keyEvent(",", keyCode: 43, charactersIgnoringModifiers: "w")))
         window.keyDown(with: try keyEvent(",", keyCode: 43, charactersIgnoringModifiers: "w"))
         window.keyDown(with: try keyEvent("/", keyCode: 44, charactersIgnoringModifiers: "z"))
         XCTAssertEqual(
@@ -196,12 +200,29 @@ final class KeyboardLayoutShortcutTests: XCTestCase {
         window.overlayView.nextCounterNumber = 5
 
         for (character, keyCode): (String, UInt16) in [("z", 13), ("w", 6), ("r", 31)] {
-            window.keyDown(with: try keyEvent(character, keyCode: keyCode, modifiers: .control))
+            let event = try keyEvent(character, keyCode: keyCode, modifiers: .control)
+            XCTAssertFalse(window.performKeyEquivalent(with: event))
+            window.keyDown(with: event)
         }
 
         XCTAssertEqual(window.overlayView.arrows.count, 1)
         XCTAssertEqual(appDelegate.closeCount, 0)
         XCTAssertEqual(window.overlayView.nextCounterNumber, 5)
+    }
+
+    /// Command+W closes the overlay while a label is being typed. `keyDown` ignores keys the
+    /// text field leaves unhandled, so the key equivalent is what reaches it.
+    func testCloseWorksWhileEditingALabel() throws {
+        let point = NSPoint(x: 100, y: 100)
+        window.overlayView.currentTool = .text
+        window.overlayView.currentTextAnnotation = TextAnnotation(
+            text: "", position: point, color: .red, fontSize: defaultTextAnnotationFontSize)
+        window.overlayView.createTextField(at: point, withText: "Hello")
+        XCTAssertNotNil(window.overlayView.activeTextField)
+
+        XCTAssertTrue(window.performKeyEquivalent(with: try keyEvent("w", keyCode: 13)))
+
+        XCTAssertEqual(appDelegate.closeCount, 1, "Cmd+W must close the overlay while a label is being typed")
     }
 
     private func addUndoableArrow() {

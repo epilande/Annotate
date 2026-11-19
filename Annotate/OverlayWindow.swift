@@ -1780,12 +1780,7 @@ class OverlayWindow: NSPanel {
         }
 
         // These follow the layout's Command layer, not QWERTY key positions (see `KeyChord`).
-        if ShortcutBinding("w", modifiers: .command)
-            .matches(chord, on: .command, ignoring: [.shift, .option, .control])
-        {
-            AppDelegate.shared?.closeOverlay()
-            return
-        }
+        // Command+W is in `performKeyEquivalent`.
         if ShortcutBinding("z", modifiers: .command)
             .matches(chord, on: .command, ignoring: [.option, .control])
         {
@@ -2420,6 +2415,16 @@ class OverlayWindow: NSPanel {
             return regionPicker.handleKey(chord)
         }
         if handleQuickPickerKeyDown(chord) || handleOverlayShortcut(chord) { return true }
+
+        // Command+W closes the overlay, following the layout's Command layer (see `KeyChord`).
+        // It runs here, ahead of the text field and `keyDown`, so it also works while a label is
+        // being typed.
+        if ShortcutBinding("w", modifiers: .command)
+            .matches(chord, on: .command, ignoring: [.shift, .option, .control])
+        {
+            AppDelegate.shared?.closeOverlay()
+            return true
+        }
 
         // Selection commands accept any extra modifiers. Command-B accepts only Shift.
         let selectionCommand = ["a", "c", "x", "v", "d"].first {
