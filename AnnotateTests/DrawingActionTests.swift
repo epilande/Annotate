@@ -122,7 +122,7 @@ final class DrawingActionTests: XCTestCase {
         let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
-        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
+        let ovals = [Oval(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         let texts = [
             TextAnnotation(
                 text: "Test", position: .zero, color: .black, fontSize: 12,
@@ -131,18 +131,18 @@ final class DrawingActionTests: XCTestCase {
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
         let action = DrawingAction.clearAll(
-            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
+            paths, arrows, lines, highlights, rectangles, ovals, texts, counters)
 
         if case .clearAll(
             let actionPaths, let actionArrows, let actionLines, let actionHighlights,
-            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
+            let actionRects, let actionOvals, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
             XCTAssertEqual(actionLines, lines)
             XCTAssertEqual(actionHighlights, highlights)
             XCTAssertEqual(actionRects, rectangles)
-            XCTAssertEqual(actionCircles, circles)
+            XCTAssertEqual(actionOvals, ovals)
             XCTAssertEqual(actionTexts, texts)
             XCTAssertEqual(actionCounters, counters)
         } else {
@@ -156,7 +156,7 @@ final class DrawingActionTests: XCTestCase {
         let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
-        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
+        let ovals = [Oval(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         let texts = [
             TextAnnotation(
                 text: "Test", position: .zero, color: .black, fontSize: 12,
@@ -165,18 +165,18 @@ final class DrawingActionTests: XCTestCase {
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .black)]
 
         let action = DrawingAction.clearAll(
-            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
+            paths, arrows, lines, highlights, rectangles, ovals, texts, counters)
 
         if case .clearAll(
             let actionPaths, let actionArrows, let actionLines, let actionHighlights,
-            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
+            let actionRects, let actionOvals, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
             XCTAssertEqual(actionLines, lines)
             XCTAssertEqual(actionHighlights, highlights)
             XCTAssertEqual(actionRects, rectangles)
-            XCTAssertEqual(actionCircles, circles)
+            XCTAssertEqual(actionOvals, ovals)
             XCTAssertEqual(actionTexts, texts)
             XCTAssertEqual(actionCounters, counters)
         } else {
@@ -190,7 +190,7 @@ final class DrawingActionTests: XCTestCase {
         let lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
         let highlights = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         let rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
-        let circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
+        let ovals = [Oval(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         let texts = [
             TextAnnotation(
                 text: "Erased", position: .zero, color: .black, fontSize: 12,
@@ -199,18 +199,18 @@ final class DrawingActionTests: XCTestCase {
         let counters = [CounterAnnotation(number: 1, position: .zero, color: .orange)]
 
         let action = DrawingAction.eraseAnnotations(
-            paths, arrows, lines, highlights, rectangles, circles, texts, counters)
+            paths, arrows, lines, highlights, rectangles, ovals, texts, counters)
 
         if case .eraseAnnotations(
             let actionPaths, let actionArrows, let actionLines, let actionHighlights,
-            let actionRects, let actionCircles, let actionTexts, let actionCounters) = action
+            let actionRects, let actionOvals, let actionTexts, let actionCounters) = action
         {
             XCTAssertEqual(actionPaths, paths)
             XCTAssertEqual(actionArrows, arrows)
             XCTAssertEqual(actionLines, lines)
             XCTAssertEqual(actionHighlights, highlights)
             XCTAssertEqual(actionRects, rectangles)
-            XCTAssertEqual(actionCircles, circles)
+            XCTAssertEqual(actionOvals, ovals)
             XCTAssertEqual(actionTexts, texts)
             XCTAssertEqual(actionCounters, counters)
         } else {

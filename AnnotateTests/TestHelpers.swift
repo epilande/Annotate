@@ -101,14 +101,14 @@ enum TestFactory {
         Rectangle(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
     }
 
-    static func createCircle(
+    static func createOval(
         start: NSPoint = .zero,
         end: NSPoint = NSPoint(x: 100, y: 100),
         color: NSColor = .purple,
         lineWidth: CGFloat = 3.0,
         time: CFTimeInterval? = nil
-    ) -> Circle {
-        Circle(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
+    ) -> Oval {
+        Oval(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
     }
 
     static func createTextAnnotation(

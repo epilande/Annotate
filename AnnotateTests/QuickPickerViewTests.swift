@@ -139,7 +139,7 @@ final class QuickPickerViewTests: XCTestCase, Sendable {
                     swatchDiameter: QuickPickerView.colorSwatchDiameter,
                     selected: false,
                     in: bounds),
-                "Unselected swatch \(digit) should leave air between the caption and the circle")
+                "Unselected swatch \(digit) should leave air between the caption and the oval")
             XCTAssertTrue(
                 QuickPickerView.digitClearsSwatchChrome(
                     digit: digit,

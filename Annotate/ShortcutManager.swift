@@ -106,7 +106,9 @@ enum ShortcutKey: String, CaseIterable {
     case line = "l"
     case highlighter = "h"
     case rectangle = "r"
-    case circle = "o"
+    case oval = "o"
+    case solidRectangle
+    case solidOval
     case redact = "x"
     case counter = "n"
     case text = "t"
@@ -156,7 +158,7 @@ enum ShortcutKey: String, CaseIterable {
     /// An existing custom binding on the same key wins over the new default (see `init`).
     static let newlyEditable: [ShortcutKey] = [
         .toggleFade, .toggleToolbar, .decreaseSize, .increaseSize, .clearAll, .redact, .captureScreen,
-        .captureArea,
+        .captureArea, .solidRectangle, .solidOval,
     ] + colorActions
 
     var defaultBinding: ShortcutBinding {
@@ -165,6 +167,8 @@ enum ShortcutKey: String, CaseIterable {
         case .colorRed, .colorOrange, .colorYellow, .colorGreen, .colorCyan, .colorIndigo,
             .colorMagenta, .colorWhite, .colorBlack:
             return .unassigned
+        case .solidRectangle: return ShortcutBinding("r", modifiers: .shift)
+        case .solidOval: return ShortcutBinding("o", modifiers: .shift)
         case .toggleFade: return ShortcutBinding(" ")
         case .toggleToolbar: return ShortcutBinding("t", modifiers: [.option, .command])
         case .decreaseSize: return ShortcutBinding("[")
@@ -185,7 +189,9 @@ enum ShortcutKey: String, CaseIterable {
         case .line: return "Line"
         case .highlighter: return "Highlighter"
         case .rectangle: return "Rectangle"
-        case .circle: return "Circle"
+        case .oval: return "Oval"
+        case .solidRectangle: return "Solid Rectangle"
+        case .solidOval: return "Solid Oval"
         case .redact: return "Redact"
         case .counter: return "Counter"
         case .text: return "Text"

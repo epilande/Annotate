@@ -72,20 +72,20 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(rectangle.creationTime, time)
     }
 
-    func testCircle() {
+    func testOval() {
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 200)
         let color = NSColor.yellow
         let lineWidth: CGFloat = 4.0
         let time: CFTimeInterval = 3.0
 
-        let circle = Circle(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
+        let oval = Oval(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
 
-        XCTAssertEqual(circle.startPoint, start)
-        XCTAssertEqual(circle.endPoint, end)
-        XCTAssertEqual(circle.color, color)
-        XCTAssertEqual(circle.lineWidth, lineWidth)
-        XCTAssertEqual(circle.creationTime, time)
+        XCTAssertEqual(oval.startPoint, start)
+        XCTAssertEqual(oval.endPoint, end)
+        XCTAssertEqual(oval.color, color)
+        XCTAssertEqual(oval.lineWidth, lineWidth)
+        XCTAssertEqual(oval.creationTime, time)
     }
 
     func testTextAnnotation() {
@@ -252,7 +252,7 @@ final class ModelTests: XCTestCase {
     }
 
     func testToolType() {
-        let tools: [ToolType] = [.pen, .arrow, .highlighter, .rectangle, .circle, .text]
+        let tools: [ToolType] = [.pen, .arrow, .highlighter, .rectangle, .oval, .text]
         XCTAssertEqual(tools.count, 6)  // Ensure we have all tool types
 
         // Test each tool type is unique
@@ -340,9 +340,9 @@ final class ModelTests: XCTestCase {
         let rect2 = Rectangle(startPoint: start, endPoint: end, color: color, lineWidth: 5.0)
         XCTAssertNotEqual(rect1, rect2)
         
-        let circle1 = Circle(startPoint: start, endPoint: end, color: color, lineWidth: 2.0)
-        let circle2 = Circle(startPoint: start, endPoint: end, color: color, lineWidth: 5.0)
-        XCTAssertNotEqual(circle1, circle2)
+        let oval1 = Oval(startPoint: start, endPoint: end, color: color, lineWidth: 2.0)
+        let oval2 = Oval(startPoint: start, endPoint: end, color: color, lineWidth: 5.0)
+        XCTAssertNotEqual(oval1, oval2)
         
         let line1 = Line(startPoint: start, endPoint: end, color: color, lineWidth: 2.0)
         let line2 = Line(startPoint: start, endPoint: end, color: color, lineWidth: 5.0)

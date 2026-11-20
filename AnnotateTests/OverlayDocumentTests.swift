@@ -112,7 +112,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         var layers: [[OverlayPaintStep]] = [[]]
         for step in order {
             layers[layers.count - 1].append(step)
-            if case .redaction = step { layers.append([]) }
+            if case .cover = step { layers.append([]) }
         }
         return layers[layer]
     }
@@ -125,7 +125,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
 
     func testContentKindsBelongToTheirBandAndKeepTheirOrderWithinIt() {
         XCTAssertEqual(OverlayContent.allCases.filter { $0.band == .strokes }, [.arrows, .lines, .penStrokes, .highlights])
-        XCTAssertEqual(OverlayContent.allCases.filter { $0.band == .shapes }, [.outlines, .circles])
+        XCTAssertEqual(OverlayContent.allCases.filter { $0.band == .shapes }, [.outlines, .ovals])
         XCTAssertEqual(OverlayContent.allCases.filter { $0.band == .text }, [.labels, .counters])
     }
 
@@ -133,7 +133,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         let layer = OverlayDocument.RedactionLayer()
         let expected: [OverlayPaintStep] =
             OverlayContent.allCases.map { .content($0, layer: layer, includesLive: true) }
-            + [.liveRedaction, .selection]
+            + [.liveCover, .selection]
         XCTAssertEqual(OverlayDocument().paintOrder(), expected)
     }
 
@@ -149,28 +149,28 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         let older = OverlayDocument.RedactionLayer(start: -.infinity, end: 2)
         XCTAssertEqual(
             steps(of: order, in: 0),
-            OverlayContent.allCases.map { .content($0, layer: older, includesLive: false) } + [.redaction(index: 2)],
+            OverlayContent.allCases.map { .content($0, layer: older, includesLive: false) } + [.cover(.rectangle(index: 2))],
             "Everything older than the first redaction, every band of it, paints under that redaction")
         let between = OverlayDocument.RedactionLayer(start: 2, end: 5)
         XCTAssertEqual(
             steps(of: order, in: 1),
-            OverlayContent.allCases.map { .content($0, layer: between, includesLive: false) } + [.redaction(index: 1)])
+            OverlayContent.allCases.map { .content($0, layer: between, includesLive: false) } + [.cover(.rectangle(index: 1))])
         let newest = OverlayDocument.RedactionLayer(start: 5, end: .infinity)
         XCTAssertEqual(
             steps(of: order, in: 2),
-            OverlayContent.allCases.map { .content($0, layer: newest, includesLive: true) } + [.liveRedaction, .selection],
+            OverlayContent.allCases.map { .content($0, layer: newest, includesLive: true) } + [.liveCover, .selection],
             "Live previews and the selection stay on top")
     }
 
     // MARK: - #107: redaction draw order
 
-    /// #107 review: redactions painted before circles, labels and counters, so those drew
+    /// #107 review: redactions painted before ovals, labels and counters, so those drew
     /// over a redaction that should hide them. A redaction now covers every band created
     /// before it and stays under what is created after it.
     func testRedactionCoversOlderShapesAndTextButNotNewerText() throws {
         let view = makeView()
-        view.circles = [
-            TestFactory.createCircle(
+        view.ovals = [
+            TestFactory.createOval(
                 start: NSPoint(x: 60, y: 60), end: NSPoint(x: 140, y: 140), color: .red, lineWidth: 8, time: 1)
         ]
         view.counterAnnotations = [
@@ -187,7 +187,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
                 color: .red, lineWidth: 3, creationTime: 2, style: .solid)
         ]
 
-        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 60), in: view), "An older circle is hidden")
+        assertBlack(try renderedColor(at: NSPoint(x: 100, y: 60), in: view), "An older oval is hidden")
         assertBlack(try renderedColor(at: NSPoint(x: 85, y: 100), in: view), "An older counter is hidden")
         assertBlack(try renderedColor(at: NSPoint(x: 56, y: 126), in: view), "An older label is hidden")
         let newerCounter = try renderedColor(at: NSPoint(x: 125, y: 50), in: view)
@@ -266,7 +266,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
             ("paths", { $0.paths.append(TestFactory.createDrawingPath(points: [TestFactory.createTimedPoint()])) }),
             ("highlightPaths", { $0.highlightPaths.append(TestFactory.createDrawingPath(points: [TestFactory.createTimedPoint()])) }),
             ("rectangles", { $0.rectangles.append(TestFactory.createRectangle()) }),
-            ("circles", { $0.circles.append(TestFactory.createCircle()) }),
+            ("ovals", { $0.ovals.append(TestFactory.createOval()) }),
             ("textAnnotations", { $0.textAnnotations.append(TestFactory.createTextAnnotation()) }),
             ("counterAnnotations", { $0.counterAnnotations.append(CounterAnnotation(number: 1, position: .zero, color: .red)) }),
             ("moving an element in place", { $0.arrows[0].endPoint.x += 1 }),

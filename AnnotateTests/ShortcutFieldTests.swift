@@ -109,7 +109,7 @@ final class ShortcutFieldTests: XCTestCase {
 
     func testMouseClickShouldCancelRecording() {
         // The event monitor in ShortcutField sets editingShortcut to nil on mouse clicks
-        var editingShortcut: ShortcutKey? = .circle
+        var editingShortcut: ShortcutKey? = .oval
 
         editingShortcut = nil
 
@@ -144,7 +144,7 @@ final class ShortcutFieldTests: XCTestCase {
             (.line, "3"),
             (.highlighter, "4"),
             (.rectangle, "5"),
-            (.circle, "6"),
+            (.oval, "6"),
             (.counter, "7"),
             (.text, "8"),
             (.select, "9"),

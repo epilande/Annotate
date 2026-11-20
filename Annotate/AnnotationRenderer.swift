@@ -116,7 +116,7 @@ struct LivePreviews {
     var highlight: DrawingPath?
     var highlightBezier: NSBezierPath?
     var rectangle: Rectangle?
-    var circle: Circle?
+    var oval: Oval?
 }
 
 /// Paints an `OverlayDocument` into a graphics context, in the order
@@ -163,14 +163,22 @@ struct AnnotationRenderer {
             switch step {
             case let .content(content, layer, includesLive):
                 draw(content, in: layer, live: includesLive ? live : nil)
-            case .redaction(let index):
+            case .cover(.rectangle(let index)):
                 let rectangle = document.rectangles[index]
-                if isDirty(rectangle.redrawBounds) {
+                if let alpha = fade.alpha(for: rectangle, at: now), isDirty(rectangle.redrawBounds) {
+                    drawRectangle(rectangle, alpha: alpha)
+                }
+            case .cover(.oval(let index)):
+                let oval = document.ovals[index]
+                if let alpha = fade.alpha(creationTime: oval.creationTime, at: now), isDirty(oval.redrawBounds) {
+                    drawOval(oval, alpha: alpha)
+                }
+            case .liveCover:
+                if let rectangle = live?.rectangle, rectangle.coversOlder, isDirty(rectangle.redrawBounds) {
                     drawRectangle(rectangle, alpha: 1)
                 }
-            case .liveRedaction:
-                if let rectangle = live?.rectangle, rectangle.isRedaction, isDirty(rectangle.redrawBounds) {
-                    drawRectangle(rectangle, alpha: 1)
+                if let oval = live?.oval, oval.coversOlder, isDirty(oval.redrawBounds) {
+                    drawOval(oval, alpha: 1)
                 }
             case .selection:
                 // Chrome belongs to the view, which paints it after this pass.
@@ -239,25 +247,25 @@ struct AnnotationRenderer {
 
         case .outlines:
             for rectangle in document.rectangles
-            where !rectangle.isRedaction && layer.contains(rectangle.creationTime) {
+            where !rectangle.coversOlder && layer.contains(rectangle.creationTime) {
                 guard let alpha = fade.alpha(for: rectangle, at: now) else { continue }
                 guard isDirty(rectangle.redrawBounds) else { continue }
                 drawRectangle(rectangle, alpha: alpha)
             }
 
-            if let rectangle = live?.rectangle, !rectangle.isRedaction, isDirty(rectangle.redrawBounds) {
+            if let rectangle = live?.rectangle, !rectangle.coversOlder, isDirty(rectangle.redrawBounds) {
                 drawRectangle(rectangle, alpha: 1)
             }
 
-        case .circles:
-            for circle in document.circles where layer.contains(circle.creationTime) {
-                guard let alpha = fade.alpha(creationTime: circle.creationTime, at: now) else { continue }
-                guard isDirty(circle.redrawBounds) else { continue }
-                drawCircle(circle, alpha: alpha)
+        case .ovals:
+            for oval in document.ovals where !oval.coversOlder && layer.contains(oval.creationTime) {
+                guard let alpha = fade.alpha(creationTime: oval.creationTime, at: now) else { continue }
+                guard isDirty(oval.redrawBounds) else { continue }
+                drawOval(oval, alpha: alpha)
             }
 
-            if let circle = live?.circle, isDirty(circle.redrawBounds) {
-                drawCircle(circle, alpha: 1)
+            if let oval = live?.oval, !oval.coversOlder, isDirty(oval.redrawBounds) {
+                drawOval(oval, alpha: 1)
             }
 
         case .labels:
@@ -339,16 +347,34 @@ struct AnnotationRenderer {
 
     private func drawRectangle(_ rectangle: Rectangle, alpha: CGFloat) {
         let rect = rectangle.bounds
-        guard rectangle.style == .outline else {
+        guard !rectangle.isRedaction else {
             drawRedaction(rectangle, in: rect)
             return
         }
 
-        let adaptedColor = board.adapt(rectangle.color)
         let path = NSBezierPath(rect: rect)
-        adaptedColor.withAlphaComponent(alpha).setStroke()
         path.lineWidth = rectangle.lineWidth
+        guard rectangle.style == .solidColor else {
+            board.adapt(rectangle.color).withAlphaComponent(alpha).setStroke()
+            path.stroke()
+            return
+        }
+        drawSolid(path, color: board.adapt(rectangle.color), alpha: alpha)
+    }
+
+    /// Fills `path` and strokes its outline in `color`, fading the two together so the
+    /// outline doesn't show darker where it overlaps the fill.
+    private func drawSolid(_ path: NSBezierPath, color: NSColor, alpha: CGFloat) {
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        context?.setAlpha(alpha)
+        context?.beginTransparencyLayer(auxiliaryInfo: nil)
+        color.setFill()
+        path.fill()
+        color.setStroke()
         path.stroke()
+        context?.endTransparencyLayer()
+        context?.restoreGState()
     }
 
     /// Always lays down the opaque placeholder first so nothing shows through, then paints
@@ -389,19 +415,23 @@ struct AnnotationRenderer {
         }
     }
 
-    private func drawCircle(_ circle: Circle, alpha: CGFloat) {
-        let adaptedColor = board.adapt(circle.color)
+    private func drawOval(_ oval: Oval, alpha: CGFloat) {
+        let adaptedColor = board.adapt(oval.color)
 
         let rect = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
+            x: min(oval.startPoint.x, oval.endPoint.x),
+            y: min(oval.startPoint.y, oval.endPoint.y),
+            width: abs(oval.endPoint.x - oval.startPoint.x),
+            height: abs(oval.endPoint.y - oval.startPoint.y)
         )
 
         let path = NSBezierPath(ovalIn: rect)
+        path.lineWidth = oval.lineWidth
+        if oval.solid {
+            drawSolid(path, color: adaptedColor, alpha: alpha)
+            return
+        }
         adaptedColor.withAlphaComponent(alpha).setStroke()
-        path.lineWidth = circle.lineWidth
         path.stroke()
     }
 
@@ -481,7 +511,7 @@ struct AnnotationRenderer {
         let numberString = "\(counter.number)"
         let textSize = numberString.size(withAttributes: attributes)
 
-        // Center the text in the circle
+        // Center the text in the oval
         let textRect = NSRect(
             x: counter.position.x - textSize.width / 2,
             y: counter.position.y - textSize.height / 2,
@@ -562,17 +592,26 @@ extension Line {
 }
 
 extension Rectangle {
-    /// An outline's stroke. A redaction fills its whole rect.
+    /// An outline's stroke. A redaction fills its whole rect, and a solid rectangle its rect
+    /// and the outer half of its outline.
     var ink: CGPath {
-        let rect = CGPath(rect: bounds, transform: nil)
-        return isRedaction
-            ? rect : rect.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+        if isRedaction { return CGPath(rect: bounds, transform: nil) }
+        if style == .solidColor {
+            return CGPath(rect: bounds.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2), transform: nil)
+        }
+        return CGPath(rect: bounds, transform: nil)
+            .copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
     }
 }
 
-extension Circle {
+extension Oval {
+    /// An outline's stroke, or for a solid oval the ellipse and the outer half of its outline.
     var ink: CGPath {
-        CGPath(ellipseIn: AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0), transform: nil)
+        let bounds = AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0)
+        if solid {
+            return CGPath(ellipseIn: bounds.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2), transform: nil)
+        }
+        return CGPath(ellipseIn: bounds, transform: nil)
             .copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
     }
 }
@@ -613,7 +652,7 @@ extension Line {
     var redrawBounds: NSRect { AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: lineWidth / 2 + 6) }
 }
 
-extension Circle {
+extension Oval {
     var redrawBounds: NSRect { AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: lineWidth / 2 + 6) }
 }
 

@@ -39,7 +39,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertTrue(overlayView.lines.isEmpty)
         XCTAssertTrue(overlayView.highlightPaths.isEmpty)
         XCTAssertTrue(overlayView.rectangles.isEmpty)
-        XCTAssertTrue(overlayView.circles.isEmpty)
+        XCTAssertTrue(overlayView.ovals.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
 
         // Test nil values
@@ -48,7 +48,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertNil(overlayView.currentLine)
         XCTAssertNil(overlayView.currentHighlight)
         XCTAssertNil(overlayView.currentRectangle)
-        XCTAssertNil(overlayView.currentCircle)
+        XCTAssertNil(overlayView.currentOval)
         XCTAssertNil(overlayView.currentTextAnnotation)
     }
 
@@ -129,8 +129,8 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.currentTool = .rectangle
         XCTAssertEqual(overlayView.currentTool, .rectangle)
 
-        overlayView.currentTool = .circle
-        XCTAssertEqual(overlayView.currentTool, .circle)
+        overlayView.currentTool = .oval
+        XCTAssertEqual(overlayView.currentTool, .oval)
 
         overlayView.currentTool = .text
         XCTAssertEqual(overlayView.currentTool, .text)
@@ -143,7 +143,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         overlayView.lines = [Line(startPoint: .zero, endPoint: .zero, color: .red, lineWidth: 3.0)]
         overlayView.highlightPaths = [DrawingPath(points: [], color: .yellow, lineWidth: 3.0)]
         overlayView.rectangles = [Rectangle(startPoint: .zero, endPoint: .zero, color: .green, lineWidth: 3.0)]
-        overlayView.circles = [Circle(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
+        overlayView.ovals = [Oval(startPoint: .zero, endPoint: .zero, color: .purple, lineWidth: 3.0)]
         overlayView.textAnnotations = [
             TextAnnotation(text: "Test", position: .zero, color: .black, fontSize: 12)
         ]
@@ -157,7 +157,7 @@ final class OverlayViewTests: XCTestCase, Sendable {
         XCTAssertTrue(overlayView.lines.isEmpty)
         XCTAssertTrue(overlayView.highlightPaths.isEmpty)
         XCTAssertTrue(overlayView.rectangles.isEmpty)
-        XCTAssertTrue(overlayView.circles.isEmpty)
+        XCTAssertTrue(overlayView.ovals.isEmpty)
         XCTAssertTrue(overlayView.textAnnotations.isEmpty)
     }
 

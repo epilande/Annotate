@@ -530,62 +530,62 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         }
     }
 
-    // MARK: - Circle Shift Constraint Tests
+    // MARK: - Oval Shift Constraint Tests
 
-    func testCircleShiftConstrainsToPerfectCircle() {
-        window.overlayView.currentTool = .circle
+    func testOvalShiftConstrainsToPerfectCircle() {
+        window.overlayView.currentTool = .oval
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 150)  // Non-square bounding box
 
         performDragGesture(from: start, to: end, withShift: true)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        if let circle = window.overlayView.currentCircle {
-            let width = abs(circle.endPoint.x - circle.startPoint.x)
-            let height = abs(circle.endPoint.y - circle.startPoint.y)
-            XCTAssertEqual(width, height, accuracy: 0.1, "Circle should have square bounding box")
+        XCTAssertNotNil(window.overlayView.currentOval)
+        if let oval = window.overlayView.currentOval {
+            let width = abs(oval.endPoint.x - oval.startPoint.x)
+            let height = abs(oval.endPoint.y - oval.startPoint.y)
+            XCTAssertEqual(width, height, accuracy: 0.1, "Oval should have square bounding box")
         }
     }
 
-    func testCircleWithoutShiftIsNotConstrained() {
-        window.overlayView.currentTool = .circle
+    func testOvalWithoutShiftIsNotConstrained() {
+        window.overlayView.currentTool = .oval
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 150)  // Non-square bounding box
 
         performDragGesture(from: start, to: end)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        if let circle = window.overlayView.currentCircle {
-            XCTAssertEqual(circle.endPoint, end, "Circle should not be constrained without shift")
+        XCTAssertNotNil(window.overlayView.currentOval)
+        if let oval = window.overlayView.currentOval {
+            XCTAssertEqual(oval.endPoint, end, "Oval should not be constrained without shift")
         }
     }
 
-    func testCircleShiftPreservesDirection() {
-        window.overlayView.currentTool = .circle
+    func testOvalShiftPreservesDirection() {
+        window.overlayView.currentTool = .oval
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 150)
 
         performDragGesture(from: start, to: end, withShift: true)
 
-        if let circle = window.overlayView.currentCircle {
-            XCTAssertGreaterThan(circle.endPoint.x, circle.startPoint.x, "X should increase when dragging right")
-            XCTAssertGreaterThan(circle.endPoint.y, circle.startPoint.y, "Y should increase when dragging down")
+        if let oval = window.overlayView.currentOval {
+            XCTAssertGreaterThan(oval.endPoint.x, oval.startPoint.x, "X should increase when dragging right")
+            XCTAssertGreaterThan(oval.endPoint.y, oval.startPoint.y, "Y should increase when dragging down")
         }
     }
 
-    func testCircleShiftUsesLargerDimension() {
-        window.overlayView.currentTool = .circle
+    func testOvalShiftUsesLargerDimension() {
+        window.overlayView.currentTool = .oval
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 130)  // Width 100, Height 30
 
         performDragGesture(from: start, to: end, withShift: true)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        if let circle = window.overlayView.currentCircle {
-            let width = abs(circle.endPoint.x - circle.startPoint.x)
-            let height = abs(circle.endPoint.y - circle.startPoint.y)
-            XCTAssertEqual(width, 100, accuracy: 0.1, "Circle should use larger dimension (100)")
-            XCTAssertEqual(height, 100, accuracy: 0.1, "Circle should use larger dimension (100)")
+        XCTAssertNotNil(window.overlayView.currentOval)
+        if let oval = window.overlayView.currentOval {
+            let width = abs(oval.endPoint.x - oval.startPoint.x)
+            let height = abs(oval.endPoint.y - oval.startPoint.y)
+            XCTAssertEqual(width, 100, accuracy: 0.1, "Oval should use larger dimension (100)")
+            XCTAssertEqual(height, 100, accuracy: 0.1, "Oval should use larger dimension (100)")
         }
     }
 
@@ -612,22 +612,22 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         }
     }
 
-    func testCircleShiftPlusCenterMode() {
-        window.overlayView.currentTool = .circle
+    func testOvalShiftPlusCenterMode() {
+        window.overlayView.currentTool = .oval
         let anchor = NSPoint(x: 200, y: 200)
         let end = NSPoint(x: 250, y: 230)  // Non-square drag
 
         performDragWithModifiers(from: anchor, to: end, shift: true, option: true)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        if let circle = window.overlayView.currentCircle {
-            let width = abs(circle.endPoint.x - circle.startPoint.x)
-            let height = abs(circle.endPoint.y - circle.startPoint.y)
+        XCTAssertNotNil(window.overlayView.currentOval)
+        if let oval = window.overlayView.currentOval {
+            let width = abs(oval.endPoint.x - oval.startPoint.x)
+            let height = abs(oval.endPoint.y - oval.startPoint.y)
             XCTAssertEqual(width, height, accuracy: 0.1, "Should be perfect circle")
 
             // Center mode: anchor should be at center of the shape
-            let centerX = (circle.startPoint.x + circle.endPoint.x) / 2
-            let centerY = (circle.startPoint.y + circle.endPoint.y) / 2
+            let centerX = (oval.startPoint.x + oval.endPoint.x) / 2
+            let centerY = (oval.startPoint.y + oval.endPoint.y) / 2
             XCTAssertEqual(centerX, anchor.x, accuracy: 0.1, "Center X should be at anchor")
             XCTAssertEqual(centerY, anchor.y, accuracy: 0.1, "Center Y should be at anchor")
         }
@@ -649,18 +649,18 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         }
     }
 
-    func testCircleShiftCreatesAndFinalizesPerfectCircle() {
-        window.overlayView.currentTool = .circle
+    func testOvalShiftCreatesAndFinalizesPerfectCircle() {
+        window.overlayView.currentTool = .oval
         let start = NSPoint(x: 100, y: 100)
         let end = NSPoint(x: 200, y: 150)
 
         performDragGesture(from: start, to: end, withShift: true)
         completeDragGesture(at: end, withShift: true)
 
-        XCTAssertEqual(window.overlayView.circles.count, 1)
-        if let circle = window.overlayView.circles.first {
-            let width = abs(circle.endPoint.x - circle.startPoint.x)
-            let height = abs(circle.endPoint.y - circle.startPoint.y)
+        XCTAssertEqual(window.overlayView.ovals.count, 1)
+        if let oval = window.overlayView.ovals.first {
+            let width = abs(oval.endPoint.x - oval.startPoint.x)
+            let height = abs(oval.endPoint.y - oval.startPoint.y)
             XCTAssertEqual(width, height, accuracy: 0.1, "Finalized circle should be perfect")
         }
     }
@@ -724,27 +724,27 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
             "Rectangle should not jump when Option is released")
     }
 
-    func testCircleOptionReleaseMidDragDoesNotJump() {
-        window.overlayView.currentTool = .circle
+    func testOvalOptionReleaseMidDragDoesNotJump() {
+        window.overlayView.currentTool = .oval
         let anchor = NSPoint(x: 200, y: 200)
         let dragPoint1 = NSPoint(x: 250, y: 230)
 
         performDragWithOption(from: anchor, to: dragPoint1)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        guard let circleBefore = window.overlayView.currentCircle else { return }
-        let endPointBefore = circleBefore.endPoint
+        XCTAssertNotNil(window.overlayView.currentOval)
+        guard let ovalBefore = window.overlayView.currentOval else { return }
+        let endPointBefore = ovalBefore.endPoint
 
         releaseOptionKey()
         continueDragWithoutOption(to: dragPoint1)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        guard let circleAfter = window.overlayView.currentCircle else { return }
+        XCTAssertNotNil(window.overlayView.currentOval)
+        guard let ovalAfter = window.overlayView.currentOval else { return }
 
-        XCTAssertEqual(circleAfter.endPoint.x, endPointBefore.x, accuracy: 1.0,
-            "Circle should not jump when Option is released")
-        XCTAssertEqual(circleAfter.endPoint.y, endPointBefore.y, accuracy: 1.0,
-            "Circle should not jump when Option is released")
+        XCTAssertEqual(ovalAfter.endPoint.x, endPointBefore.x, accuracy: 1.0,
+            "Oval should not jump when Option is released")
+        XCTAssertEqual(ovalAfter.endPoint.y, endPointBefore.y, accuracy: 1.0,
+            "Oval should not jump when Option is released")
     }
 
     func testRectangleOptionReleaseThenContinueDrag() {
@@ -767,8 +767,8 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
             "Rectangle should follow cursor after Option release")
     }
 
-    func testCircleOptionReleaseThenContinueDrag() {
-        window.overlayView.currentTool = .circle
+    func testOvalOptionReleaseThenContinueDrag() {
+        window.overlayView.currentTool = .oval
         let anchor = NSPoint(x: 200, y: 200)
         let dragPoint1 = NSPoint(x: 250, y: 230)
         let dragPoint2 = NSPoint(x: 280, y: 260)
@@ -777,14 +777,14 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         releaseOptionKey()
         continueDragWithoutOption(to: dragPoint2)
 
-        XCTAssertNotNil(window.overlayView.currentCircle)
-        guard let circle = window.overlayView.currentCircle else { return }
+        XCTAssertNotNil(window.overlayView.currentOval)
+        guard let oval = window.overlayView.currentOval else { return }
 
         // After releasing Option, shape should follow cursor from corner mode
-        XCTAssertEqual(circle.endPoint.x, dragPoint2.x, accuracy: 1.0,
-            "Circle should follow cursor after Option release")
-        XCTAssertEqual(circle.endPoint.y, dragPoint2.y, accuracy: 1.0,
-            "Circle should follow cursor after Option release")
+        XCTAssertEqual(oval.endPoint.x, dragPoint2.x, accuracy: 1.0,
+            "Oval should follow cursor after Option release")
+        XCTAssertEqual(oval.endPoint.y, dragPoint2.y, accuracy: 1.0,
+            "Oval should follow cursor after Option release")
     }
 
     func testRectangleOptionHeldEntireDragStillWorks() {
@@ -810,8 +810,8 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         }
     }
 
-    func testCircleOptionHeldEntireDragStillWorks() {
-        window.overlayView.currentTool = .circle
+    func testOvalOptionHeldEntireDragStillWorks() {
+        window.overlayView.currentTool = .oval
         let anchor = NSPoint(x: 200, y: 200)
         let end = NSPoint(x: 250, y: 230)
 
@@ -824,10 +824,10 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
         )
         window.mouseUp(with: mouseUpEvent!)
 
-        XCTAssertEqual(window.overlayView.circles.count, 1)
-        if let circle = window.overlayView.circles.first {
-            let centerX = (circle.startPoint.x + circle.endPoint.x) / 2
-            let centerY = (circle.startPoint.y + circle.endPoint.y) / 2
+        XCTAssertEqual(window.overlayView.ovals.count, 1)
+        if let oval = window.overlayView.ovals.first {
+            let centerX = (oval.startPoint.x + oval.endPoint.x) / 2
+            let centerY = (oval.startPoint.y + oval.endPoint.y) / 2
             XCTAssertEqual(centerX, anchor.x, accuracy: 1.0, "Center X should be at anchor")
             XCTAssertEqual(centerY, anchor.y, accuracy: 1.0, "Center Y should be at anchor")
         }

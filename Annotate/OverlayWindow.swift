@@ -957,7 +957,9 @@ class OverlayWindow: NSPanel {
         case .line: AppDelegate.shared?.enableLineMode(NSMenuItem())
         case .highlighter: AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
         case .rectangle: AppDelegate.shared?.enableRectangleMode(NSMenuItem())
-        case .circle: AppDelegate.shared?.enableCircleMode(NSMenuItem())
+        case .oval: AppDelegate.shared?.enableOvalMode(NSMenuItem())
+        case .solidRectangle: AppDelegate.shared?.enableSolidRectangleMode(NSMenuItem())
+        case .solidOval: AppDelegate.shared?.enableSolidOvalMode(NSMenuItem())
         case .redact: AppDelegate.shared?.enableRedactMode(NSMenuItem())
         case .counter: AppDelegate.shared?.enableCounterMode(NSMenuItem())
         case .text: AppDelegate.shared?.enableTextMode(NSMenuItem())
@@ -1211,7 +1213,7 @@ class OverlayWindow: NSPanel {
             // A label under a newer redaction, even partly, stays out of reach, so a drag or
             // double-click there can never bring out its hidden text.
             for (index, annotation) in overlayView.textAnnotations.enumerated()
-            where !overlayView.isPointCoveredByRedaction(startPoint, over: annotation.creationTime)
+            where !overlayView.isPointCovered(startPoint, over: annotation.creationTime)
                 && !overlayView.isTextCoveredByRedaction(annotation) {
                 let textRect = getTextRect(for: annotation)
                 if textRect.contains(startPoint) {
@@ -1277,19 +1279,33 @@ class OverlayWindow: NSPanel {
                 ),
                 tool: .highlighter
             )
-        case .rectangle, .redact:
+        case .rectangle, .solidRectangle, .redact:
             activeShapeTool = overlayView.currentTool
+            let style: RectangleStyle
+            switch overlayView.currentTool {
+            case .redact: style = overlayView.pickerSettings[.redactionStyle]
+            case .solidRectangle: style = .solidColor
+            default: style = .outline
+            }
             overlayView.currentRectangle = Rectangle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
-                lineWidth: overlayView.currentLineWidth, creationTime: nil,
-                style: overlayView.currentTool == .redact ? overlayView.pickerSettings[.redactionStyle] : .outline)
+                startPoint: startPoint,
+                endPoint: startPoint,
+                color: overlayView.currentColor,
+                lineWidth: overlayView.currentLineWidth,
+                creationTime: nil,
+                style: style)
             if overlayView.currentRectangle?.needsSample == true {
                 overlayView.beginRedactionDrag()
             }
-        case .circle:
-            activeShapeTool = .circle
-            overlayView.currentCircle = Circle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
+        case .oval, .solidOval:
+            activeShapeTool = overlayView.currentTool
+            overlayView.currentOval = Oval(
+                startPoint: startPoint,
+                endPoint: startPoint,
+                color: overlayView.currentColor,
+                lineWidth: overlayView.currentLineWidth,
+                creationTime: nil,
+                solid: overlayView.currentTool == .solidOval)
         case .text:
             break
         case .counter:
@@ -1457,7 +1473,7 @@ class OverlayWindow: NSPanel {
             overlayView.currentLine?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-        case .rectangle, .redact:
+        case .rectangle, .solidRectangle, .redact:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1479,7 +1495,7 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentRectangle?.startPoint = newStart
             overlayView.currentRectangle?.endPoint = newEnd
-        case .circle:
+        case .oval, .solidOval:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1499,8 +1515,8 @@ class OverlayWindow: NSPanel {
                 )
             }
 
-            overlayView.currentCircle?.startPoint = newStart
-            overlayView.currentCircle?.endPoint = newEnd
+            overlayView.currentOval?.startPoint = newStart
+            overlayView.currentOval?.endPoint = newEnd
         default:
             break
         }
@@ -1560,7 +1576,7 @@ class OverlayWindow: NSPanel {
                 overlayView.lines.append(currentLine)
                 overlayView.currentLine = nil
             }
-        case .rectangle, .redact:
+        case .rectangle, .solidRectangle, .redact:
             if var currentRectangle = overlayView.currentRectangle {
                 currentRectangle.creationTime = CACurrentMediaTime()
                 // Keep the live sample on screen, but not on the undo stack.
@@ -1570,12 +1586,12 @@ class OverlayWindow: NSPanel {
                 overlayView.rectangles.append(currentRectangle)
                 overlayView.currentRectangle = nil
             }
-        case .circle:
-            if var currentCircle = overlayView.currentCircle {
-                currentCircle.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addCircle(currentCircle))
-                overlayView.circles.append(currentCircle)
-                overlayView.currentCircle = nil
+        case .oval, .solidOval:
+            if var currentOval = overlayView.currentOval {
+                currentOval.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addOval(currentOval))
+                overlayView.ovals.append(currentOval)
+                overlayView.currentOval = nil
             }
         default:
             break
@@ -1620,7 +1636,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentArrow = nil
         overlayView.currentLine = nil
         overlayView.currentRectangle = nil
-        overlayView.currentCircle = nil
+        overlayView.currentOval = nil
         overlayView.endRedactionDrag()
         overlayView.cancelTextBoxDrag()
     }
@@ -1822,7 +1838,7 @@ class OverlayWindow: NSPanel {
         let optionPressed = event.modifierFlags.contains(.option)
         let shiftPressed = event.modifierFlags.contains(.shift)
 
-        // Handle Option key for center mode (rectangles and circles)
+        // Handle Option key for center mode (rectangles and ovals)
         if !isOptionCurrentlyPressed && optionPressed {
             if !wasOptionPressedOnMouseDown {
                 recenterAnchorForCurrentShape()
@@ -1859,12 +1875,12 @@ class OverlayWindow: NSPanel {
                 height: abs(rect.endPoint.y - rect.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
-        } else if let circle = overlayView.currentCircle {
+        } else if let oval = overlayView.currentOval {
             let boundingRect = NSRect(
-                x: min(circle.startPoint.x, circle.endPoint.x),
-                y: min(circle.startPoint.y, circle.endPoint.y),
-                width: abs(circle.endPoint.x - circle.startPoint.x),
-                height: abs(circle.endPoint.y - circle.startPoint.y)
+                x: min(oval.startPoint.x, oval.endPoint.x),
+                y: min(oval.startPoint.y, oval.endPoint.y),
+                width: abs(oval.endPoint.x - oval.startPoint.x),
+                height: abs(oval.endPoint.y - oval.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
         }
@@ -1874,8 +1890,8 @@ class OverlayWindow: NSPanel {
     private func reanchorFromCenterToCorner() {
         if let rect = overlayView.currentRectangle {
             anchorPoint = rect.startPoint
-        } else if let circle = overlayView.currentCircle {
-            anchorPoint = circle.startPoint
+        } else if let oval = overlayView.currentOval {
+            anchorPoint = oval.startPoint
         }
     }
 
@@ -2163,9 +2179,15 @@ class OverlayWindow: NSPanel {
         case .rectangle:
             toolName = "Rectangle"
             icon = "🔲"
-        case .circle:
-            toolName = "Circle"
+        case .oval:
+            toolName = "Oval"
             icon = "⭕"
+        case .solidRectangle:
+            toolName = "Solid Rectangle"
+            icon = "⬛"
+        case .solidOval:
+            toolName = "Solid Oval"
+            icon = "⚫"
         case .redact:
             toolName = "Redact"
             icon = "🕶️"
@@ -2186,7 +2208,7 @@ class OverlayWindow: NSPanel {
         let currentWidth = overlayView.currentLineWidth
 
         switch tool {
-        case .pen, .arrow, .line, .highlighter, .rectangle, .circle:
+        case .pen, .arrow, .line, .highlighter, .rectangle, .oval, .solidRectangle, .solidOval:
             let widthText = String(format: "%.2f px", currentWidth)
             let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)
@@ -2441,7 +2463,7 @@ class OverlayWindow: NSPanel {
 
             let hasAnnotations = !overlayView.arrows.isEmpty || !overlayView.lines.isEmpty ||
                                 !overlayView.paths.isEmpty || !overlayView.highlightPaths.isEmpty ||
-                                !overlayView.rectangles.isEmpty || !overlayView.circles.isEmpty ||
+                                !overlayView.rectangles.isEmpty || !overlayView.ovals.isEmpty ||
                                 !overlayView.textAnnotations.isEmpty || !overlayView.counterAnnotations.isEmpty
 
             if hasAnnotations {

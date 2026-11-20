@@ -64,21 +64,21 @@ final class SelectionFeatureTests: XCTestCase {
         )
         overlayView.lines.append(line)
         
-        let circle = Circle(
+        let oval = Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
         // Select both
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         XCTAssertEqual(overlayView.selectedObjects.count, 2)
         XCTAssertTrue(overlayView.selectedObjects.contains(.line(index: 0)))
-        XCTAssertTrue(overlayView.selectedObjects.contains(.circle(index: 0)))
+        XCTAssertTrue(overlayView.selectedObjects.contains(.oval(index: 0)))
     }
     
     // MARK: - Hit Testing Tests
@@ -121,15 +121,15 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(inCenter, .none)
     }
     
-    func testHitTestCircleEdgeOnly() {
-        let circle = Circle(
+    func testHitTestOvalEdgeOnly() {
+        let oval = Oval(
             startPoint: NSPoint(x: 100, y: 100),
             endPoint: NSPoint(x: 200, y: 200),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
         // Point in center should NOT hit (edge-only selection)
         let inCenter = overlayView.findObjectAt(point: NSPoint(x: 150, y: 150))
@@ -216,21 +216,21 @@ final class SelectionFeatureTests: XCTestCase {
         )
         overlayView.lines.append(line)
         
-        let circle = Circle(
+        let oval = Oval(
             startPoint: NSPoint(x: 200, y: 200),
             endPoint: NSPoint(x: 250, y: 250),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
-        // Rectangle that covers the line but not the circle
+        // Rectangle that covers the line but not the oval
         let rect = NSRect(x: 40, y: 40, width: 80, height: 80)
         let foundObjects = overlayView.findObjectsInRect(rect)
         
         XCTAssertTrue(foundObjects.contains(.line(index: 0)))
-        XCTAssertFalse(foundObjects.contains(.circle(index: 0)))
+        XCTAssertFalse(foundObjects.contains(.oval(index: 0)))
     }
     
     func testRectangleSelectionEmpty() {
@@ -353,16 +353,16 @@ final class SelectionFeatureTests: XCTestCase {
         )
         overlayView.lines.append(line)
         
-        let circle = Circle(
+        let oval = Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         let boundingBox = overlayView.calculateSelectionBoundingBox()
         
@@ -427,16 +427,16 @@ final class SelectionFeatureTests: XCTestCase {
         )
         overlayView.lines.append(line)
         
-        let circle = Circle(
+        let oval = Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Move both
         let delta = NSPoint(x: 10, y: 20)
@@ -445,8 +445,8 @@ final class SelectionFeatureTests: XCTestCase {
         // Check both moved
         XCTAssertEqual(overlayView.lines[0].startPoint.x, 110)
         XCTAssertEqual(overlayView.lines[0].startPoint.y, 120)
-        XCTAssertEqual(overlayView.circles[0].startPoint.x, 310)
-        XCTAssertEqual(overlayView.circles[0].startPoint.y, 320)
+        XCTAssertEqual(overlayView.ovals[0].startPoint.x, 310)
+        XCTAssertEqual(overlayView.ovals[0].startPoint.y, 320)
     }
     
     // MARK: - Deletion Tests
@@ -462,23 +462,23 @@ final class SelectionFeatureTests: XCTestCase {
         )
         overlayView.lines.append(line)
         
-        let circle = Circle(
+        let oval = Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
             lineWidth: 2.0,
             creationTime: nil
         )
-        overlayView.circles.append(circle)
+        overlayView.ovals.append(oval)
         
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Delete selected
         overlayView.deleteSelectedObjects()
         
         // Both should be deleted
         XCTAssertTrue(overlayView.lines.isEmpty)
-        XCTAssertTrue(overlayView.circles.isEmpty)
+        XCTAssertTrue(overlayView.ovals.isEmpty)
         XCTAssertTrue(overlayView.selectedObjects.isEmpty)
     }
     
@@ -561,7 +561,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 500, y: 500),
             endPoint: NSPoint(x: 600, y: 600),
             color: .yellow,
@@ -587,7 +587,7 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertTrue(overlayView.selectedObjects.contains(.arrow(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.line(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.rectangle(index: 0)))
-        XCTAssertTrue(overlayView.selectedObjects.contains(.circle(index: 0)))
+        XCTAssertTrue(overlayView.selectedObjects.contains(.oval(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.text(index: 0)))
     }
     
@@ -692,7 +692,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 500, y: 500),
             endPoint: NSPoint(x: 600, y: 600),
             color: .yellow,
@@ -724,7 +724,7 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertTrue(overlayView.selectedObjects.contains(.line(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.highlight(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.rectangle(index: 0)))
-        XCTAssertTrue(overlayView.selectedObjects.contains(.circle(index: 0)))
+        XCTAssertTrue(overlayView.selectedObjects.contains(.oval(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.text(index: 0)))
         XCTAssertTrue(overlayView.selectedObjects.contains(.counter(index: 0)))
     }
@@ -741,7 +741,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -750,14 +750,14 @@ final class SelectionFeatureTests: XCTestCase {
         ))
         
         overlayView.currentTool = .select
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Copy
         overlayView.copySelectedObjects()
         
         // Original objects should still exist
         XCTAssertEqual(overlayView.lines.count, 1)
-        XCTAssertEqual(overlayView.circles.count, 1)
+        XCTAssertEqual(overlayView.ovals.count, 1)
         
         // Selection should remain
         XCTAssertEqual(overlayView.selectedObjects.count, 2)
@@ -773,7 +773,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -782,14 +782,14 @@ final class SelectionFeatureTests: XCTestCase {
         ))
         
         overlayView.currentTool = .select
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Cut
         overlayView.cutSelectedObjects()
         
         // Objects should be removed
         XCTAssertTrue(overlayView.lines.isEmpty)
-        XCTAssertTrue(overlayView.circles.isEmpty)
+        XCTAssertTrue(overlayView.ovals.isEmpty)
         
         // Selection should be cleared
         XCTAssertTrue(overlayView.selectedObjects.isEmpty)
@@ -846,7 +846,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -855,14 +855,14 @@ final class SelectionFeatureTests: XCTestCase {
         ))
         
         overlayView.currentTool = .select
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Duplicate
         overlayView.duplicateSelectedObjects()
         
         // Should have duplicated objects
         XCTAssertEqual(overlayView.lines.count, 2)
-        XCTAssertEqual(overlayView.circles.count, 2)
+        XCTAssertEqual(overlayView.ovals.count, 2)
         
         // Duplicates should be offset by 20 points right and 20 points down (negative Y in macOS coordinates)
         XCTAssertEqual(overlayView.lines[1].startPoint.x, 120)  // 100 + 20
@@ -870,16 +870,16 @@ final class SelectionFeatureTests: XCTestCase {
         XCTAssertEqual(overlayView.lines[1].endPoint.x, 220)    // 200 + 20
         XCTAssertEqual(overlayView.lines[1].endPoint.y, 180)    // 200 - 20
         
-        XCTAssertEqual(overlayView.circles[1].startPoint.x, 320)  // 300 + 20
-        XCTAssertEqual(overlayView.circles[1].startPoint.y, 280)  // 300 - 20
-        XCTAssertEqual(overlayView.circles[1].endPoint.x, 420)    // 400 + 20
-        XCTAssertEqual(overlayView.circles[1].endPoint.y, 380)    // 400 - 20
+        XCTAssertEqual(overlayView.ovals[1].startPoint.x, 320)  // 300 + 20
+        XCTAssertEqual(overlayView.ovals[1].startPoint.y, 280)  // 300 - 20
+        XCTAssertEqual(overlayView.ovals[1].endPoint.x, 420)    // 400 + 20
+        XCTAssertEqual(overlayView.ovals[1].endPoint.y, 380)    // 400 - 20
         
         // Should be in select mode with duplicated objects selected
         XCTAssertEqual(overlayView.currentTool, .select)
         XCTAssertEqual(overlayView.selectedObjects.count, 2)
         XCTAssertTrue(overlayView.selectedObjects.contains(.line(index: 1)))
-        XCTAssertTrue(overlayView.selectedObjects.contains(.circle(index: 1)))
+        XCTAssertTrue(overlayView.selectedObjects.contains(.oval(index: 1)))
     }
     
     func testDuplicateWithoutSelection() {
@@ -943,7 +943,7 @@ final class SelectionFeatureTests: XCTestCase {
             creationTime: nil
         ))
         
-        overlayView.circles.append(Circle(
+        overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -952,14 +952,14 @@ final class SelectionFeatureTests: XCTestCase {
         ))
         
         overlayView.currentTool = .select
-        overlayView.selectedObjects = [.line(index: 0), .circle(index: 0)]
+        overlayView.selectedObjects = [.line(index: 0), .oval(index: 0)]
         
         // Cut
         overlayView.cutSelectedObjects()
         
         // Objects should be removed
         XCTAssertEqual(overlayView.lines.count, 0)
-        XCTAssertEqual(overlayView.circles.count, 0)
+        XCTAssertEqual(overlayView.ovals.count, 0)
         
         // Clipboard should contain the cut objects
         XCTAssertEqual(overlayView.clipboard.count, 2)
@@ -1490,8 +1490,8 @@ final class SelectionFeatureTests: XCTestCase {
                 lineWidth: 2,
                 creationTime: 5)
         ]
-        overlayView.circles = [
-            Circle(
+        overlayView.ovals = [
+            Oval(
                 startPoint: NSPoint(x: 500, y: 100),
                 endPoint: NSPoint(x: 550, y: 150),
                 color: .red,
@@ -1511,7 +1511,7 @@ final class SelectionFeatureTests: XCTestCase {
     /// Every annotation's id, kind by kind.
     private var annotationIds: [UUID] {
         overlayView.arrows.map(\.id) + overlayView.lines.map(\.id) + overlayView.paths.map(\.id)
-            + overlayView.highlightPaths.map(\.id) + overlayView.rectangles.map(\.id) + overlayView.circles.map(\.id)
+            + overlayView.highlightPaths.map(\.id) + overlayView.rectangles.map(\.id) + overlayView.ovals.map(\.id)
             + overlayView.textAnnotations.map(\.id) + overlayView.counterAnnotations.map(\.id)
     }
 

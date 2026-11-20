@@ -325,7 +325,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         (.pen, #selector(enablePenMode(_:))),
         (.highlighter, #selector(enableHighlighterMode(_:))),
         (.rectangle, #selector(enableRectangleMode(_:))),
-        (.circle, #selector(enableCircleMode(_:))),
+        (.oval, #selector(enableOvalMode(_:))),
+        (.solidRectangle, #selector(enableSolidRectangleMode(_:))),
+        (.solidOval, #selector(enableSolidOvalMode(_:))),
         (.redact, #selector(enableRedactMode(_:))),
         (.counter, #selector(enableCounterMode(_:))),
         (.text, #selector(enableTextMode(_:))),
@@ -733,8 +735,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switchTool(to: .rectangle)
     }
 
-    @objc func enableCircleMode(_ sender: NSMenuItem) {
-        switchTool(to: .circle)
+    @objc func enableOvalMode(_ sender: NSMenuItem) {
+        switchTool(to: .oval)
+    }
+
+    @objc func enableSolidRectangleMode(_ sender: NSMenuItem) {
+        switchTool(to: .solidRectangle)
+    }
+
+    @objc func enableSolidOvalMode(_ sender: NSMenuItem) {
+        switchTool(to: .solidOval)
     }
 
     @objc func enableRedactMode(_ sender: NSMenuItem) {
@@ -937,8 +947,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 action = .highlighter
             case #selector(enableRectangleMode(_:)):
                 action = .rectangle
-            case #selector(enableCircleMode(_:)):
-                action = .circle
+            case #selector(enableOvalMode(_:)):
+                action = .oval
+            case #selector(enableSolidRectangleMode(_:)):
+                action = .solidRectangle
+            case #selector(enableSolidOvalMode(_:)):
+                action = .solidOval
             case #selector(enableRedactMode(_:)):
                 action = .redact
             case #selector(enableCounterMode(_:)):

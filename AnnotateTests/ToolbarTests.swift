@@ -18,7 +18,7 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = appDelegate
         ShortcutManager.shared = ShortcutManager(userDefaults: defaults)
         window = OverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1_400, height: 800),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -479,7 +479,7 @@ final class ToolbarTests: XCTestCase {
         defaults.settings[.toolbarPositions] = [key: [140.0, 500.0]]
 
         let reopened = OverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1_400, height: 800),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -519,14 +519,14 @@ final class ToolbarTests: XCTestCase {
         defaults.settings[.toolbarPositions] = [key: [10_000.0, 10_000.0]]
 
         let reopened = OverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1_400, height: 800),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
         )
         defer { reopened.close() }
 
-        XCTAssertEqual(reopened.toolbarFrame.maxX, 1_200, accuracy: 0.5)
+        XCTAssertEqual(reopened.toolbarFrame.maxX, 1_400, accuracy: 0.5)
         XCTAssertEqual(reopened.toolbarFrame.maxY, 800, accuracy: 0.5)
     }
 
@@ -552,7 +552,7 @@ final class ToolbarTests: XCTestCase {
         defaults.setRawValue([key: ["nonsense"]], for: .toolbarPositions)
 
         let reopened = OverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1_400, height: 800),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -560,7 +560,7 @@ final class ToolbarTests: XCTestCase {
         defer { reopened.close() }
 
         XCTAssertEqual(reopened.toolbarFrame.minY, 20, accuracy: 0.5)
-        XCTAssertEqual(reopened.toolbarFrame.midX, 600, accuracy: 0.5)
+        XCTAssertEqual(reopened.toolbarFrame.midX, 700, accuracy: 0.5)
     }
 
     func testABarWithNoAppBehindItNeitherReadsNorWritesTheStandardSuite() throws {
@@ -581,7 +581,7 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = nil
 
         let detachedFromAnyApp = OverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1_400, height: 800),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -596,7 +596,7 @@ final class ToolbarTests: XCTestCase {
             detachedFromAnyApp.toolbarFrame.minY, 20, accuracy: 0.5,
             "With no app behind it the bar has no stored position to honor, so it takes the "
                 + "default placement rather than the developer's own")
-        XCTAssertEqual(detachedFromAnyApp.toolbarFrame.midX, 600, accuracy: 0.5)
+        XCTAssertEqual(detachedFromAnyApp.toolbarFrame.midX, 700, accuracy: 0.5)
 
         panel.setFrameOrigin(NSPoint(x: 300, y: 400))
         NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
@@ -1029,7 +1029,7 @@ final class ToolbarTests: XCTestCase {
 
     func testToolbarViewWrapsToASecondRowWhenWidthIsTight() {
         let wide = NSHostingController(rootView: ToolbarView(model: window.toolbarModel) { _ in })
-            .sizeThatFits(in: CGSize(width: 1_200, height: 200))
+            .sizeThatFits(in: CGSize(width: 1_400, height: 200))
         let narrow = NSHostingController(rootView: ToolbarView(model: window.toolbarModel) { _ in })
             .sizeThatFits(in: CGSize(width: 700, height: 200))
 
@@ -1345,7 +1345,7 @@ final class ToolbarTests: XCTestCase {
     }
 
     /// Orders the overlay and its toolbar on screen and lays out the displayed host, which is
-    /// the production path the 1200/700 wrap tests used to skip. Off-screen `toolbarFrame`
+    /// the production path the 1400/700 wrap tests used to skip. Off-screen `toolbarFrame`
     /// reads the measurer's `setFrame` result and never sees NSHostingView snap the panel
     /// back to a stacked size.
     private func realizedToolbarFrame(_ overlay: OverlayWindow) throws -> NSRect {

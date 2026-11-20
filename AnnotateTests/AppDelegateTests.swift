@@ -77,8 +77,8 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(
             try toolSubmenu().items.map(\.title),
             [
-                "Arrow", "Line", "Pen", "Highlighter", "Rectangle", "Circle", "Redact", "Counter", "Text",
-                "Select", "Eraser",
+                "Arrow", "Line", "Pen", "Highlighter", "Rectangle", "Oval", "Solid Rectangle",
+                "Solid Oval", "Redact", "Counter", "Text", "Select", "Eraser",
             ])
     }
 
@@ -207,11 +207,11 @@ final class AppDelegateTests: XCTestCase, Sendable {
         appDelegate.pointerLocationOverride = NSPoint(x: mainScreen.frame.midX, y: mainScreen.frame.midY)
         defer { appDelegate.pointerLocationOverride = nil }
 
-        overlay.overlayView.currentTool = .circle
+        overlay.overlayView.currentTool = .oval
         try openStatusMenu()
         appDelegate.menuDidClose(try XCTUnwrap(appDelegate.statusItem.menu))
 
-        try assertToolMenuShows(.circle)
+        try assertToolMenuShows(.oval)
         XCTAssertEqual(testDefaults.settings[.lastUsedTool], .pen)
     }
 

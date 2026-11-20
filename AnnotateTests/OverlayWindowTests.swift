@@ -996,7 +996,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.showToolFeedback(.line)
         window.showToolFeedback(.highlighter)
         window.showToolFeedback(.rectangle)
-        window.showToolFeedback(.circle)
+        window.showToolFeedback(.oval)
         window.showToolFeedback(.counter)
         window.showToolFeedback(.text)
         
@@ -1006,7 +1006,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     
     func testToolFeedbackForDrawingTools() {
         // Test that drawing tools can show feedback
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
         
         for tool in drawingTools {
             window.overlayView.currentTool = tool
@@ -1067,7 +1067,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             creationTime: nil
         ))
 
-        window.overlayView.circles.append(Circle(
+        window.overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -1216,7 +1216,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testCmdXOnlyWorksInSelectMode() {
-        window.overlayView.circles.append(Circle(
+        window.overlayView.ovals.append(Oval(
             startPoint: NSPoint(x: 100, y: 100),
             endPoint: NSPoint(x: 200, y: 200),
             color: .blue,
@@ -1224,7 +1224,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             creationTime: nil
         ))
 
-        window.overlayView.selectedObjects = [.circle(index: 0)]
+        window.overlayView.selectedObjects = [.oval(index: 0)]
         window.overlayView.currentTool = .highlighter
 
         let cmdXEvent = TestEvents.createKeyEvent(
@@ -1264,7 +1264,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     // MARK: - Conditional Line Width Display Tests
 
     func testDrawingToolsShowLineWidthInFeedback() {
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
 
         for tool in drawingTools {
             window.overlayView.currentTool = tool
@@ -1325,7 +1325,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testAllDrawingToolsWithVariousLineWidths() {
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
         let widths: [CGFloat] = [0.5, 1.0, 3.0, 5.0, 10.0, 20.0]
 
         for tool in drawingTools {
@@ -1342,7 +1342,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testFeedbackConsistencyAcrossToolTypes() {
-        for tool in [ToolType.pen, .arrow, .line, .highlighter, .rectangle, .circle, .counter, .text, .select] {
+        for tool in [ToolType.pen, .arrow, .line, .highlighter, .rectangle, .oval, .counter, .text, .select] {
             window.overlayView.currentTool = tool
             window.overlayView.currentLineWidth = 3.0
             window.overlayView.currentColor = .blue

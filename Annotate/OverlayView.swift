@@ -163,12 +163,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// new key anyway.
     private var failedSampleKeys: Set<RedactionSampleKey> = []
 
-    var circles: [Circle] {
-        get { document.circles }
-        _modify { yield &document.circles }
+    var ovals: [Oval] {
+        get { document.ovals }
+        _modify { yield &document.ovals }
     }
-    var currentCircle: Circle? {
-        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentCircle.map(\.redrawBounds)) }
+    var currentOval: Oval? {
+        didSet { invalidateLivePreview(oldValue.map(\.redrawBounds), currentOval.map(\.redrawBounds)) }
     }
 
     var textAnnotations: [TextAnnotation] {
@@ -630,20 +630,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.registerUndo(action: .addRectangle(rectangle))
                 }
             }
-        case .addCircle(let circle):
+        case .addOval(let oval):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if !target.circles.isEmpty {
-                        target.circles.removeLast()
-                        target.registerUndo(action: .removeCircle(circle))
+                    if !target.ovals.isEmpty {
+                        target.ovals.removeLast()
+                        target.registerUndo(action: .removeOval(oval))
                     }
                 }
             }
-        case .removeCircle(let circle):
+        case .removeOval(let oval):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    target.circles.append(circle)
-                    target.registerUndo(action: .addCircle(circle))
+                    target.ovals.append(oval)
+                    target.registerUndo(action: .addOval(oval))
                 }
             }
         case .addText(let annotation):
@@ -718,13 +718,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     }
                 }
             }
-        case .moveCircle(let index, let fromStart, let fromEnd, let toStart, let toEnd):
+        case .moveOval(let index, let fromStart, let fromEnd, let toStart, let toEnd):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if index < target.circles.count {
-                        target.circles[index].startPoint = fromStart
-                        target.circles[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveCircle(index, toStart, toEnd, fromStart, fromEnd))
+                    if index < target.ovals.count {
+                        target.ovals[index].startPoint = fromStart
+                        target.ovals[index].endPoint = fromEnd
+                        target.registerUndo(action: .moveOval(index, toStart, toEnd, fromStart, fromEnd))
                     }
                 }
             }
@@ -778,7 +778,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 }
             }
         case .clearAll(
-            let paths, let arrows, let lines, let highlights, let rectangles, let circles,
+            let paths, let arrows, let lines, let highlights, let rectangles, let ovals,
             let textAnnotations,
             let counterAnnotations):
             manager?.registerUndo(withTarget: self) { target in
@@ -788,7 +788,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.lines = lines
                     target.highlightPaths = highlights
                     target.rectangles = rectangles
-                    target.circles = circles
+                    target.ovals = ovals
                     target.textAnnotations = textAnnotations
                     target.counterAnnotations = counterAnnotations
                     target.nextCounterNumber =
@@ -807,7 +807,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             // Cut undo is handled by individual remove actions for each cut object
             break
         case .eraseAnnotations(
-            let paths, let arrows, let lines, let highlights, let rectangles, let circles,
+            let paths, let arrows, let lines, let highlights, let rectangles, let ovals,
             let textAnnotations, let counterAnnotations):
             // Reciprocal undo pattern: eraseAnnotations ↔ restoreAnnotations
             manager?.registerUndo(withTarget: self) { target in
@@ -817,18 +817,18 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.lines.append(contentsOf: lines)
                     target.highlightPaths.append(contentsOf: highlights)
                     target.rectangles.append(contentsOf: rectangles)
-                    target.circles.append(contentsOf: circles)
+                    target.ovals.append(contentsOf: ovals)
                     target.textAnnotations.append(contentsOf: textAnnotations)
                     target.counterAnnotations.append(contentsOf: counterAnnotations)
                     target.nextCounterNumber =
                         target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
                     target.registerUndo(action: .restoreAnnotations(
-                        paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
+                        paths, arrows, lines, highlights, rectangles, ovals, textAnnotations, counterAnnotations
                     ))
                 }
             }
         case .restoreAnnotations(
-            let paths, let arrows, let lines, let highlights, let rectangles, let circles,
+            let paths, let arrows, let lines, let highlights, let rectangles, let ovals,
             let textAnnotations, let counterAnnotations):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
@@ -837,13 +837,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     target.lines.removeAll { item in lines.contains(item) }
                     target.highlightPaths.removeAll { item in highlights.contains(item) }
                     target.rectangles.removeAll { item in rectangles.contains(item) }
-                    target.circles.removeAll { item in circles.contains(item) }
+                    target.ovals.removeAll { item in ovals.contains(item) }
                     target.textAnnotations.removeAll { item in textAnnotations.contains(item) }
                     target.counterAnnotations.removeAll { item in counterAnnotations.contains(item) }
                     target.nextCounterNumber =
                         target.counterAnnotations.map { $0.number }.max().map { $0 + 1 } ?? 1
                     target.registerUndo(action: .eraseAnnotations(
-                        paths, arrows, lines, highlights, rectangles, circles, textAnnotations, counterAnnotations
+                        paths, arrows, lines, highlights, rectangles, ovals, textAnnotations, counterAnnotations
                     ))
                 }
             }
@@ -980,7 +980,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 highlight: currentHighlight,
                 highlightBezier: currentHighlightBezier,
                 rectangle: currentRectangle,
-                circle: currentCircle),
+                oval: currentOval),
             board: BoardManager.shared.appearance,
             fade: fade,
             now: fadeClock(),
@@ -1084,14 +1084,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 height: abs(rect.endPoint.y - rect.startPoint.y)
             )
             
-        case .circle(let index):
-            guard index < circles.count else { return .zero }
-            let circle = circles[index]
+        case .oval(let index):
+            guard index < ovals.count else { return .zero }
+            let oval = ovals[index]
             return NSRect(
-                x: min(circle.startPoint.x, circle.endPoint.x),
-                y: min(circle.startPoint.y, circle.endPoint.y),
-                width: abs(circle.endPoint.x - circle.startPoint.x),
-                height: abs(circle.endPoint.y - circle.startPoint.y)
+                x: min(oval.startPoint.x, oval.endPoint.x),
+                y: min(oval.startPoint.y, oval.endPoint.y),
+                width: abs(oval.endPoint.x - oval.startPoint.x),
+                height: abs(oval.endPoint.y - oval.startPoint.y)
             )
             
         case .path(let index):
@@ -1296,12 +1296,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var redactionIndicesByCreation: [Int] { document.redactionIndicesByCreation }
 
-    /// Whether a redaction newer than something created at `creationTime` covers `point`,
-    /// so interactions do not reach what that redaction hides.
-    func isPointCoveredByRedaction(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
+    /// Whether a covering shape (a redaction, solid rectangle or solid oval) newer than
+    /// something created at `creationTime` covers `point`, so interactions do not reach what
+    /// it hides. A solid shape that has faded out no longer covers anything.
+    func isPointCovered(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
         let time = RedactionLayer.time(of: creationTime)
-        return rectangles.contains {
-            $0.isRedaction && RedactionLayer.time(of: $0.creationTime) > time && $0.bounds.contains(point)
+        func isNewer(_ other: CFTimeInterval?) -> Bool { RedactionLayer.time(of: other) > time }
+        let byRectangle = rectangles.indices.contains { index in
+            let rectangle = rectangles[index]
+            return rectangle.coversOlder && isNewer(rectangle.creationTime)
+                && rectangle.bounds.contains(point) && !isFadedOut(.rectangle(index: index))
+        }
+        return byRectangle || ovals.indices.contains { index in
+            let oval = ovals[index]
+            return oval.coversOlder && isNewer(oval.creationTime)
+                && oval.fillContains(point) && !isFadedOut(.oval(index: index))
         }
     }
 
@@ -1329,7 +1338,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
     /// Whether anything that fades is past its hold at `now`, so it draws below full strength.
     private func isAnythingDimmed(at now: CFTimeInterval) -> Bool {
         let creationTimes =
-            arrows.map(\.creationTime) + lines.map(\.creationTime) + circles.map(\.creationTime)
+            arrows.map(\.creationTime) + lines.map(\.creationTime) + ovals.map(\.creationTime)
             + rectangles.filter { !$0.isRedaction }.map(\.creationTime)
             + textAnnotations.map(\.creationTime) + counterAnnotations.map(\.creationTime)
             + paths.map(\.creationTime) + highlightPaths.map(\.creationTime)
@@ -1362,10 +1371,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
             make: { .rectangle(index: $0) }
         )
         compactItems(
-            \.circles,
+            \.ovals,
             keep: { fade.alpha(creationTime: $0.creationTime, at: now) != nil },
-            extractIndex: { if case .circle(let index) = $0 { return index }; return nil },
-            make: { .circle(index: $0) }
+            extractIndex: { if case .oval(let index) = $0 { return index }; return nil },
+            make: { .oval(index: $0) }
         )
         compactItems(
             \.counterAnnotations,
@@ -1690,7 +1699,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let hasContent =
             !paths.isEmpty || !arrows.isEmpty || !lines.isEmpty || !highlightPaths.isEmpty
             || !rectangles.isEmpty
-            || !circles.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
+            || !ovals.isEmpty || !textAnnotations.isEmpty || !counterAnnotations.isEmpty
         if hasContent {
             clearContents()
         }
@@ -1712,7 +1721,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             rectangle.sample = nil
             return rectangle
         }
-        let oldCircles = circles
+        let oldOvals = ovals
         let oldTextAnnotations = textAnnotations
         let oldCounterAnnotations = counterAnnotations
         registerUndo(
@@ -1722,7 +1731,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 oldLines,
                 oldHighlights,
                 oldRectangles,
-                oldCircles,
+                oldOvals,
                 oldTextAnnotations,
                 oldCounterAnnotations))
 
@@ -1731,14 +1740,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
         lines.removeAll()
         highlightPaths.removeAll()
         rectangles.removeAll()
-        circles.removeAll()
+        ovals.removeAll()
         textAnnotations.removeAll()
         counterAnnotations.removeAll()
         nextCounterNumber = 1
         currentArrow = nil
         currentLine = nil
         currentRectangle = nil
-        currentCircle = nil
+        currentOval = nil
         currentTextAnnotation = nil
 
         selectedObjects.removeAll()
@@ -1771,20 +1780,27 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastHighlight = highlightPaths.last!
             registerUndo(action: .removeHighlight(lastHighlight))
             highlightPaths.removeLast()
-        case .rectangle, .redact:
+        case .rectangle, .solidRectangle, .redact:
             // Only the active tool's kind, so the Rectangle tool never deletes a redaction.
-            let wantsRedaction = currentTool == .redact
-            guard let index = rectangles.lastIndex(where: { $0.isRedaction == wantsRedaction }) else { return }
+            let tool = currentTool
+            guard let index = rectangles.lastIndex(where: { rectangle in
+                switch tool {
+                case .redact: return rectangle.isRedaction
+                case .solidRectangle: return rectangle.style == .solidColor
+                default: return rectangle.style == .outline
+                }
+            }) else { return }
             var lastRectangle = rectangles[index]
             // Undo resamples instead of restoring an old capture.
             lastRectangle.sample = nil
             registerUndo(action: .removeRectangle(lastRectangle))
             rectangles.remove(at: index)
-        case .circle:
-            guard !circles.isEmpty else { return }
-            let lastCircle = circles.last!
-            registerUndo(action: .removeCircle(lastCircle))
-            circles.removeLast()
+        case .oval, .solidOval:
+            // Only the active tool's kind, as for rectangles.
+            let wantsSolid = currentTool == .solidOval
+            guard let index = ovals.lastIndex(where: { $0.solid == wantsSolid }) else { return }
+            registerUndo(action: .removeOval(ovals[index]))
+            ovals.remove(at: index)
         case .text:
             guard !textAnnotations.isEmpty else { return }
             let lastText = textAnnotations.last!
@@ -1848,11 +1864,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             registerUndo(action: .removeRectangle(rect))
             rectangles.remove(at: index)
             
-        case .circle(let index):
-            guard index < circles.count else { return }
-            let circle = circles[index]
-            registerUndo(action: .removeCircle(circle))
-            circles.remove(at: index)
+        case .oval(let index):
+            guard index < ovals.count else { return }
+            let oval = ovals[index]
+            registerUndo(action: .removeOval(oval))
+            ovals.remove(at: index)
             
         case .path(let index):
             guard index < paths.count else { return }
@@ -1915,9 +1931,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 rectangle.sample = nil
                 clipboard.append(.rectangle(rectangle))
 
-            case .circle(let index):
-                guard index < circles.count else { continue }
-                clipboard.append(.circle(circles[index]))
+            case .oval(let index):
+                guard index < ovals.count else { continue }
+                clipboard.append(.oval(ovals[index]))
 
             case .path(let index):
                 guard index < paths.count else { continue }
@@ -2025,14 +2041,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 registerUndo(action: .addRectangle(rect))
                 pastedObjects.append(.rectangle(index: rectangles.count - 1))
 
-            case .circle(var circle):
-                circle.id = UUID()
-                circle.startPoint = NSPoint(x: circle.startPoint.x + offsetX, y: circle.startPoint.y + offsetY)
-                circle.endPoint = NSPoint(x: circle.endPoint.x + offsetX, y: circle.endPoint.y + offsetY)
-                circle.creationTime = pasteTime
-                circles.append(circle)
-                registerUndo(action: .addCircle(circle))
-                pastedObjects.append(.circle(index: circles.count - 1))
+            case .oval(var oval):
+                oval.id = UUID()
+                oval.startPoint = NSPoint(x: oval.startPoint.x + offsetX, y: oval.startPoint.y + offsetY)
+                oval.endPoint = NSPoint(x: oval.endPoint.x + offsetX, y: oval.endPoint.y + offsetY)
+                oval.creationTime = pasteTime
+                ovals.append(oval)
+                registerUndo(action: .addOval(oval))
+                pastedObjects.append(.oval(index: ovals.count - 1))
 
             case .path(var path):
                 path.id = UUID()
@@ -2120,11 +2136,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
                 maxX = max(maxX, max(rect.startPoint.x, rect.endPoint.x))
                 maxY = max(maxY, max(rect.startPoint.y, rect.endPoint.y))
 
-            case .circle(let circle):
-                minX = min(minX, min(circle.startPoint.x, circle.endPoint.x))
-                minY = min(minY, min(circle.startPoint.y, circle.endPoint.y))
-                maxX = max(maxX, max(circle.startPoint.x, circle.endPoint.x))
-                maxY = max(maxY, max(circle.startPoint.y, circle.endPoint.y))
+            case .oval(let oval):
+                minX = min(minX, min(oval.startPoint.x, oval.endPoint.x))
+                minY = min(minY, min(oval.startPoint.y, oval.endPoint.y))
+                maxX = max(maxX, max(oval.startPoint.x, oval.endPoint.x))
+                maxY = max(maxY, max(oval.startPoint.y, oval.endPoint.y))
 
             case .path(let path):
                 guard !path.points.isEmpty else { continue }
@@ -2189,7 +2205,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
             (paths.count, { .path(index: $0) }),
             (highlightPaths.count, { .highlight(index: $0) }),
             (rectangles.count, { .rectangle(index: $0) }),
-            (circles.count, { .circle(index: $0) }),
+            (ovals.count, { .oval(index: $0) }),
             (textAnnotations.count, { .text(index: $0) }),
             (counterAnnotations.count, { .counter(index: $0) })
         ]
@@ -2580,8 +2596,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
             return false
         }
-        let stillFadingCircles = circles.contains { circle in
-            if let creationTime = circle.creationTime {
+        let stillFadingOvals = ovals.contains { oval in
+            if let creationTime = oval.creationTime {
                 return (now - creationTime) < fadeDuration
             }
             return false
@@ -2613,7 +2629,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         return stillFadingArrows
             || stillFadingLines
             || stillFadingRectangles
-            || stillFadingCircles
+            || stillFadingOvals
             || stillFadingText
             || stillFadingCounters
             || stillFadingPaths
@@ -2648,9 +2664,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .rectangle(let index):
             guard index < rectangles.count else { return true }
             return fade.alpha(for: rectangles[index], at: now) == nil
-        case .circle(let index):
-            guard index < circles.count else { return true }
-            return fade.alpha(creationTime: circles[index].creationTime, at: now) == nil
+        case .oval(let index):
+            guard index < ovals.count else { return true }
+            return fade.alpha(creationTime: ovals[index].creationTime, at: now) == nil
         case .counter(let index):
             guard index < counterAnnotations.count else { return true }
             return fade.alpha(creationTime: counterAnnotations[index].creationTime, at: now) == nil
@@ -2670,21 +2686,29 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Find object at point, checking in reverse order (topmost/latest first)
     func findObjectAt(point: NSPoint) -> SelectedObject {
-        // Walk the redaction layers newest first, mirroring how draw stacks them: the
-        // annotations above a redaction, then the redaction itself, then what it covers.
+        // Walk the layers newest first, mirroring how draw stacks them: the annotations above
+        // a covering shape, then the shape itself, then what it covers.
         var layer = RedactionLayer()
-        for index in redactionIndicesByCreation.reversed() {
-            layer.start = RedactionLayer.time(of: rectangles[index].creationTime)
+        for cover in document.coversByCreation.reversed() {
+            layer.start = RedactionLayer.time(of: document.creationTime(of: cover))
             if let object = findAnnotation(at: point, in: layer) { return object }
-            if !isFadedOut(.rectangle(index: index)) && hitTestRectangle(rectangles[index], point: point) {
-                return .rectangle(index: index)
+            switch cover {
+            case .rectangle(let index):
+                if !isFadedOut(.rectangle(index: index)) && hitTestRectangle(rectangles[index], point: point) {
+                    return .rectangle(index: index)
+                }
+            case .oval(let index):
+                if !isFadedOut(.oval(index: index)) && hitTestOval(ovals[index], point: point) {
+                    return .oval(index: index)
+                }
             }
             layer = RedactionLayer(end: layer.start)
         }
         return findAnnotation(at: point, in: layer) ?? .none
     }
 
-    /// The topmost non-redaction annotation created within `layer` that contains `point`.
+    /// The topmost annotation created within `layer` that contains `point`, apart from the
+    /// covering shapes, which `findObjectAt` checks between layers.
     private func findAnnotation(at point: NSPoint, in layer: RedactionLayer) -> SelectedObject? {
         // Check in reverse order - last drawn is on top
 
@@ -2703,17 +2727,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         }
         
-        // 3. Check circles
-        for (index, circle) in circles.enumerated().reversed() where layer.contains(circle.creationTime) {
-            if isFadedOut(.circle(index: index)) { continue }
-            if hitTestCircle(circle, point: point) {
-                return .circle(index: index)
+        // 3. Check ovals
+        for (index, oval) in ovals.enumerated().reversed()
+            where !oval.coversOlder && layer.contains(oval.creationTime)
+        {
+            if isFadedOut(.oval(index: index)) { continue }
+            if hitTestOval(oval, point: point) {
+                return .oval(index: index)
             }
         }
         
         // 4. Check rectangles
         for (index, rect) in rectangles.enumerated().reversed()
-            where !rect.isRedaction && layer.contains(rect.creationTime)
+            where !rect.coversOlder && layer.contains(rect.creationTime)
         {
             if isFadedOut(.rectangle(index: index)) { continue }
             if hitTestRectangle(rect, point: point) {
@@ -2762,7 +2788,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let objectCollections: [(count: Int, factory: (Int) -> SelectedObject)] = [
             (counterAnnotations.count, { .counter(index: $0) }),
             (textAnnotations.count, { .text(index: $0) }),
-            (circles.count, { .circle(index: $0) }),
+            (ovals.count, { .oval(index: $0) }),
             (rectangles.count, { .rectangle(index: $0) }),
             (highlightPaths.count, { .highlight(index: $0) }),
             (paths.count, { .path(index: $0) }),
@@ -2807,16 +2833,16 @@ class OverlayView: NSView, NSTextFieldDelegate {
             )
             return rect.intersects(objRect)
             
-        case .circle(let index):
-            guard index < circles.count else { return false }
-            let c = circles[index]
-            let circleRect = NSRect(
+        case .oval(let index):
+            guard index < ovals.count else { return false }
+            let c = ovals[index]
+            let ovalRect = NSRect(
                 x: min(c.startPoint.x, c.endPoint.x),
                 y: min(c.startPoint.y, c.endPoint.y),
                 width: abs(c.endPoint.x - c.startPoint.x),
                 height: abs(c.endPoint.y - c.startPoint.y)
             )
-            return rect.intersects(circleRect)
+            return rect.intersects(ovalRect)
             
         case .path(let index):
             guard index < paths.count else { return false }
@@ -2978,19 +3004,19 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let outerBounds = bounds.insetBy(dx: -edgeTolerance, dy: -edgeTolerance)
         let innerBounds = bounds.insetBy(dx: edgeTolerance, dy: edgeTolerance)
 
-        // A redaction is a filled block, so its whole area is clickable.
-        if rect.isRedaction { return outerBounds.contains(point) }
+        // A redaction or solid rectangle is a solid block, so its whole area is clickable.
+        if rect.coversOlder { return outerBounds.contains(point) }
 
         // Point is on edge if it's in outer but not in inner
         return outerBounds.contains(point) && !innerBounds.contains(point)
     }
     
-    private func hitTestCircle(_ circle: Circle, point: NSPoint) -> Bool {
+    private func hitTestOval(_ oval: Oval, point: NSPoint) -> Bool {
         let bounds = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
+            x: min(oval.startPoint.x, oval.endPoint.x),
+            y: min(oval.startPoint.y, oval.endPoint.y),
+            width: abs(oval.endPoint.x - oval.startPoint.x),
+            height: abs(oval.endPoint.y - oval.startPoint.y)
         )
         
         let centerX = bounds.midX
@@ -3003,7 +3029,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let normalizedDistance = sqrt(dx * dx + dy * dy)
         
         // Only check edge/perimeter (not inside)
-        let baseTolerance = circle.lineWidth / 2.0
+        let baseTolerance = oval.lineWidth / 2.0
         let minClickableTolerance: CGFloat = 5.0
         let edgeTolerance = max(baseTolerance, minClickableTolerance)
         
@@ -3012,7 +3038,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Point is on edge if distance is between (1.0 - tolerance) and (1.0 + tolerance)
         let innerBoundary = max(0, 1.0 - toleranceNormalized)
         let outerBoundary = 1.0 + toleranceNormalized
-        
+
+        // A solid oval's whole area is clickable.
+        if oval.solid { return normalizedDistance <= outerBoundary }
         return normalizedDistance >= innerBoundary && normalizedDistance <= outerBoundary
     }
     
@@ -3082,7 +3110,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         var deletedLines: [Line] = []
         var deletedHighlights: [DrawingPath] = []
         var deletedRectangles: [Rectangle] = []
-        var deletedCircles: [Circle] = []
+        var deletedOvals: [Oval] = []
         var deletedTextAnnotations: [TextAnnotation] = []
         var deletedCounters: [CounterAnnotation] = []
 
@@ -3129,11 +3157,11 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         }
 
-        // Check circles
-        for (index, circle) in circles.enumerated().reversed() {
-            if circleIntersectsPoint(circle, point: point, radius: eraserRadius) {
-                deletedCircles.append(circle)
-                circles.remove(at: index)
+        // Check ovals
+        for (index, oval) in ovals.enumerated().reversed() {
+            if ovalIntersectsPoint(oval, point: point, radius: eraserRadius) {
+                deletedOvals.append(oval)
+                ovals.remove(at: index)
             }
         }
 
@@ -3155,12 +3183,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
         // Register undo only if something was deleted
         if !deletedPaths.isEmpty || !deletedArrows.isEmpty || !deletedLines.isEmpty ||
-            !deletedHighlights.isEmpty || !deletedRectangles.isEmpty || !deletedCircles.isEmpty ||
+            !deletedHighlights.isEmpty || !deletedRectangles.isEmpty || !deletedOvals.isEmpty ||
             !deletedTextAnnotations.isEmpty || !deletedCounters.isEmpty {
 
             registerUndo(action: .eraseAnnotations(
                 deletedPaths, deletedArrows, deletedLines, deletedHighlights,
-                deletedRectangles, deletedCircles, deletedTextAnnotations, deletedCounters
+                deletedRectangles, deletedOvals, deletedTextAnnotations, deletedCounters
             ))
         }
     }
@@ -3190,8 +3218,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Check if point is near any of the four edges
         let bounds = rectangle.bounds
 
-        // A redaction is a filled block, so the eraser removes it from anywhere inside.
-        if rectangle.isRedaction && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
+        // A redaction or solid rectangle is a solid block, so the eraser removes it from
+        // anywhere inside.
+        if rectangle.coversOlder && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
             return true
         }
 
@@ -3206,12 +3235,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
                lineIntersectsPoint(bottomLeft, topLeft, point: point, radius: radius)
     }
 
-    private func circleIntersectsPoint(_ circle: Circle, point: NSPoint, radius: CGFloat) -> Bool {
+    private func ovalIntersectsPoint(_ oval: Oval, point: NSPoint, radius: CGFloat) -> Bool {
         let bounds = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
+            x: min(oval.startPoint.x, oval.endPoint.x),
+            y: min(oval.startPoint.y, oval.endPoint.y),
+            width: abs(oval.endPoint.x - oval.startPoint.x),
+            height: abs(oval.endPoint.y - oval.startPoint.y)
         )
 
         let centerX = bounds.midX
@@ -3225,6 +3254,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let normalizedDist = sqrt((dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY))
         let edgeDistance = abs(normalizedDist - 1.0) * min(radiusX, radiusY)
 
+        // The eraser removes a solid oval from anywhere inside.
+        if oval.solid && normalizedDist <= 1 { return true }
         return edgeDistance <= radius
     }
 
@@ -3283,12 +3314,12 @@ class OverlayView: NSView, NSTextFieldDelegate {
             rectangles[index].endPoint.y += delta.y
             // The sample keeps painting where it came from until the new spot's sample lands.
             
-        case .circle(let index):
-            guard index < circles.count else { return }
-            circles[index].startPoint.x += delta.x
-            circles[index].startPoint.y += delta.y
-            circles[index].endPoint.x += delta.x
-            circles[index].endPoint.y += delta.y
+        case .oval(let index):
+            guard index < ovals.count else { return }
+            ovals[index].startPoint.x += delta.x
+            ovals[index].startPoint.y += delta.y
+            ovals[index].endPoint.x += delta.x
+            ovals[index].endPoint.y += delta.y
             
         case .path(let index):
             guard index < paths.count else { return }
@@ -3326,9 +3357,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .rectangle(let index):
             guard index < rectangles.count else { return nil }
             return (rectangles[index].startPoint, rectangles[index].endPoint)
-        case .circle(let index):
-            guard index < circles.count else { return nil }
-            return (circles[index].startPoint, circles[index].endPoint)
+        case .oval(let index):
+            guard index < ovals.count else { return nil }
+            return (ovals[index].startPoint, ovals[index].endPoint)
         case .text(let index):
             guard index < textAnnotations.count else { return nil }
             return textAnnotations[index].position
@@ -3363,10 +3394,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
                let newPositions = newPos as? (NSPoint, NSPoint) {
                 registerUndo(action: .moveRectangle(index, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
             }
-        case .circle(let index):
+        case .oval(let index):
             if let oldPositions = oldPos as? (NSPoint, NSPoint),
                let newPositions = newPos as? (NSPoint, NSPoint) {
-                registerUndo(action: .moveCircle(index, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
+                registerUndo(action: .moveOval(index, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
             }
         case .text(let index):
             if let oldPosition = oldPos as? NSPoint,

@@ -20,7 +20,9 @@ final class ToolbarAccessibilityTests: XCTestCase {
         ("toolbar.tool.line", "Line", "Shortcut: l"),
         ("toolbar.tool.highlighter", "Highlighter", "Shortcut: h"),
         ("toolbar.tool.rectangle", "Rectangle", "Shortcut: r"),
-        ("toolbar.tool.circle", "Circle", "Shortcut: o"),
+        ("toolbar.tool.oval", "Oval", "Shortcut: o"),
+        ("toolbar.tool.solidRectangle", "Solid Rectangle", "Shortcut: ⇧R"),
+        ("toolbar.tool.solidOval", "Solid Oval", "Shortcut: ⇧O"),
         ("toolbar.tool.redact", "Redact", "Shortcut: x"),
         ("toolbar.tool.text", "Text", "Shortcut: t"),
         ("toolbar.tool.counter", "Counter", "Shortcut: n"),
@@ -57,7 +59,7 @@ final class ToolbarAccessibilityTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeOverlay(width: CGFloat = 1_200) -> OverlayWindow {
+    private func makeOverlay(width: CGFloat = 1_400) -> OverlayWindow {
         let window = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: 800),
             styleMask: .borderless,

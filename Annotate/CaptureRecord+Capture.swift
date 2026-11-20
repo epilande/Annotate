@@ -104,11 +104,12 @@ extension CaptureRecord {
                     }
                     .map { .highlighter(Stroke($0, tool: .highlighter, space: space)) }
                 case .outlines:
-                    let outlines = document.rectangles.filter { !$0.isRedaction }
+                    let outlines = document.rectangles.filter { !$0.coversOlder }
                     annotations += shown(outlines, in: layer, time: \.creationTime, ink: \.ink)
                         .map { .rectangle(Shape($0, space: space)) }
-                case .circles:
-                    annotations += shown(document.circles, in: layer, time: \.creationTime, ink: \.ink)
+                case .ovals:
+                    let outlines = document.ovals.filter { !$0.coversOlder }
+                    annotations += shown(outlines, in: layer, time: \.creationTime, ink: \.ink)
                         .map { .ellipse(Shape($0, space: space)) }
                 case .labels:
                     for (index, label) in document.textAnnotations.enumerated()
@@ -129,12 +130,23 @@ extension CaptureRecord {
                     annotations += shown(document.counterAnnotations, in: layer, time: \.creationTime, ink: \.ink)
                         .map { .pin(Pin($0, space: space)) }
                 }
-            case .redaction(let index):
+            case .cover(.rectangle(let index)):
                 let rectangle = document.rectangles[index]
-                if reachesRegion(rectangle.ink) {
-                    annotations.append(.redaction(Redaction(rectangle, space: space)))
+                if rectangle.isRedaction {
+                    if reachesRegion(rectangle.ink) {
+                        annotations.append(.redaction(Redaction(rectangle, space: space)))
+                    }
+                } else if isVisible(rectangle.creationTime), reachesRegion(rectangle.ink),
+                    !isRedacted(rectangle.ink, createdAt: rectangle.creationTime) {
+                    annotations.append(.rectangle(Shape(rectangle, space: space)))
                 }
-            case .liveRedaction, .selection:
+            case .cover(.oval(let index)):
+                let oval = document.ovals[index]
+                if isVisible(oval.creationTime), reachesRegion(oval.ink),
+                    !isRedacted(oval.ink, createdAt: oval.creationTime) {
+                    annotations.append(.ellipse(Shape(oval, space: space)))
+                }
+            case .liveCover, .selection:
                 // A capture has no live previews, and selection chrome is never in the image.
                 break
             }
@@ -215,17 +227,19 @@ extension CaptureRecord.Shape {
             time: rectangle.creationTime,
             color: CaptureRecord.hex(rectangle.color),
             width: rectangle.lineWidth,
-            rect: space.rect(rectangle.bounds))
+            rect: space.rect(rectangle.bounds),
+            solid: rectangle.style == .solidColor ? true : nil)
     }
 
-    init(_ circle: Circle, space: CaptureRecord.DisplaySpace) {
-        let bounds = AnnotationRenderer.paddedBounds(circle.startPoint, circle.endPoint, padding: 0)
+    init(_ oval: Oval, space: CaptureRecord.DisplaySpace) {
+        let bounds = AnnotationRenderer.paddedBounds(oval.startPoint, oval.endPoint, padding: 0)
         self.init(
-            id: circle.id.uuidString,
-            time: circle.creationTime,
-            color: CaptureRecord.hex(circle.color),
-            width: circle.lineWidth,
-            rect: space.rect(bounds))
+            id: oval.id.uuidString,
+            time: oval.creationTime,
+            color: CaptureRecord.hex(oval.color),
+            width: oval.lineWidth,
+            rect: space.rect(bounds),
+            solid: oval.solid ? true : nil)
     }
 }
 
