@@ -219,6 +219,35 @@ final class SolidShapeTests: XCTestCase {
         }
     }
 
+    func testASolidShapesOutlineCoversWhatIsUnderIt() {
+        // Each paints 10 points past its bounds with a 20 point line.
+        var rectangle = solidRectangle(time: 2)
+        rectangle.lineWidth = 20
+        var oval = solidOval(time: 2)
+        oval.lineWidth = 20
+
+        overlayView.rectangles = [rectangle]
+        XCTAssertTrue(overlayView.isPointCovered(NSPoint(x: 155, y: 100), over: 1), "On the rectangle's outline")
+        XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 165, y: 100), over: 1), "Past the rectangle's outline")
+
+        overlayView.rectangles = []
+        overlayView.ovals = [oval]
+        XCTAssertTrue(overlayView.isPointCovered(NSPoint(x: 145, y: 100), over: 1), "On the oval's outline")
+        XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 155, y: 100), over: 1), "Past the oval's outline")
+
+        overlayView.ovals = []
+        overlayView.rectangles = [
+            Rectangle(
+                startPoint: NSPoint(x: 50, y: 50),
+                endPoint: NSPoint(x: 150, y: 150),
+                color: .black,
+                lineWidth: 20,
+                creationTime: 2,
+                style: .solid)
+        ]
+        XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 155, y: 100), over: 1), "A redaction paints only its bounds")
+    }
+
     func testASolidShapeStopsClicksReachingWhatItCovers() {
         overlayView.rectangles = [solidRectangle(time: 2)]
 
@@ -243,6 +272,17 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertTrue(oval.ink.contains(onTheOutline))
         XCTAssertTrue(oval.ink.contains(NSPoint(x: 100, y: 10)), "The inside is ink too")
         XCTAssertFalse(oval.ink.contains(NSPoint(x: 215, y: 25)))
+    }
+
+    func testTheEraserReachesAFlatOvalOnlyFromNearItsEdge() {
+        let flat = TestFactory.createOval(start: NSPoint(x: 20, y: 90), end: NSPoint(x: 180, y: 110), time: 1)
+        overlayView.ovals = [flat]
+
+        overlayView.eraseAtPoint(NSPoint(x: 260, y: 100))
+        XCTAssertEqual(overlayView.ovals.count, 1, "80 points past the end of the long axis is out of reach")
+
+        overlayView.eraseAtPoint(NSPoint(x: 183, y: 100))
+        XCTAssertTrue(overlayView.ovals.isEmpty, "3 points past the end is within reach")
     }
 
     func testTheEraserRemovesSolidShapesFromInside() {

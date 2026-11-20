@@ -1301,19 +1301,20 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Whether a covering shape (a redaction, solid rectangle or solid oval) newer than
     /// something created at `creationTime` covers `point`, so interactions do not reach what
-    /// it hides. A solid shape that has faded out no longer covers anything.
+    /// it hides. A solid shape that has faded out no longer covers anything. Coverage is
+    /// what the shape paints, so a solid shape's outline counts as well as its inside.
     func isPointCovered(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
         let time = RedactionLayer.time(of: creationTime)
         func isNewer(_ other: CFTimeInterval?) -> Bool { RedactionLayer.time(of: other) > time }
         let byRectangle = rectangles.indices.contains { index in
             let rectangle = rectangles[index]
             return rectangle.coversOlder && isNewer(rectangle.creationTime)
-                && rectangle.bounds.contains(point) && !isFadedOut(.rectangle(index: index))
+                && rectangle.ink.contains(point) && !isFadedOut(.rectangle(index: index))
         }
         return byRectangle || ovals.indices.contains { index in
             let oval = ovals[index]
             return oval.coversOlder && isNewer(oval.creationTime)
-                && oval.fillContains(point) && !isFadedOut(.oval(index: index))
+                && oval.ink.contains(point) && !isFadedOut(.oval(index: index))
         }
     }
 
@@ -3226,27 +3227,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func ovalIntersectsPoint(_ oval: Oval, point: NSPoint, radius: CGFloat) -> Bool {
-        let bounds = NSRect(
-            x: min(oval.startPoint.x, oval.endPoint.x),
-            y: min(oval.startPoint.y, oval.endPoint.y),
-            width: abs(oval.endPoint.x - oval.startPoint.x),
-            height: abs(oval.endPoint.y - oval.startPoint.y)
-        )
+        let ellipse = CGPath(
+            ellipseIn: AnnotationRenderer.paddedBounds(oval.startPoint, oval.endPoint, padding: 0),
+            transform: nil)
 
-        let centerX = bounds.midX
-        let centerY = bounds.midY
-        let radiusX = bounds.width / 2
-        let radiusY = bounds.height / 2
-
-        // Distance from point to ellipse edge (approximate)
-        let dx = point.x - centerX
-        let dy = point.y - centerY
-        let normalizedDist = sqrt((dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY))
-        let edgeDistance = abs(normalizedDist - 1.0) * min(radiusX, radiusY)
+        // Within the eraser's radius of the ellipse, measured in points so the reach is the
+        // same all the way round, however flat the oval is.
+        let reach = ellipse.copy(
+            strokingWithWidth: radius * 2,
+            lineCap: .butt,
+            lineJoin: .miter,
+            miterLimit: 10)
+        if reach.contains(point) { return true }
 
         // The eraser removes a solid oval from anywhere inside.
-        if oval.solid && normalizedDist <= 1 { return true }
-        return edgeDistance <= radius
+        return oval.solid && ellipse.contains(point)
     }
 
     private func textIntersectsPoint(_ text: TextAnnotation, point: NSPoint, radius: CGFloat) -> Bool {

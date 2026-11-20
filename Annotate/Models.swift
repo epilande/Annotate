@@ -287,15 +287,6 @@ struct Oval {
     /// Whether this oval covers everything created before it, as a solid rectangle does.
     var coversOlder: Bool { solid }
 
-    /// Whether `point` is inside the ellipse.
-    func fillContains(_ point: NSPoint) -> Bool {
-        let rect = bounds
-        guard rect.width > 0, rect.height > 0 else { return false }
-        let dx = (point.x - rect.midX) / (rect.width / 2)
-        let dy = (point.y - rect.midY) / (rect.height / 2)
-        return dx * dx + dy * dy <= 1
-    }
-
     /// The bounds of the ellipse, spanned by the two corner points.
     var bounds: NSRect {
         NSRect(
