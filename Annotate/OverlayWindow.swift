@@ -1930,9 +1930,11 @@ class OverlayWindow: NSPanel {
         let signY: CGFloat = end.y >= start.y ? 1.0 : -1.0
 
         if centerMode {
+            // `start` and `end` already span the whole box around the anchor.
+            let half = size / 2
             return (
-                NSPoint(x: anchor.x - signX * size, y: anchor.y - signY * size),
-                NSPoint(x: anchor.x + signX * size, y: anchor.y + signY * size)
+                NSPoint(x: anchor.x - signX * half, y: anchor.y - signY * half),
+                NSPoint(x: anchor.x + signX * half, y: anchor.y + signY * half)
             )
         } else {
             return (start, NSPoint(x: start.x + signX * size, y: start.y + signY * size))

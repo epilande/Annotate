@@ -537,7 +537,7 @@ enum DrawingAction {
     case moveArrow(Int, NSPoint, NSPoint, NSPoint, NSPoint)  // index, fromStart, fromEnd, toStart, toEnd
     case moveLine(Int, NSPoint, NSPoint, NSPoint, NSPoint)
     case moveRectangle(Int, NSPoint, NSPoint, NSPoint, NSPoint)
-    case moveOval(Int, NSPoint, NSPoint, NSPoint, NSPoint)
+    case moveOval(UUID, NSPoint, NSPoint, NSPoint, NSPoint)
     case movePath(Int, NSPoint)  // index, delta
     case moveHighlight(Int, NSPoint)  // index, delta
     case moveCounter(Int, NSPoint, NSPoint)  // index, from, to

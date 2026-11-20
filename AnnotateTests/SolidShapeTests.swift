@@ -207,6 +207,24 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 10, y: 10), over: 1))
     }
 
+    func testASolidOvalsInkIncludesItsOutlineBetweenTheAxes() {
+        let oval = Oval(
+            startPoint: .zero,
+            endPoint: NSPoint(x: 200, y: 20),
+            color: .green,
+            lineWidth: 20,
+            creationTime: 1,
+            solid: true)
+        // 9.5 points out from the ellipse along its normal, so inside the 10 point half
+        // stroke, but outside the ellipse grown by 10 points on each axis.
+        let onTheOutline = NSPoint(x: 202.21, y: 20.506)
+        let grown = CGPath(ellipseIn: oval.bounds.insetBy(dx: -10, dy: -10), transform: nil)
+        XCTAssertFalse(grown.contains(onTheOutline))
+        XCTAssertTrue(oval.ink.contains(onTheOutline))
+        XCTAssertTrue(oval.ink.contains(NSPoint(x: 100, y: 10)), "The inside is ink too")
+        XCTAssertFalse(oval.ink.contains(NSPoint(x: 215, y: 25)))
+    }
+
     func testTheEraserRemovesSolidShapesFromInside() {
         overlayView.rectangles = [solidRectangle(time: 1)]
         overlayView.ovals = [solidOval(time: 2)]

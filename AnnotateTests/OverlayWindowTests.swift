@@ -384,6 +384,65 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.arrows.isEmpty, "The arrow is on the undo stack")
     }
 
+    /// Runs `step` as its own undo step, as each user action is.
+    private func undoStep(_ step: () -> Void) throws {
+        let undoManager = try XCTUnwrap(window.undoManager)
+        undoManager.groupsByEvent = false
+        undoManager.beginUndoGrouping()
+        step()
+        undoManager.endUndoGrouping()
+    }
+
+    func testUndoingAnOvalRemovesThatOvalAfterDeleteLastReorderedThem() throws {
+        let view = window.overlayView!
+        view.fadeMode = false
+        let outline = TestFactory.createOval(time: 1)
+        var solid = TestFactory.createOval(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        solid.solid = true
+        for oval in [outline, solid] {
+            try undoStep {
+                view.registerUndo(action: .addOval(oval))
+                view.ovals.append(oval)
+            }
+        }
+
+        // Delete Last with the Oval tool takes the outline from under the solid oval, and
+        // undoing that puts it back at the end.
+        view.currentTool = .oval
+        try undoStep { view.deleteLastItem() }
+        view.undo()
+        XCTAssertEqual(view.ovals.map(\.id), [solid.id, outline.id])
+
+        view.undo()
+        XCTAssertEqual(view.ovals.map(\.id), [outline.id], "Undo removes the solid oval it added, not the last one")
+    }
+
+    func testUndoingAnOvalMoveMovesThatOvalAfterDeleteLastReorderedThem() throws {
+        let view = window.overlayView!
+        view.fadeMode = false
+        let outline = TestFactory.createOval(time: 1)
+        var solid = TestFactory.createOval(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        solid.solid = true
+        view.ovals = [outline, solid]
+
+        view.ovals[1].startPoint = NSPoint(x: 210, y: 200)
+        view.ovals[1].endPoint = NSPoint(x: 310, y: 300)
+        try undoStep {
+            view.registerMoveUndo(
+                object: .oval(index: 1),
+                from: (solid.startPoint, solid.endPoint),
+                to: (NSPoint(x: 210, y: 200), NSPoint(x: 310, y: 300)))
+        }
+        view.currentTool = .oval
+        try undoStep { view.deleteLastItem() }
+        view.undo()
+        XCTAssertEqual(view.ovals.map(\.id), [solid.id, outline.id])
+
+        view.undo()
+        XCTAssertEqual(view.ovals.first?.startPoint, solid.startPoint, "The moved oval goes back")
+        XCTAssertEqual(view.ovals.last?.startPoint, outline.startPoint, "The other oval stays put")
+    }
+
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
         window.overlayView.paths = [
             DrawingPath(

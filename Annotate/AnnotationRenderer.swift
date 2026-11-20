@@ -605,14 +605,13 @@ extension Rectangle {
 }
 
 extension Oval {
-    /// An outline's stroke, or for a solid oval the ellipse and the outer half of its outline.
+    /// An outline's stroke, or for a solid oval the ellipse together with that stroke. The
+    /// stroke's outer edge is not itself an ellipse: between the axes it reaches a little
+    /// past the ellipse grown by half the line width.
     var ink: CGPath {
-        let bounds = AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0)
-        if solid {
-            return CGPath(ellipseIn: bounds.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2), transform: nil)
-        }
-        return CGPath(ellipseIn: bounds, transform: nil)
-            .copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+        let ellipse = CGPath(ellipseIn: AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0), transform: nil)
+        let outline = ellipse.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
+        return solid ? ellipse.union(outline) : outline
     }
 }
 

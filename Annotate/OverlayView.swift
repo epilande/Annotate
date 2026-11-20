@@ -633,8 +633,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .addOval(let oval):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if !target.ovals.isEmpty {
-                        target.ovals.removeLast()
+                    // Match by id: Delete Last removes the newest oval of the active tool's
+                    // kind, and undoing that appends it, so this oval may not be last.
+                    if let index = target.ovals.lastIndex(where: { $0.id == oval.id }) {
+                        target.ovals.remove(at: index)
                         target.registerUndo(action: .removeOval(oval))
                     }
                 }
@@ -718,13 +720,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     }
                 }
             }
-        case .moveOval(let index, let fromStart, let fromEnd, let toStart, let toEnd):
+        case let .moveOval(id, fromStart, fromEnd, toStart, toEnd):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if index < target.ovals.count {
+                    // By id, since deleting an oval or undoing that shifts the indices.
+                    if let index = target.ovals.firstIndex(where: { $0.id == id }) {
                         target.ovals[index].startPoint = fromStart
                         target.ovals[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveOval(index, toStart, toEnd, fromStart, fromEnd))
+                        target.registerUndo(action: .moveOval(id, toStart, toEnd, fromStart, fromEnd))
                     }
                 }
             }
@@ -3396,8 +3399,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         case .oval(let index):
             if let oldPositions = oldPos as? (NSPoint, NSPoint),
-               let newPositions = newPos as? (NSPoint, NSPoint) {
-                registerUndo(action: .moveOval(index, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
+               let newPositions = newPos as? (NSPoint, NSPoint), ovals.indices.contains(index) {
+                let id = ovals[index].id
+                registerUndo(action: .moveOval(id, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
             }
         case .text(let index):
             if let oldPosition = oldPos as? NSPoint,
