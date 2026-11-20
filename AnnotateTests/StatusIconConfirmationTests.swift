@@ -204,15 +204,37 @@ final class StatusIconConfirmationTests: XCTestCase {
     }
 
     func testTheGlyphIsDarkOnAWhiteRingAndWhiteOnTheUsualOnes() throws {
-        for confirmation in [CaptureConfirmation.saved, .copied] {
-            let onWhite = render(try XCTUnwrap(AppDelegate.statusIcon(color: .white, showing: confirmation)), scale: 2)
-            XCTAssertGreaterThan(countPixels(in: onWhite) { $0.luminance < 0.2 }, 30, "\(confirmation) on white")
+        // The glyph's ink inside the ring (how far each pixel moved from the fill toward the
+        // expected glyph color, summed) matches the symbol's own ink at the same size. Counting
+        // pixels past a brightness cutoff instead depended on the fill under the glyph's soft
+        // edges: systemRed is lighter in Aqua, which took the saved glyph on red from 33 such
+        // pixels to 18. Both appearances are drawn, so the result doesn't follow the Mac's.
+        let scale = 2
+        let ringRadius = ConfirmationIcon.ring.width / 2 * CGFloat(scale)
+        let rings: [(color: NSColor, glyph: NSColor)] = [(.white, .black), (.systemRed, .white), (.gray, .white)]
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            try drawing(in: appearance) {
+                for confirmation in [CaptureConfirmation.saved, .copied] {
+                    let symbol = try XCTUnwrap(
+                        NSImage(systemSymbolName: confirmation.symbolName, accessibilityDescription: nil))
+                    let fit = min(11 / symbol.size.width, 11 / symbol.size.height)
+                    let fitted = NSSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
+                    let symbolInk = inkArea(in: render(symbol, size: fitted, scale: scale)) { $0.alphaComponent }
+                    XCTAssertGreaterThan(symbolInk, 30, "\(confirmation.symbolName) inks something")
 
-            for ringColor in [NSColor.systemRed, .gray] {
-                let icon = render(try XCTUnwrap(AppDelegate.statusIcon(color: ringColor, showing: confirmation)), scale: 2)
-                let label = "\(confirmation) on \(ringColor)"
-                XCTAssertGreaterThan(countPixels(in: icon) { $0.luminance > 0.9 }, 30, label)
-                XCTAssertEqual(countPixels(in: icon) { $0.luminance < 0.1 }, 0, label)
+                    for ring in rings {
+                        let icon = render(
+                            try XCTUnwrap(AppDelegate.statusIcon(color: ring.color, showing: confirmation)), scale: scale)
+                        let fill = color(in: icon, atPoint: NSPoint(x: 3, y: 9), scale: scale)
+                        let coverage = try XCTUnwrap(glyphCoverage(from: fill, toward: ring.glyph))
+                        let label = "\(confirmation) on \(ring.color) in \(appearance.rawValue)"
+                        let ink = inkArea(in: icon, coverage: coverage, within: ringRadius)
+                        XCTAssertEqual(ink / symbolInk, 1, accuracy: 0.1, label)
+                        if ring.glyph == .white {
+                            XCTAssertEqual(countPixels(in: icon) { $0.luminance < 0.1 }, 0, label)
+                        }
+                    }
+                }
             }
         }
     }
@@ -382,13 +404,22 @@ final class StatusIconConfirmationTests: XCTestCase {
     }
 
     /// The glyph's bounds in a rendered icon, in pixels from the top-left, with each edge placed
-    /// inside its outermost pixel by how much of that pixel the glyph covers. A pixel's coverage
-    /// is how far its color has moved from the ring's fill toward the glyph color. Only opaque
-    /// pixels count, so the ring's soft outer edge never does.
+    /// inside its outermost pixel by how much of that pixel the glyph covers (`glyphCoverage`).
     private func glyphBounds(in rep: NSBitmapImageRep, scale: Int) -> CGRect? {
-        guard let fill = color(in: rep, atPoint: NSPoint(x: 3, y: 9), scale: scale).usingColorSpace(.deviceRGB),
-            let glyph = ConfirmationIcon.glyphColor(onFill: fill).usingColorSpace(.deviceRGB)
-        else { return nil }
+        let fill = color(in: rep, atPoint: NSPoint(x: 3, y: 9), scale: scale)
+        guard let coverage = glyphCoverage(from: fill, toward: ConfirmationIcon.glyphColor(onFill: fill)) else {
+            return nil
+        }
+        return inkBounds(in: rep, coverage: coverage)
+    }
+
+    /// How much of a pixel the glyph covers: how far its color has moved from `fill` toward
+    /// `glyph`, from 0 to 1. Only opaque pixels count, so the ring's soft outer edge never does.
+    /// Nil when the two colors are too close to tell apart.
+    private func glyphCoverage(from fill: NSColor, toward glyph: NSColor) -> ((NSColor) -> CGFloat)? {
+        guard let fill = fill.usingColorSpace(.deviceRGB), let glyph = glyph.usingColorSpace(.deviceRGB) else {
+            return nil
+        }
         let span = [
             glyph.redComponent - fill.redComponent,
             glyph.greenComponent - fill.greenComponent,
@@ -396,7 +427,7 @@ final class StatusIconConfirmationTests: XCTestCase {
         ]
         let spanSquared = span.reduce(0) { $0 + $1 * $1 }
         guard spanSquared > 0.01 else { return nil }
-        return inkBounds(in: rep) { pixel in
+        return { pixel in
             guard pixel.alphaComponent > 0.99 else { return 0 }
             let offset = [
                 pixel.redComponent - fill.redComponent,
@@ -406,6 +437,33 @@ final class StatusIconConfirmationTests: XCTestCase {
             let along = zip(offset, span).reduce(0) { $0 + $1.0 * $1.1 } / spanSquared
             return min(max(along, 0), 1)
         }
+    }
+
+    /// The area `coverage` inks in `rep`, in pixels, counting only pixels whose middle is within
+    /// `radius` pixels of the image's middle when given.
+    private func inkArea(
+        in rep: NSBitmapImageRep, coverage: (NSColor) -> CGFloat, within radius: CGFloat? = nil
+    ) -> CGFloat {
+        let middle = CGPoint(x: CGFloat(rep.pixelsWide) / 2, y: CGFloat(rep.pixelsHigh) / 2)
+        var area: CGFloat = 0
+        for row in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                if let radius, hypot(CGFloat(x) + 0.5 - middle.x, CGFloat(row) + 0.5 - middle.y) > radius { continue }
+                guard let pixel = rep.colorAt(x: x, y: row)?.usingColorSpace(.deviceRGB) else { continue }
+                area += coverage(pixel)
+            }
+        }
+        return area
+    }
+
+    /// Runs `body` with `appearance` as the current drawing appearance, so dynamic colors such
+    /// as systemRed resolve the same way whatever the Mac's appearance is.
+    private func drawing(in appearance: NSAppearance.Name, _ body: () throws -> Void) throws {
+        var result: Result<Void, Error> = .success(())
+        try XCTUnwrap(NSAppearance(named: appearance)).performAsCurrentDrawingAppearance {
+            result = Result { try body() }
+        }
+        try result.get()
     }
 
     /// The bounds of the pixels `coverage` gives more than a trace, in pixels from the top-left,
