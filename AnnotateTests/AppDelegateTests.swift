@@ -53,22 +53,325 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertNotNil(AppDelegate.shared)
     }
 
-    func testStatusBarMenu() {
-        guard let menu = appDelegate.statusItem.menu else {
-            XCTFail("Status bar menu not initialized")
-            return
+    func testStatusBarMenu() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let board = BoardManager.shared.displayName
+
+        XCTAssertEqual(
+            menu.items.map { $0.isSeparatorItem ? "---" : $0.title },
+            [
+                "Show Overlay",
+                "---",
+                "Color…", "Line Width…", "Tool: Pen",
+                "---",
+                "Show \(board)", "Cursor Highlight", "Fade Mode", "Always-On Mode", "Hide Toolbar",
+                "---",
+                "Undo", "Redo", "Clear All",
+                "---",
+                "Capture Screen", "Capture Area", "Recent Captures",
+                "---",
+                "Settings...", "Check for Updates...",
+                "---",
+                "Quit Annotate",
+            ])
+        XCTAssertEqual(
+            try toolSubmenu().items.map(\.title),
+            [
+                "Arrow", "Line", "Pen", "Highlighter", "Rectangle", "Circle", "Redact", "Counter", "Text",
+                "Select", "Eraser",
+            ])
+    }
+
+    // MARK: - Status menu helpers
+
+    /// The status menu's top-level item with `identifier`, failing the test if it is missing.
+    private func statusItem(
+        _ identifier: NSUserInterfaceItemIdentifier,
+        in delegate: AppDelegate? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> NSMenuItem {
+        try XCTUnwrap(
+            (delegate ?? appDelegate).statusMenuItem(identifier),
+            "No status menu item \(identifier.rawValue)",
+            file: file,
+            line: line)
+    }
+
+    private func toolSubmenu(
+        of delegate: AppDelegate? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> NSMenu {
+        try XCTUnwrap(
+            try statusItem(.currentTool, in: delegate, file: file, line: line).submenu,
+            "The Tool item has no submenu",
+            file: file,
+            line: line)
+    }
+
+    private func toolItem(
+        _ tool: ToolType,
+        in delegate: AppDelegate? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> NSMenuItem {
+        try XCTUnwrap(
+            try toolSubmenu(of: delegate, file: file, line: line).items.first { $0.identifier == .tool(tool) },
+            "No Tool submenu row for \(tool)",
+            file: file,
+            line: line)
+    }
+
+    /// Fails unless the Tool item names `tool` and only `tool`'s row is checked.
+    private func assertToolMenuShows(
+        _ tool: ToolType,
+        in delegate: AppDelegate? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertEqual(
+            try statusItem(.currentTool, in: delegate, file: file, line: line).title,
+            "Tool: \(tool.displayName)",
+            file: file,
+            line: line)
+        let checked = try toolSubmenu(of: delegate, file: file, line: line).items
+            .filter { $0.state == .on }.map(\.identifier)
+        XCTAssertEqual(checked, [.tool(tool)], file: file, line: line)
+    }
+
+    /// Opens the status menu as a click does, with the recent captures scan kept off the real
+    /// capture folders.
+    private func openStatusMenu() throws {
+        appDelegate.recentCaptures.scan = { _, _, _, _ in RecentCaptureScan(captures: []) }
+        appDelegate.menuWillOpen(try XCTUnwrap(appDelegate.statusItem.menu))
+    }
+
+    /// Sends a menu item's action the way a click does. Top-level items have no target, and
+    /// AppDelegate isn't NSApp's delegate under test.
+    private func click(_ item: NSMenuItem, file: StaticString = #filePath, line: UInt = #line) throws {
+        let action = try XCTUnwrap(item.action, "\(item.title) has no action", file: file, line: line)
+        XCTAssertTrue(
+            NSApp.sendAction(action, to: item.target ?? appDelegate, from: item),
+            "\(item.title) did nothing",
+            file: file,
+            line: line)
+    }
+
+    // MARK: - Tool submenu
+
+    func testToolSubmenuChecksTheCurrentTool() throws {
+        try assertToolMenuShows(.pen)
+
+        appDelegate.switchTool(to: .redact)
+        try assertToolMenuShows(.redact)
+
+        appDelegate.enableEraserMode(NSMenuItem())
+        try assertToolMenuShows(.eraser)
+    }
+
+    /// The status menu reads the overlay on the pointer's display, then the key overlay, then the
+    /// main screen's, then the rest in display order, never whichever the dictionary yields first.
+    /// Integers stand in for displays.
+    func testOverlaysByMenuPreferenceFavorThePointerThenTheKeyOverlay() throws {
+        let overlays = (0..<5).map { _ in
+            KeyReportingOverlayWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false)
+        }
+        defer { overlays.forEach { $0.close() } }
+        let byScreen = Dictionary(uniqueKeysWithValues: overlays.enumerated().map { ($0.offset, $0.element) })
+        func first(pointer: Int?, main: Int?, screens: [Int] = [4, 3, 2, 1, 0]) -> OverlayWindow? {
+            AppDelegate.overlaysByMenuPreference(in: byScreen, pointerScreen: pointer, mainScreen: main, screens: screens)
+                .first
         }
 
-        // Verify menu structure
-        XCTAssertGreaterThan(menu.items.count, 0)
+        XCTAssertTrue(first(pointer: 3, main: 0) === overlays[3], "The pointer's display comes first")
+        overlays[1].reportsKey = true
+        XCTAssertTrue(first(pointer: 3, main: 0) === overlays[3], "The pointer's display beats the key overlay")
+        XCTAssertTrue(first(pointer: nil, main: 0) === overlays[1], "Off every display, the key overlay")
+        XCTAssertTrue(first(pointer: 9, main: 0) === overlays[1], "A pointer display with no overlay falls through")
+        overlays[1].reportsKey = false
+        XCTAssertTrue(first(pointer: nil, main: 0) === overlays[0], "With none key, the main screen's")
+        XCTAssertTrue(first(pointer: nil, main: nil) === overlays[4], "Then display order")
+        XCTAssertNil(first(pointer: nil, main: nil, screens: []), "Nothing to fall back to")
+    }
 
-        // Test color picker item
-        let colorItem = menu.items.first { $0.action == #selector(AppDelegate.showColorPicker(_:)) }
-        XCTAssertNotNil(colorItem)
+    /// The Tool item reads the overlays, not the stored tool, as the menu opens: OverlayView and
+    /// the configured default tool change them without storing it.
+    func testToolItemReadsThePointersOverlayAsTheMenuOpens() throws {
+        let mainScreen = try XCTUnwrap(NSScreen.main)
+        let overlay = try XCTUnwrap(appDelegate.overlayWindows[mainScreen])
+        appDelegate.pointerLocationOverride = NSPoint(x: mainScreen.frame.midX, y: mainScreen.frame.midY)
+        defer { appDelegate.pointerLocationOverride = nil }
 
-        // Test tool items
-        let penItem = menu.items.first { $0.action == #selector(AppDelegate.enablePenMode(_:)) }
-        XCTAssertNotNil(penItem)
+        overlay.overlayView.currentTool = .circle
+        try openStatusMenu()
+        appDelegate.menuDidClose(try XCTUnwrap(appDelegate.statusItem.menu))
+
+        try assertToolMenuShows(.circle)
+        XCTAssertEqual(testDefaults.settings[.lastUsedTool], .pen)
+    }
+
+    func testPickingAToolFromTheSubmenuSwitchesToIt() throws {
+        for tool in [ToolType.rectangle, .text, .arrow] {
+            try click(try toolItem(tool))
+            for window in appDelegate.overlayWindows.values {
+                XCTAssertEqual(window.overlayView.currentTool, tool)
+            }
+            XCTAssertEqual(testDefaults.settings[.lastUsedTool], tool)
+            try assertToolMenuShows(tool)
+        }
+    }
+
+    func testToolSubmenuRowsShowTheirShortcuts() throws {
+        for (tool, _) in AppDelegate.statusMenuTools {
+            let item = try toolItem(tool)
+            let binding = ShortcutManager.shared.binding(for: tool.shortcutKey)
+            XCTAssertEqual(item.keyEquivalent, binding.menuKeyEquivalent, "\(tool)")
+            XCTAssertEqual(item.keyEquivalentModifierMask, binding.modifiers, "\(tool)")
+        }
+    }
+
+    /// The Tool submenu's rows follow a shortcut remapped in Settings, and the new key picks
+    /// the tool from the status menu.
+    func testRemappedToolShortcutShowsAndFiresFromTheToolSubmenu() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let binding = ShortcutBinding("y")
+        XCTAssertTrue(ShortcutManager.shared.setShortcut(binding, for: .rectangle))
+        defer { _ = ShortcutManager.shared.resetToDefault(tool: .rectangle) }
+        appDelegate.refreshMenuKeyEquivalents()
+
+        let rectangle = try toolItem(.rectangle)
+        XCTAssertEqual(rectangle.keyEquivalent, "y")
+        XCTAssertEqual(rectangle.keyEquivalentModifierMask, [])
+
+        let event = try XCTUnwrap(TestEvents.createKeyEvent(
+            type: .keyDown, keyCode: 16, characters: "y", charactersIgnoringModifiers: "y"))
+        XCTAssertTrue(menu.performKeyEquivalent(with: event))
+        for window in appDelegate.overlayWindows.values {
+            XCTAssertEqual(window.overlayView.currentTool, .rectangle)
+        }
+        try assertToolMenuShows(.rectangle)
+    }
+
+    /// #122: the status menu's delegate drops every overlay back above menus when a menu
+    /// closes, and the Tool submenu closes while the status menu is still open.
+    func testClosingTheToolSubmenuLeavesOverlaysUnderTheStatusMenu() throws {
+        let menu = try XCTUnwrap(appDelegate.statusItem.menu)
+        let submenu = try toolSubmenu()
+        XCTAssertNil(submenu.delegate, "The Tool submenu must not share the status menu's delegate")
+        let overlays = Array(appDelegate.overlayWindows.values)
+        XCTAssertFalse(overlays.isEmpty)
+
+        try openStatusMenu()
+        appDelegate.menuWillOpen(submenu)
+        appDelegate.menuDidClose(submenu)
+        for overlay in overlays {
+            XCTAssertEqual(overlay.level, OverlayWindow.menuOpenLevel, "The status menu is still open over it")
+        }
+
+        appDelegate.menuDidClose(menu)
+        for overlay in overlays {
+            XCTAssertEqual(overlay.level, OverlayWindow.elevatedLevel)
+        }
+    }
+
+    // MARK: - Checkmark rows
+
+    func testFadeModeRowIsCheckedFromTheStoredSetting() throws {
+        let fadeItem = try statusItem(.fadeMode)
+        appDelegate.setFadeMode(true)
+        XCTAssertEqual(fadeItem.state, .on)
+
+        appDelegate.setFadeMode(false)
+        XCTAssertEqual(fadeItem.state, .off)
+
+        // The menu row toggles only while an overlay is key.
+        appDelegate.overlayKeyWindowOverride = true
+        try click(fadeItem)
+        XCTAssertTrue(testDefaults.settings[.fadeMode])
+        XCTAssertEqual(fadeItem.state, .on)
+
+        // Always-On turns its overlays' fade off but keeps the setting the row shows.
+        appDelegate.toggleAlwaysOnMode()
+        defer { if appDelegate.alwaysOnMode { appDelegate.toggleAlwaysOnMode() } }
+        XCTAssertFalse(try XCTUnwrap(appDelegate.overlayWindows.values.first).overlayView.fadeMode)
+        try openStatusMenu()
+        XCTAssertEqual(fadeItem.state, .on)
+    }
+
+    func testAlwaysOnModeRowIsCheckedWhileAlwaysOnIsOn() throws {
+        let alwaysOnItem = try statusItem(.alwaysOnMode)
+        XCTAssertEqual(alwaysOnItem.state, .off)
+
+        try click(alwaysOnItem)
+        defer { if appDelegate.alwaysOnMode { appDelegate.toggleAlwaysOnMode() } }
+        XCTAssertTrue(appDelegate.alwaysOnMode)
+        XCTAssertEqual(alwaysOnItem.state, .on)
+        XCTAssertEqual(alwaysOnItem.title, "Always-On Mode")
+
+        try click(alwaysOnItem)
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertEqual(alwaysOnItem.state, .off)
+    }
+
+    func testCursorHighlightRowIsCheckedWhileCursorHighlightIsOn() throws {
+        let original = CursorHighlightManager.shared
+        let manager = CursorHighlightManager(userDefaults: testDefaults)
+        CursorHighlightManager.shared = manager
+        defer { CursorHighlightManager.shared = original }
+        manager.clickEffectsEnabled = false
+        try openStatusMenu()
+        let item = try statusItem(.cursorHighlight)
+        XCTAssertEqual(item.state, .off)
+
+        try click(item)
+        XCTAssertTrue(manager.clickEffectsEnabled)
+        XCTAssertEqual(item.state, .on)
+        XCTAssertEqual(item.title, "Cursor Highlight")
+
+        // Settings changes it without the menu; the row catches up as the menu opens.
+        manager.clickEffectsEnabled = false
+        try openStatusMenu()
+        XCTAssertEqual(item.state, .off)
+    }
+
+    // MARK: - Show / Hide Overlay
+
+    func testOverlayRowShowsAndHidesTheOverlayUnderThePointer() throws {
+        let (screen, overlayWindow) = try XCTUnwrap(appDelegate.overlayWindows.first)
+        appDelegate.pointerLocationOverride = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+        defer {
+            appDelegate.pointerLocationOverride = nil
+            if appDelegate.alwaysOnMode { appDelegate.toggleAlwaysOnMode() }
+            overlayWindow.orderOut(nil)
+        }
+        let item = try statusItem(.overlay)
+        try openStatusMenu()
+        XCTAssertEqual(item.title, "Show Overlay")
+
+        try click(item)
+        XCTAssertTrue(overlayWindow.isVisible)
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        try openStatusMenu()
+        XCTAssertEqual(item.title, "Hide Overlay")
+
+        try click(item)
+        XCTAssertFalse(overlayWindow.isVisible)
+        try openStatusMenu()
+        XCTAssertEqual(item.title, "Show Overlay")
+
+        // Always-On overlays are visible but read-only: the row offers the interactive one,
+        // and leaves Always-On to show it.
+        appDelegate.toggleAlwaysOnMode()
+        XCTAssertEqual(item.title, "Show Overlay")
+        try click(item)
+        XCTAssertFalse(appDelegate.alwaysOnMode)
+        XCTAssertTrue(overlayWindow.isVisible)
+        XCTAssertTrue(appDelegate.isInteractiveOverlayOpen)
     }
 
     func testOverlayWindows() {
@@ -80,7 +383,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(appDelegate.overlayWindows.count, NSScreen.screens.count)
     }
 
-    func testToolSwitching() {
+    func testToolSwitching() throws {
         appDelegate.enablePenMode(NSMenuItem())
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .pen)
@@ -95,25 +398,17 @@ final class AppDelegateTests: XCTestCase, Sendable {
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .line)
         }
-        
-        if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
-        {
-            XCTAssertEqual(currentToolItem.title, "Current Tool: Line")
-        }
+
+        try assertToolMenuShows(.line)
     }
 
-    func testCounterToolSwitching() {
+    func testCounterToolSwitching() throws {
         appDelegate.enableCounterMode(NSMenuItem())
         for window in appDelegate.overlayWindows.values {
             XCTAssertEqual(window.overlayView.currentTool, .counter)
         }
 
-        if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
-        {
-            XCTAssertEqual(currentToolItem.title, "Current Tool: Counter")
-        }
+        try assertToolMenuShows(.counter)
     }
 
     func testQuickPickerMenuItemsFailClosedWhenMainOverlayIsHidden() throws {
@@ -754,7 +1049,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(testDefaults.settings[.lastUsedTool], .highlighter)
     }
 
-    func testApplyConfiguredDefaultToolAppliesSpecificTool() {
+    func testApplyConfiguredDefaultToolAppliesSpecificTool() throws {
         guard let overlayWindow = appDelegate.overlayWindows.values.first else {
             XCTFail("No overlay window available")
             return
@@ -770,11 +1065,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
             XCTAssertEqual(window.overlayView.currentTool, .rectangle, "Activation should reset the tool to the configured default")
         }
 
-        if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
-        {
-            XCTAssertEqual(currentToolItem.title, "Current Tool: Rectangle")
-        }
+        try assertToolMenuShows(.rectangle)
     }
 
     func testApplyConfiguredDefaultToolSkipsWhenToolAlreadyActive() {
@@ -828,7 +1119,7 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayWindow.overlayView.currentTool, .arrow, "Last Used should preserve whatever tool was already active")
     }
 
-    func testLaunchRestoresPersistedLastUsedTool() {
+    func testLaunchRestoresPersistedLastUsedTool() throws {
         testDefaults.settings[.lastUsedTool] = .highlighter
 
         let appDelegate = launchAppDelegate()
@@ -837,11 +1128,8 @@ final class AppDelegateTests: XCTestCase, Sendable {
             XCTAssertEqual(window.overlayView.currentTool, .highlighter, "Overlay windows should restore the persisted last-used tool on launch")
         }
 
-        if let menu = appDelegate.statusItem.menu,
-            let currentToolItem = menu.item(at: 3)  // Index 3 is "Current Tool" menu item
-        {
-            XCTAssertEqual(currentToolItem.title, "Current Tool: Highlighter", "Menu should reflect the restored tool, not the hardcoded default")
-        }
+        // The menu reflects the restored tool, not a hardcoded default.
+        try assertToolMenuShows(.highlighter, in: appDelegate)
     }
 
     func testLaunchDefaultsToPenWhenNoLastUsedToolSaved() {
@@ -875,12 +1163,19 @@ final class AppDelegateTests: XCTestCase, Sendable {
         overlayView.commitTextField(textField)
 
         XCTAssertEqual(overlayView.currentTool, .select, "Committing a label should switch to Select")
+        try assertToolMenuShows(.select)
         XCTAssertEqual(testDefaults.settings[.lastUsedTool], .text, "Internal tool switches should not overwrite the persisted last-used tool")
     }
 }
 
 @MainActor
 final class MockAppDelegate: AppDelegate {}
+
+/// An overlay that reports itself key when told to. XCTest can't make an overlay key.
+final class KeyReportingOverlayWindow: OverlayWindow {
+    var reportsKey = false
+    override var isKeyWindow: Bool { reportsKey }
+}
 
 /// Records requests to become key, which AppKit may refuse while the test host isn't active.
 /// `makeKeyAndOrderFront` can call `makeKey`, so this is a flag rather than a count.
