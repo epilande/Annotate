@@ -199,6 +199,26 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 62, y: 62)), .none)
     }
 
+    func testAFlatOvalIsClickableOnlyWithinAFewPointsOfItsEdge() {
+        var flat = TestFactory.createOval(start: NSPoint(x: 20, y: 90), end: NSPoint(x: 180, y: 110), time: 1)
+        for solid in [false, true] {
+            flat.solid = solid
+            overlayView.ovals = [flat]
+            let kind = solid ? "solid" : "outlined"
+
+            XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 183, y: 100)), .oval(index: 0), kind)
+            XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 113)), .oval(index: 0), kind)
+            XCTAssertEqual(
+                overlayView.findObjectAt(point: NSPoint(x: 195, y: 100)),
+                .none,
+                "\(kind): 15 points past the end of the long axis is not on the oval")
+            XCTAssertEqual(
+                overlayView.findObjectAt(point: NSPoint(x: 100, y: 100)),
+                solid ? .oval(index: 0) : .none,
+                "\(kind): only a solid oval is clickable inside")
+        }
+    }
+
     func testASolidShapeStopsClicksReachingWhatItCovers() {
         overlayView.rectangles = [solidRectangle(time: 2)]
 

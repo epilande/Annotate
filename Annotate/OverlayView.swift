@@ -3015,38 +3015,25 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
     
     private func hitTestOval(_ oval: Oval, point: NSPoint) -> Bool {
-        let bounds = NSRect(
-            x: min(oval.startPoint.x, oval.endPoint.x),
-            y: min(oval.startPoint.y, oval.endPoint.y),
-            width: abs(oval.endPoint.x - oval.startPoint.x),
-            height: abs(oval.endPoint.y - oval.startPoint.y)
-        )
-        
-        let centerX = bounds.midX
-        let centerY = bounds.midY
-        let radiusX = bounds.width / 2
-        let radiusY = bounds.height / 2
-        
-        let dx = (point.x - centerX) / radiusX
-        let dy = (point.y - centerY) / radiusY
-        let normalizedDistance = sqrt(dx * dx + dy * dy)
-        
-        // Only check edge/perimeter (not inside)
-        let baseTolerance = oval.lineWidth / 2.0
-        let minClickableTolerance: CGFloat = 5.0
-        let edgeTolerance = max(baseTolerance, minClickableTolerance)
-        
-        let toleranceNormalized = edgeTolerance / min(radiusX, radiusY)
-        
-        // Point is on edge if distance is between (1.0 - tolerance) and (1.0 + tolerance)
-        let innerBoundary = max(0, 1.0 - toleranceNormalized)
-        let outerBoundary = 1.0 + toleranceNormalized
+        let ellipse = CGPath(
+            ellipseIn: AnnotationRenderer.paddedBounds(oval.startPoint, oval.endPoint, padding: 0),
+            transform: nil)
 
-        // A solid oval's whole area is clickable.
-        if oval.solid { return normalizedDistance <= outerBoundary }
-        return normalizedDistance >= innerBoundary && normalizedDistance <= outerBoundary
+        // The outline is clickable within its own half width, or 5 points when it is thinner.
+        // Measured in points from the ellipse itself, so the reach is the same all the way
+        // round, however flat the oval is.
+        let edgeTolerance = max(oval.lineWidth / 2.0, 5.0)
+        let edge = ellipse.copy(
+            strokingWithWidth: edgeTolerance * 2,
+            lineCap: .butt,
+            lineJoin: .miter,
+            miterLimit: 10)
+        if edge.contains(point) { return true }
+
+        // A solid oval's whole area is clickable; an outline is not clickable inside.
+        return oval.solid && ellipse.contains(point)
     }
-    
+
     private func hitTestText(_ text: TextAnnotation, point: NSPoint) -> Bool {
         let textRect = getTextRect(for: text)
         return textRect.contains(point)
