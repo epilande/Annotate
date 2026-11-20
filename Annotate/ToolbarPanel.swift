@@ -2,10 +2,9 @@ import Cocoa
 import SwiftUI
 
 /// The floating toolbar lives in its own non-activating child panel of the overlay window.
-/// A panel is what makes the bar draggable without any hand-rolled hit testing: AppKit moves
-/// it for us through `isMovableByWindowBackground`, and `performDrag` covers the presses AppKit
-/// does not treat as background. It never becomes key, so every keystroke keeps going to the
-/// canvas, and it rides along with the overlay because a child window follows its parent's
+/// The panel moves itself when the user drags it (see `sendEvent`), so a press anywhere on the
+/// bar, chips included, can carry it. It never becomes key, so every keystroke keeps going to
+/// the canvas, and it rides along with the overlay because a child window follows its parent's
 /// ordering and its moves.
 final class ToolbarPanel: NSPanel {
     /// Margin kept between the bar and the overlay edges, and the bar's default lift off the
@@ -42,22 +41,13 @@ final class ToolbarPanel: NSPanel {
     /// Button mouse-up that lands after the bar has moved can still be refused.
     private let press: ToolbarPress
     private let deliverAction: (ToolbarAction) -> Void
-    /// True once this press has been handed to the window server, so a drag that keeps
-    /// reporting events is never started twice.
-    private var hasStartedWindowDrag = false
-    /// The mouse-down that began the current press. `performDrag` wants the original press,
-    /// even when the drag is only handed over once the pointer has moved.
-    private var pressEvent: NSEvent?
-    /// Polls the button after a hand-off to the window server, which can return before the
-    /// drag is over and may keep the mouse-up for itself.
-    private var releaseWatch: Timer?
-    /// Starts the window server's move of the bar. Replaced in tests: the real move follows
-    /// the mouse hardware, which a synthetic press never holds down.
-    var windowDragger: (NSWindow, NSEvent) -> Void = { window, event in
-        window.performDrag(with: event)
-    }
-    /// Whether the primary button is down. Replaced in tests for the same reason.
-    var isPrimaryButtonDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
+    /// Where the pointer and the bar were when the press began. The bar is placed from these on
+    /// every dragged event, so it stays under the same spot of the pointer however far it goes,
+    /// and comes back under the pointer after being held at an overlay edge.
+    private var dragStart: (pointer: NSPoint, origin: NSPoint)?
+    /// True once the press has travelled far enough to move the bar. From then on the panel
+    /// owns the press, and the chip it started on has already been released.
+    private var isMovingBar = false
 
     init(overlay: OverlayWindow, model: ToolbarModel, perform: @escaping (ToolbarAction) -> Void) {
         self.overlay = overlay
@@ -87,7 +77,12 @@ final class ToolbarPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false
-        isMovableByWindowBackground = true
+        // On macOS 27.2 `performDrag(with:)` no longer moves this panel (it logs "Window move
+        // completed without beginning"), and on 27 the window server's own drag region leaves
+        // out everything the hosting view draws. The panel moves itself instead, and keeps the
+        // window server out of it so no press is moved twice.
+        isMovable = false
+        isMovableByWindowBackground = false
         hidesOnDeactivate = false
         isRestorable = false
         isReleasedWhenClosed = false
@@ -116,127 +111,92 @@ final class ToolbarPanel: NSPanel {
 
     override var canBecomeMain: Bool { false }
 
-    /// Marks the whole press as a user gesture, whichever way AppKit ends up moving the bar.
-    /// `isMovableByWindowBackground` can swallow the press before `mouseDown` ever runs, and a
-    /// native move like that reports a move per frame of the drag, so the flag has to be set
-    /// here rather than in `mouseDown` alone or those frames would each be written down.
+    /// Moves the bar with the pointer, whether the press began on a chip or on the bar around
+    /// them, and marks the whole press as one user gesture so its moves are saved once, at the end.
     ///
     /// Chip actions are judged here too. SwiftUI's `Button` fires on mouse-up if the pointer is
     /// still inside the control; the bar travels with the pointer, so that test is always true
-    /// during a drag. Screen-space travel (and the bar's own origin, when AppKit swallows the
-    /// dragged events) is what actually tells a click from a drag.
-    ///
-    /// A press on a chip is not always carried by AppKit. On macOS 27 the drag region AppKit
-    /// reports for the panel leaves out everything the hosting view draws, so only the
-    /// transparent edge and the gaps between segments move the bar natively. When the pointer
-    /// slides along a bar that is not following it, the chip still holds the press, and the
-    /// drag is started here.
+    /// during a drag. Pointer travel in screen space is what tells a click from a drag. Once a
+    /// press travels `ToolbarPress.dragThreshold`, the chip is sent a mouse-up while
+    /// `press.isDrag` is set, which ends its press without firing it, and the rest of the
+    /// gesture belongs to the panel.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown:
-            stopWatchingForRelease()
+            let point = screenPoint(for: event)
             isUserDragging = true
-            hasStartedWindowDrag = false
-            pressEvent = event
-            press.begin(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
+            isMovingBar = false
+            dragStart = (point, frame.origin)
+            press.begin(screenPoint: point, windowOrigin: frame.origin)
             super.sendEvent(event)
         case .leftMouseDragged:
             let point = screenPoint(for: event)
-            press.consider(screenPoint: point, windowOrigin: frame.origin)
-            if isUserDragging, !hasStartedWindowDrag, press.isDrag, let pressEvent,
-                press.pointerHasSlidAlongTheBar(screenPoint: point, windowOrigin: frame.origin)
-            {
-                carryChipDrag(from: pressEvent, at: event)
+            press.consider(screenPoint: point)
+            if isUserDragging, !isMovingBar, press.isDrag {
+                isMovingBar = true
+                releaseChip(at: event)
+            }
+            if isMovingBar {
+                moveBar(withPointerAt: point)
             } else {
                 super.sendEvent(event)
             }
         case .leftMouseUp:
-            press.consider(screenPoint: screenPoint(for: event), windowOrigin: frame.origin)
-            super.sendEvent(event)
+            press.consider(screenPoint: screenPoint(for: event))
+            // A moving bar released its chip when the drag began. A second mouse-up could land
+            // on whichever chip is under the pointer now.
+            if !isMovingBar {
+                super.sendEvent(event)
+            }
             endUserDrag()
         default:
             super.sendEvent(event)
         }
     }
 
-    /// A press the SwiftUI chips did not consume falls through to the window, which is the
-    /// signal that the user grabbed the bar itself. `isMovableByWindowBackground` covers this
-    /// on its own for real drags, but a nonactivating panel in an inactive app does not always
-    /// get that far, so start the drag explicitly.
-    override func mouseDown(with event: NSEvent) {
-        isUserDragging = true
-        startWindowDrag(with: event)
+    /// Ends the chip press the drag started on, if it started on one. A mouse-up delivered while
+    /// `press.isDrag` is set ends the SwiftUI button's tracking, and the action it fires is refused.
+    private func releaseChip(at event: NSEvent) {
+        guard
+            let release = NSEvent.mouseEvent(
+                with: .leftMouseUp,
+                location: event.locationInWindow,
+                modifierFlags: event.modifierFlags,
+                timestamp: event.timestamp,
+                windowNumber: windowNumber,
+                context: nil,
+                eventNumber: event.eventNumber,
+                clickCount: 1,
+                pressure: 0
+            )
+        else { return }
+        // `super`, because this panel's own mouse-up handling would close the gesture.
+        super.sendEvent(release)
     }
 
-    /// Hands the rest of a press on a chip to the window server. The chip's `Button` is still
-    /// tracking the press, and the window server may keep the mouse-up for itself, which would
-    /// leave the chip pressed. A mouse-up delivered here ends that press first, while
-    /// `press.isDrag` is set, so the action it fires is refused.
-    private func carryChipDrag(from pressEvent: NSEvent, at event: NSEvent) {
-        if let release = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: event.locationInWindow,
-            modifierFlags: event.modifierFlags,
-            timestamp: event.timestamp,
-            windowNumber: windowNumber,
-            context: nil,
-            eventNumber: event.eventNumber,
-            clickCount: 1,
-            pressure: 0
-        ) {
-            // `super`, because this panel's own mouse-up handling would close the gesture.
-            super.sendEvent(release)
-        }
-        startWindowDrag(with: pressEvent)
-    }
-
-    /// Starts the window server's move of the bar, at most once per press. `event` is the
-    /// press's original mouse-down, as `performDrag` asks for.
-    private func startWindowDrag(with event: NSEvent) {
-        hasStartedWindowDrag = true
-        windowDragger(self, event)
-        // `performDrag` returns right away and may never send the mouse-up, so `sendEvent`
-        // cannot be relied on to see the end of the gesture. Close it once the button is back
-        // up, whether or not a mouse-up ever arrives.
-        if isPrimaryButtonDown() {
-            watchForRelease()
-        } else {
-            finishWindowDrag()
-        }
-    }
-
-    private func watchForRelease() {
-        stopWatchingForRelease()
-        let watch = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isPrimaryButtonDown() else { return }
-                self.finishWindowDrag()
-            }
-        }
-        RunLoop.main.add(watch, forMode: .common)
-        releaseWatch = watch
-    }
-
-    private func stopWatchingForRelease() {
-        releaseWatch?.invalidate()
-        releaseWatch = nil
-    }
-
-    /// `performDrag` swallows dragged events, so judge the gesture against the bar's origin
-    /// before closing it. Chip actions are refused while `press.isDrag` is still set.
-    private func finishWindowDrag() {
-        press.consider(windowOrigin: frame.origin)
-        endUserDrag()
+    /// Puts the bar where the pointer has carried it since the press began, kept inside the
+    /// overlay. Not through `place`, which marks a move as the app's, so it would never be saved.
+    private func moveBar(withPointerAt point: NSPoint) {
+        guard let dragStart else { return }
+        let origin = NSPoint(
+            x: dragStart.origin.x + point.x - dragStart.pointer.x,
+            y: dragStart.origin.y + point.y - dragStart.pointer.y
+        )
+        let target = constrainFrameRect(NSRect(origin: origin, size: frame.size), to: nil).origin
+        guard target != frame.origin else { return }
+        setFrameOrigin(target)
+        // `panelDidMove` notes the same, but only once AppKit gets around to posting the move.
+        hasPendingSave = true
+        lastKnownOffset = currentOffset
     }
 
     /// Closes a user gesture and writes down the move it made, if it made one. A click that
     /// moved nothing leaves the pending flag clear, so it never records a position the user
     /// did not choose. Safe to call more than once for the same gesture.
     private func endUserDrag() {
-        stopWatchingForRelease()
         isUserDragging = false
-        hasStartedWindowDrag = false
-        pressEvent = nil
+        isMovingBar = false
+        dragStart = nil
         press.end()
         guard hasPendingSave else { return }
         hasPendingSave = false
@@ -247,8 +207,16 @@ final class ToolbarPanel: NSPanel {
     /// drag rather than a chip click.
     var isSuppressingChipAction: Bool { press.isDrag }
 
+    /// Where the event happened on screen. Read from the window server's location rather than
+    /// converted from `locationInWindow`, which is relative to wherever the bar was when the
+    /// event was made: the bar moves under the pointer during a drag, and converting against
+    /// its new frame would add each move to the next one.
     private func screenPoint(for event: NSEvent) -> NSPoint {
-        convertToScreen(NSRect(origin: event.locationInWindow, size: .zero)).origin
+        guard let location = event.cgEvent?.location, let primary = NSScreen.screens.first else {
+            return convertToScreen(NSRect(origin: event.locationInWindow, size: .zero)).origin
+        }
+        // Window server coordinates start at the primary display's top left and grow downward.
+        return NSPoint(x: location.x, y: primary.frame.maxY - location.y)
     }
 
     // MARK: - Attachment
@@ -272,12 +240,14 @@ final class ToolbarPanel: NSPanel {
     }
 
     func detach() {
+        // The overlay can hide the bar mid-press (Capture Area, closing the overlay). Close the
+        // gesture so the spot it reached is saved and the next press starts clean.
+        endUserDrag()
         parent?.removeChildWindow(self)
         orderOut(nil)
     }
 
     func tearDown() {
-        stopWatchingForRelease()
         NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: self)
         detach()
         close()
@@ -414,9 +384,9 @@ final class ToolbarPanel: NSPanel {
         place(NSRect(origin: origin, size: frame.size))
     }
 
-    /// Keeps the bar fully inside the overlay it belongs to. AppKit consults this while the
-    /// user drags a visible window; every programmatic placement runs it explicitly, because
-    /// an off-screen window is never constrained.
+    /// Keeps the bar fully inside the overlay it belongs to. A drag of the bar and every
+    /// programmatic placement run it explicitly: AppKit only consults it for its own moves of a
+    /// visible window, and the panel makes none of those.
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         guard let bounds = overlay?.frame else {
             return super.constrainFrameRect(frameRect, to: screen)
@@ -446,9 +416,8 @@ final class ToolbarPanel: NSPanel {
 
     /// A move made during a user gesture only notes that there is something to save, because
     /// the end of the gesture writes it once rather than on every one of its 60-plus frames.
-    /// Both drag paths are covered: `sendEvent` sees the press whether AppKit moves the bar
-    /// itself or hands the drag to `mouseDown`. What is left to write immediately is a move
-    /// with no gesture behind it, which is code placing the bar somewhere the user should
+    /// `sendEvent` sees every press on the bar, so a drag is always inside a gesture. What is
+    /// left to write immediately is a move with no gesture behind it, which is code placing the bar somewhere the user should
     /// find it again.
     @objc private func panelDidMove() {
         guard !isPlacingProgrammatically else { return }
@@ -533,8 +502,8 @@ final class ToolbarPanel: NSPanel {
 ///
 /// SwiftUI's `Button` fires on mouse-up when the pointer is still inside the control. The bar
 /// travels with the pointer, so that test is always true during a drag. The press has to be
-/// judged in screen space instead, and against the bar's own origin when AppKit swallows the
-/// dragged events (the `performDrag` fallback).
+/// judged in screen space instead, and against the bar's own origin for a move made while the
+/// button is down that came without pointer events.
 final class ToolbarPress {
     static let dragThreshold: CGFloat = 4
 
@@ -561,18 +530,6 @@ final class ToolbarPress {
         {
             isDrag = true
         }
-    }
-
-    /// True once the pointer has slid `dragThreshold` across the bar since the press began,
-    /// which only happens when nothing is moving the bar along with it. A bar that follows the
-    /// pointer keeps the pointer on the same spot, however far the two travel together.
-    func pointerHasSlidAlongTheBar(screenPoint: NSPoint, windowOrigin: NSPoint) -> Bool {
-        guard let startPoint = startScreenPoint, let startOrigin = startWindowOrigin else {
-            return false
-        }
-        let dx = (screenPoint.x - windowOrigin.x) - (startPoint.x - startOrigin.x)
-        let dy = (screenPoint.y - windowOrigin.y) - (startPoint.y - startOrigin.y)
-        return hypot(dx, dy) >= Self.dragThreshold
     }
 
     func end() {
