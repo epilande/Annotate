@@ -65,13 +65,26 @@ final class ToolbarTests: XCTestCase {
             "A key toolbar would steal the keystrokes that belong to the canvas")
         XCTAssertFalse(panel.canBecomeMain)
         XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
-        XCTAssertTrue(
-            panel.isMovableByWindowBackground,
-            "Dragging the bar is AppKit's job, not the overlay's")
+        XCTAssertFalse(
+            panel.isMovable,
+            "The panel moves itself; a window server move on top would move a press twice")
+        XCTAssertFalse(panel.isMovableByWindowBackground)
         XCTAssertEqual(panel.level, window.level)
         // AppKit adds bits of its own once the panel is a child, so check what we asked for.
         XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(panel.collectionBehavior.contains(.transient))
+    }
+
+    func testTheBarRidesAlongWhenTheOverlayMoves() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        try showBarForPointerEvents(panel)
+        let offset = NSPoint(x: panel.frame.minX - window.frame.minX, y: panel.frame.minY - window.frame.minY)
+
+        // The panel turns off window server moves of its own; a child window still follows its parent.
+        window.setFrameOrigin(NSPoint(x: window.frame.minX + 100, y: window.frame.minY + 50))
+
+        XCTAssertEqual(panel.frame.minX - window.frame.minX, offset.x, accuracy: 0.5)
+        XCTAssertEqual(panel.frame.minY - window.frame.minY, offset.y, accuracy: 0.5)
     }
 
     func testConstrainFrameRectKeepsTheBarInsideTheOverlay() throws {
@@ -104,8 +117,8 @@ final class ToolbarTests: XCTestCase {
     func testADragWritesOnceAtTheEndRatherThanOnEveryFrame() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
-        // Below the bar in the panel's own coordinates, so the synthetic press cannot reach
-        // the hosting view and start a real drag. Only the panel's event bookkeeping runs.
+        // Below the bar in the panel's own coordinates, so the press reaches no chip. The moves
+        // come without pointer events, so only the panel's save bookkeeping runs.
         let miss = NSPoint(x: panel.frame.width / 2, y: -50)
 
         panel.sendEvent(
@@ -140,8 +153,7 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
 
-        // Same miss as the persistence drag test: inside-panel coordinates would reach the
-        // hosting view and start a real performDrag. The bookkeeping is what we need here.
+        // Same miss as the persistence drag test, so only the bookkeeping runs.
         let miss = NSPoint(x: panel.frame.width / 2, y: -50)
         panel.sendEvent(
             try XCTUnwrap(
@@ -172,40 +184,38 @@ final class ToolbarTests: XCTestCase {
             "A chip click after the drag has ended must still switch tools")
     }
 
-    func testPointerTravelPastTheThresholdSuppressesTheChipWithoutMovingTheBar() throws {
+    func testABarHeldAtTheOverlayEdgeStillTreatsTheTravelAsADragAndComesBackUnderThePointer() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         let host = try XCTUnwrap(panel.hostingView)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
+        // Below the bar in the panel's own coordinates, so the press reaches no chip.
+        let press = NSPoint(x: panel.frame.width / 2, y: -50)
+        let start = panel.frame.origin
+        XCTAssertEqual(start.y, window.frame.minY + ToolbarPanel.edgeInset, accuracy: 0.5)
 
-        var drags: [NSEvent] = []
-        panel.windowDragger = windowServerDrag { drags.append($0) }
-        var buttonDown = true
-        panel.isPrimaryButtonDown = { buttonDown }
-
-        let start = NSPoint(x: panel.frame.width / 2, y: -50)
-        let press = try XCTUnwrap(
-            TestEvents.createMouseEvent(
-                type: .leftMouseDown, location: start, windowNumber: panel.windowNumber))
-        panel.sendEvent(press)
-        panel.sendEvent(
-            try XCTUnwrap(
-                TestEvents.createMouseEvent(
-                    type: .leftMouseDragged,
-                    location: NSPoint(x: start.x + ToolbarPress.dragThreshold + 1, y: start.y),
-                    windowNumber: panel.windowNumber)))
-
+        // Down past the bottom edge: the bar stops there while the pointer carries on.
+        drag(panel, from: press, through: [CGVector(dx: 0, dy: -60)], release: false)
+        XCTAssertEqual(panel.frame.minY, window.frame.minY, accuracy: 0.5, "The bar stays inside the overlay")
         XCTAssertTrue(
             panel.isSuppressingChipAction,
-            "A clamped bar that cannot follow the pointer still has to treat this as a drag")
-        XCTAssertEqual(drags.count, 1, "A pointer sliding along a bar that stands still is handed over")
-        XCTAssertTrue(drags.first === press, "`performDrag` gets the press's original mouse-down")
+            "A bar held at the edge that cannot follow the pointer still has to treat this as a drag")
         host.rootView.perform(.tool(.rectangle))
         XCTAssertNil(spy.selectedTool)
 
-        buttonDown = false
-        waitUntil { !panel.isSuppressingChipAction }
+        // Back up to 30 pt above where the press began, still holding the button.
+        let pointer = NSPoint(x: start.x + press.x, y: start.y + press.y + 30)
+        func pointerInPanel() -> NSPoint {
+            NSPoint(x: pointer.x - panel.frame.minX, y: pointer.y - panel.frame.minY)
+        }
+        send(.leftMouseDragged, at: pointerInPanel(), to: panel)
+        XCTAssertEqual(
+            panel.frame.minY,
+            start.y + 30,
+            accuracy: 0.5,
+            "Back out, the bar is under the same spot of the pointer as when the press began")
+        send(.leftMouseUp, at: pointerInPanel(), to: panel)
         XCTAssertFalse(panel.isSuppressingChipAction, "Letting go closes the gesture")
     }
 
@@ -231,17 +241,46 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(spy.selectedTool, .arrow)
     }
 
-    // MARK: - Dragging from a chip (#129)
+    // MARK: - Dragging the bar
 
-    func testADragThatStartsOnAToolChipMovesTheBar() throws {
-        try assertADragFromAChipMovesTheBar(layout: .horizontal)
+    // No stand-in mover here. On macOS 27.2 `performDrag` stopped moving the panel, so a bar
+    // that relied on it would pass a test that fakes the window server and still never move.
+
+    func testDraggingAToolChipMovesTheBar() throws {
+        try assertADragMovesTheBar(layout: .horizontal, from: .chip)
     }
 
-    func testADragThatStartsOnAToolChipMovesTheColumn() throws {
-        try assertADragFromAChipMovesTheBar(layout: .vertical)
+    func testDraggingTheBarBackgroundMovesTheBar() throws {
+        try assertADragMovesTheBar(layout: .horizontal, from: .background)
     }
 
-    func testADragThatStartsOnTheColorChipMovesTheBarWithoutOpeningThePicker() throws {
+    func testDraggingAToolChipMovesTheColumn() throws {
+        try assertADragMovesTheBar(layout: .vertical, from: .chip)
+    }
+
+    func testDraggingTheColumnBackgroundMovesTheColumn() throws {
+        try assertADragMovesTheBar(layout: .vertical, from: .background)
+    }
+
+    func testTravelUnderTheThresholdIsStillAChipClick() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        try showBarForPointerEvents(panel)
+        let chip = try chipPoint(
+            in: panel,
+            where: { spy.selectedTool == .pen },
+            reset: { spy.selectedTool = nil })
+
+        let start = panel.frame.origin
+        drag(panel, from: chip, through: [CGVector(dx: ToolbarPress.dragThreshold - 1, dy: 0)])
+
+        XCTAssertEqual(panel.frame.origin, start, "A press that barely moved leaves the bar where it was")
+        XCTAssertEqual(spy.selectedTool, .pen, "and still counts as a click on the chip")
+    }
+
+    func testDraggingTheColorChipMovesTheBarWithoutOpeningThePicker() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         // Scanning for the color chip clicks every tool chip on the way.
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
@@ -252,28 +291,17 @@ final class ToolbarTests: XCTestCase {
             in: panel,
             where: { window.isQuickPickerOpen },
             reset: { window.cancelQuickPicker() })
-        var drags: [NSEvent] = []
-        panel.windowDragger = windowServerDrag(by: CGVector(dx: -50, dy: 30)) { drags.append($0) }
-        // The drag is still running when `performDrag` returns, and this time the window server
-        // does hand the mouse-up back, which closes the gesture.
-        panel.isPrimaryButtonDown = { true }
 
         let start = panel.frame.origin
-        let press = send(.leftMouseDown, at: chip, to: panel)
-        send(.leftMouseDragged, at: NSPoint(x: chip.x - 6, y: chip.y), to: panel)
-        XCTAssertTrue(panel.isSuppressingChipAction, "The gesture stays open until the mouse-up")
-        send(.leftMouseUp, at: NSPoint(x: chip.x - 6, y: chip.y), to: panel)
-        wait(for: 0.05)
+        drag(panel, from: chip, through: [CGVector(dx: -50, dy: 30)])
 
-        XCTAssertEqual(drags.count, 1)
-        XCTAssertTrue(drags.first === press, "`performDrag` gets the press's original mouse-down")
         XCTAssertEqual(panel.frame.minX, start.x - 50, accuracy: 0.5)
         XCTAssertEqual(panel.frame.minY, start.y + 30, accuracy: 0.5)
         XCTAssertFalse(window.isQuickPickerOpen, "Dragging the bar by the color chip must not open the picker")
         XCTAssertFalse(panel.isSuppressingChipAction)
     }
 
-    func testAChipDragWhoseMouseUpNeverArrivesStillSavesWhereTheBarLanded() throws {
+    func testHidingTheBarMidDragStillSavesWhereItLanded() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         let key = try XCTUnwrap(ToolbarPanel.displayKey(for: window))
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
@@ -284,34 +312,26 @@ final class ToolbarTests: XCTestCase {
             in: panel,
             where: { spy.selectedTool == .pen },
             reset: { spy.selectedTool = nil })
-        panel.windowDragger = windowServerDrag(by: CGVector(dx: 40, dy: 40)) { _ in }
-        // `performDrag` returns while the user is still dragging, and the window server keeps
-        // the mouse-up: the panel never sees one for this press.
-        var buttonDown = true
-        panel.isPrimaryButtonDown = { buttonDown }
 
         let start = panel.frame.origin
-        send(.leftMouseDown, at: chip, to: panel)
-        send(.leftMouseDragged, at: NSPoint(x: chip.x + 6, y: chip.y), to: panel)
+        // The overlay can take the bar away before the mouse-up (Capture Area, closing the
+        // overlay), and the mouse-up then goes nowhere near the panel.
+        drag(panel, from: chip, through: [CGVector(dx: 30, dy: 20), CGVector(dx: 60, dy: 50)], release: false)
         XCTAssertTrue(panel.isSuppressingChipAction, "The drag is still running")
-
-        moveAsTheWindowServerWould(panel, by: CGVector(dx: 20, dy: 10))
         XCTAssertFalse(
             defaults.settings.hasValue(for: .toolbarPositions),
             "Moves during the drag are still folded into one write at the end")
 
-        buttonDown = false
-        waitUntil { !panel.isSuppressingChipAction }
+        panel.detach()
 
         // A wide row has little room to the side, so the travel stays inside the overlay.
         let landed = NSPoint(x: start.x + 60, y: start.y + 50)
-        XCTAssertFalse(panel.isSuppressingChipAction, "Letting go closes the gesture without a mouse-up")
+        XCTAssertFalse(panel.isSuppressingChipAction, "Hiding the bar closes the gesture")
         XCTAssertEqual(
             defaults.settings[.toolbarPositions][key],
             [Double(landed.x - window.frame.minX), Double(landed.y - window.frame.minY)],
             "The spot the bar landed on is saved even though no mouse-up came")
 
-        panel.detach()
         panel.attach(to: window)
         XCTAssertEqual(panel.frame.minX, landed.x, accuracy: 0.5, "Reopening puts the bar where it landed")
         XCTAssertEqual(panel.frame.minY, landed.y, accuracy: 0.5)
@@ -322,12 +342,12 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(spy.selectedTool, .pen, "The next click on the chip works as a click")
     }
 
-    /// Presses a chip and drags. On macOS 27 the panel's drag region leaves out everything the
-    /// hosting view draws, so this only moves the bar if the panel hands the press to the
-    /// window server itself. Synthetic events never start a real window-server drag on any
-    /// macOS, so the fake dragger stands in for one, and the bar only moves if it is called.
-    private func assertADragFromAChipMovesTheBar(
-        layout: ToolbarLayout, file: StaticString = #filePath, line: UInt = #line
+    private enum PressSpot {
+        case chip, background
+    }
+
+    private func assertADragMovesTheBar(
+        layout: ToolbarLayout, from spot: PressSpot, file: StaticString = #filePath, line: UInt = #line
     ) throws {
         defaults.settings[.toolbarLayout] = layout
         window.refreshToolbarAppearance()
@@ -337,48 +357,80 @@ final class ToolbarTests: XCTestCase {
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
         try showBarForPointerEvents(panel)
-        let chip = try chipPoint(
-            in: panel,
-            where: { spy.selectedTool == .pen },
-            reset: { spy.selectedTool = nil })
-        var drags: [NSEvent] = []
-        panel.windowDragger = windowServerDrag(by: CGVector(dx: 60, dy: 40)) { drags.append($0) }
-        // The drag is already over when `performDrag` returns.
-        panel.isPrimaryButtonDown = { false }
-
-        send(.leftMouseDown, at: chip, to: panel)
-        send(.leftMouseUp, at: chip, to: panel)
-        XCTAssertEqual(spy.selectedTool, .pen, "A click on the chip still chooses it", file: file, line: line)
-        XCTAssertTrue(drags.isEmpty, "A click on a chip is not a drag", file: file, line: line)
-        spy.selectedTool = nil
+        let press: NSPoint
+        switch spot {
+        case .chip:
+            press = try chipPoint(
+                in: panel,
+                where: { spy.selectedTool == .pen },
+                reset: { spy.selectedTool = nil })
+        case .background:
+            // Inside the first segment's padding: on its glass, outside every chip.
+            let size = panel.frame.size
+            press = layout == .vertical
+                ? NSPoint(x: size.width / 2, y: size.height - 2.5)
+                : NSPoint(x: 2.5, y: size.height / 2)
+            send(.leftMouseDown, at: press, to: panel)
+            send(.leftMouseUp, at: press, to: panel)
+            XCTAssertNil(spy.selectedTool, "The press has to miss every chip", file: file, line: line)
+        }
 
         let start = panel.frame.origin
-        let press = send(.leftMouseDown, at: chip, to: panel)
-        send(.leftMouseDragged, at: NSPoint(x: chip.x + 2, y: chip.y), to: panel)
-        XCTAssertTrue(drags.isEmpty, "Travel under the threshold is still a click", file: file, line: line)
-        send(.leftMouseDragged, at: NSPoint(x: chip.x + 6, y: chip.y + 2), to: panel)
-        // The window server can hand the mouse-up back late, over the chip that moved with the
-        // pointer. It must not count as a click either.
-        send(.leftMouseUp, at: NSPoint(x: chip.x + 6, y: chip.y + 2), to: panel)
-        wait(for: 0.05)
+        drag(panel, from: press, through: [CGVector(dx: 60, dy: 40)])
 
-        XCTAssertEqual(
-            drags.count, 1, "The chip press has to be handed to the window server once", file: file, line: line)
-        XCTAssertTrue(
-            drags.first === press,
-            "`performDrag` gets the press's original mouse-down, not the drag that crossed the threshold",
-            file: file,
-            line: line)
-        XCTAssertEqual(panel.frame.minX, start.x + 60, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(panel.frame.minX, start.x + 60, accuracy: 0.5, "The bar follows the pointer", file: file, line: line)
         XCTAssertEqual(panel.frame.minY, start.y + 40, accuracy: 0.5, file: file, line: line)
-        XCTAssertNil(spy.selectedTool, "A drag must not choose the tool it started on", file: file, line: line)
-        XCTAssertFalse(panel.isSuppressingChipAction, file: file, line: line)
+        XCTAssertNil(spy.selectedTool, "A drag must not choose a tool", file: file, line: line)
+        XCTAssertFalse(window.isQuickPickerOpen, file: file, line: line)
+        XCTAssertFalse(panel.isSuppressingChipAction, "Letting go closes the gesture", file: file, line: line)
         XCTAssertEqual(
             defaults.settings[ToolbarPanel.positionsKey(for: layout)][key],
             [Double(start.x + 60 - window.frame.minX), Double(start.y + 40 - window.frame.minY)],
             "Letting go records where the user parked the bar",
             file: file,
             line: line)
+
+        if spot == .chip {
+            let moved = panel.frame.origin
+            send(.leftMouseDown, at: press, to: panel)
+            send(.leftMouseUp, at: press, to: panel)
+            XCTAssertEqual(spy.selectedTool, .pen, "A click after the drag still chooses the chip", file: file, line: line)
+            XCTAssertEqual(panel.frame.origin, moved, "A click does not move the bar", file: file, line: line)
+        }
+    }
+
+    /// Presses at `local`, moves the pointer to each offset from the press in turn, and lets go
+    /// at the last one unless `release` is false. Each event is made at a fixed screen point and converted to the panel's
+    /// coordinates as the panel stands when it is sent, which is what the window server does.
+    /// Points relative to where the bar started would add every move of the bar to the next one.
+    private func drag(
+        _ panel: ToolbarPanel, from local: NSPoint, through offsets: [CGVector], release: Bool = true,
+        modifierFlags: NSEvent.ModifierFlags = []
+    ) {
+        let start = NSPoint(x: panel.frame.minX + local.x, y: panel.frame.minY + local.y)
+        func inPanel(_ offset: CGVector) -> NSPoint {
+            NSPoint(x: start.x + offset.dx - panel.frame.minX, y: start.y + offset.dy - panel.frame.minY)
+        }
+        send(.leftMouseDown, at: inPanel(.zero), to: panel, modifierFlags: modifierFlags)
+        var last = CGVector.zero
+        for offset in offsets {
+            // Several small steps, like a real drag, so the threshold is crossed partway.
+            for step in 1...8 {
+                let fraction = CGFloat(step) / 8
+                send(
+                    .leftMouseDragged,
+                    at: inPanel(
+                        CGVector(
+                            dx: last.dx + (offset.dx - last.dx) * fraction,
+                            dy: last.dy + (offset.dy - last.dy) * fraction)),
+                    to: panel,
+                    modifierFlags: modifierFlags)
+            }
+            last = offset
+        }
+        if release {
+            send(.leftMouseUp, at: inPanel(last), to: panel, modifierFlags: modifierFlags)
+        }
     }
 
     /// Synthetic mouse events only reach the SwiftUI chips once the bar is on screen.
@@ -391,33 +443,6 @@ final class ToolbarTests: XCTestCase {
         try XCTSkipUnless(panel.isVisible, "The toolbar cannot be shown in this test environment")
     }
 
-    /// A stand-in for the window server's drag, which takes over the rest of the gesture and
-    /// moves the bar as the user carries on dragging: here, by `travel` in one step. Whether the
-    /// drag is still running when it returns is up to the test's `isPrimaryButtonDown`.
-    private func windowServerDrag(
-        by travel: CGVector = .zero,
-        recordingInto record: @escaping (NSEvent) -> Void
-    ) -> (NSWindow, NSEvent) -> Void {
-        return { panel, event in
-            record(event)
-            self.moveAsTheWindowServerWould(panel, by: travel)
-        }
-    }
-
-    private func moveAsTheWindowServerWould(_ panel: NSWindow, by travel: CGVector) {
-        let origin = panel.frame.origin
-        panel.setFrameOrigin(NSPoint(x: origin.x + travel.dx, y: origin.y + travel.dy))
-        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: panel)
-    }
-
-    /// Runs the loop until `condition` holds or a few seconds pass, since CI can stall a pass.
-    private func waitUntil(_ condition: () -> Bool) {
-        let deadline = Date().addingTimeInterval(5)
-        while !condition() && Date() < deadline {
-            _ = CFRunLoopRunInMode(.defaultMode, 0.01, false)
-        }
-    }
-
     /// The first point along the middle of the bar where a click does what `isHit` checks for,
     /// nudged further in so a press there is well inside the chip. SwiftUI lays out the chips
     /// and nothing outside it names their frames, so the test asks the chips themselves, which
@@ -425,15 +450,6 @@ final class ToolbarTests: XCTestCase {
     private func chipPoint(
         in panel: ToolbarPanel, where isHit: () -> Bool, reset: () -> Void
     ) throws -> NSPoint {
-        // A click that misses every chip falls through to the bar's own drag; keep it still.
-        let dragger = panel.windowDragger
-        let isButtonDown = panel.isPrimaryButtonDown
-        panel.windowDragger = { _, _ in }
-        panel.isPrimaryButtonDown = { false }
-        defer {
-            panel.windowDragger = dragger
-            panel.isPrimaryButtonDown = isButtonDown
-        }
         let size = panel.frame.size
         let vertical = window.toolbarModel.layout == .vertical
         let length = vertical ? size.height : size.width
@@ -614,18 +630,11 @@ final class ToolbarTests: XCTestCase {
             in: panel,
             where: { spy.selectedTool == .rectangle },
             reset: { spy.selectedTool = nil })
-        var drags: [NSEvent] = []
-        panel.windowDragger = windowServerDrag(by: CGVector(dx: 60, dy: 40)) { drags.append($0) }
-        panel.isPrimaryButtonDown = { false }
 
         let start = panel.frame.origin
-        let end = NSPoint(x: chip.x + 6, y: chip.y + 2)
-        send(.leftMouseDown, at: chip, to: panel, modifierFlags: .shift)
-        send(.leftMouseDragged, at: end, to: panel, modifierFlags: .shift)
-        send(.leftMouseUp, at: end, to: panel, modifierFlags: .shift)
+        drag(panel, from: chip, through: [CGVector(dx: 60, dy: 40)], modifierFlags: .shift)
         wait(for: 0.05)
 
-        XCTAssertEqual(drags.count, 1, "The press is handed to the window server as a drag")
         XCTAssertNil(spy.selectedTool, "A Shift-drag selects neither version")
         XCTAssertEqual(panel.frame.origin.x, start.x + 60, accuracy: 0.5)
         XCTAssertEqual(panel.frame.origin.y, start.y + 40, accuracy: 0.5)
@@ -1664,37 +1673,6 @@ final class ToolbarPressTests: XCTestCase {
         XCTAssertTrue(
             press.isDrag,
             "The chip rides with the bar, so a drag cannot be judged by the pointer staying inside it")
-    }
-
-    func testThePointerSlidesAlongABarThatStandsStill() {
-        let press = ToolbarPress()
-        press.begin(screenPoint: NSPoint(x: 100, y: 80), windowOrigin: NSPoint(x: 40, y: 20))
-        XCTAssertFalse(
-            press.pointerHasSlidAlongTheBar(
-                screenPoint: NSPoint(x: 100 + ToolbarPress.dragThreshold - 0.5, y: 80),
-                windowOrigin: NSPoint(x: 40, y: 20)))
-        XCTAssertTrue(
-            press.pointerHasSlidAlongTheBar(
-                screenPoint: NSPoint(x: 100 + ToolbarPress.dragThreshold, y: 80),
-                windowOrigin: NSPoint(x: 40, y: 20)),
-            "Nothing is carrying the bar, so the drag has to be started for it")
-    }
-
-    func testThePointerStaysPutOnABarThatFollowsIt() {
-        let press = ToolbarPress()
-        press.begin(screenPoint: NSPoint(x: 100, y: 80), windowOrigin: NSPoint(x: 40, y: 20))
-        XCTAssertFalse(
-            press.pointerHasSlidAlongTheBar(
-                screenPoint: NSPoint(x: 160, y: 120), windowOrigin: NSPoint(x: 100, y: 60)),
-            "AppKit is already moving the bar; starting a second drag would fight it")
-    }
-
-    func testNoPressMeansNoSlide() {
-        let press = ToolbarPress()
-        XCTAssertFalse(press.pointerHasSlidAlongTheBar(screenPoint: NSPoint(x: 90, y: 0), windowOrigin: .zero))
-        press.begin(screenPoint: .zero, windowOrigin: .zero)
-        press.end()
-        XCTAssertFalse(press.pointerHasSlidAlongTheBar(screenPoint: NSPoint(x: 90, y: 0), windowOrigin: .zero))
     }
 
     func testEndClearsTheDragSoTheNextClickCanFire() {
