@@ -11,7 +11,7 @@
 
 ## ❓ Why?
 
-Sometimes you need to emphasize a part of your screen or share ideas visually, and Annotate fills that gap with a simple, efficient interface. It enables real-time screen annotations using tools like pen, arrow, highlighter, rectangle, circle, counter, and text—perfect for highlighting and explaining concepts during presentations, live demos, or teaching sessions where visual annotations enhance understanding and clarity.
+Sometimes you need to emphasize a part of your screen or share ideas visually, and Annotate fills that gap with a simple, efficient interface. It enables real-time screen annotations using tools like pen, arrow, highlighter, rectangle, oval, counter, and text—perfect for highlighting and explaining concepts during presentations, live demos, or teaching sessions where visual annotations enhance understanding and clarity.
 
 ## ✨ Features
 
@@ -21,7 +21,7 @@ Sometimes you need to emphasize a part of your screen or share ideas visually, a
   - 📏 **Line** tool for straight lines.
   - 🟨 **Highlighter** for emphasizing content.
   - 🔲 **Rectangle** shapes for boxing content.
-  - ⭕ **Circle** shapes for highlighting areas.
+  - ⭕ **Oval** shapes for highlighting areas.
   - 🕶️ **Redact** rectangles that hide confidential content with a solid, pixelated, or blurred fill. Use Solid for passwords and other secrets.
   - 🔢 **Counter** tool for adding sequential numbered circles.
   - 📝 **Text** annotations with drag & edit support, live resizing, and an optional background pill.
@@ -124,18 +124,20 @@ brew install --cask annotate
 
 #### 🎨 Drawing Tools
 
-| Key          | Tool            | Description                                                                |
-| ------------ | --------------- | -------------------------------------------------------------------------- |
-| <kbd>P</kbd> | **Pen**         | Freehand drawing                                                           |
-| <kbd>L</kbd> | **Line**        | Draw straight lines                                                        |
-| <kbd>H</kbd> | **Highlighter** | Highlight areas with semi-transparent brush                                |
-| <kbd>R</kbd> | **Rectangle**   | Draw rectangles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: square)      |
-| <kbd>O</kbd> | **Circle**      | Draw circles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: perfect circle) |
-| <kbd>X</kbd> | **Redact**      | Hide content behind a solid, pixelated, or blurred rectangle               |
-| <kbd>A</kbd> | **Arrow**       | Draw directional arrows                                                    |
-| <kbd>N</kbd> | **Counter**     | Add sequential numbered circles (1, 2, 3...)                               |
-| <kbd>T</kbd> | **Text**        | Add text annotations                                                       |
-| <kbd>E</kbd> | **Eraser**      | Remove annotations by dragging over them                                   |
+| Key                                 | Tool                 | Description                                                                |
+| ----------------------------------- | -------------------- | -------------------------------------------------------------------------- |
+| <kbd>P</kbd>                        | **Pen**              | Freehand drawing                                                           |
+| <kbd>L</kbd>                        | **Line**             | Draw straight lines                                                        |
+| <kbd>H</kbd>                        | **Highlighter**      | Highlight areas with semi-transparent brush                                |
+| <kbd>R</kbd>                        | **Rectangle**        | Draw rectangles (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: square)      |
+| <kbd>O</kbd>                        | **Oval**             | Draw ovals (<kbd>Option</kbd>: center, <kbd>Shift</kbd>: perfect circle)   |
+| <kbd>Shift</kbd> + <kbd>R</kbd>     | **Filled Rectangle** | Draw a filled rectangle in the current color, over everything before it    |
+| <kbd>Shift</kbd> + <kbd>O</kbd>     | **Filled Oval**      | Draw a filled oval in the current color, over everything before it         |
+| <kbd>X</kbd>                        | **Redact**           | Hide content behind a solid, pixelated, or blurred rectangle               |
+| <kbd>A</kbd>                        | **Arrow**            | Draw directional arrows                                                    |
+| <kbd>N</kbd>                        | **Counter**          | Add sequential numbered circles (1, 2, 3...)                               |
+| <kbd>T</kbd>                        | **Text**             | Add text annotations                                                       |
+| <kbd>E</kbd>                        | **Eraser**           | Remove annotations by dragging over them                                   |
 
 #### 🎯 Tool Settings & Selection
 
@@ -228,12 +230,26 @@ Color and size live in glass pickers that open right on the overlay, so you neve
 > [!TIP]
 > Color and size persist across sessions and apply to every drawing tool. The menu bar's Color and Line Width items open the same pickers on the active overlay.
 
-#### Shapes (Rectangle, Circle)
+#### Shapes (Rectangle, Oval, Filled Rectangle, Filled Oval)
 
 - Click and drag to create shapes
-- Hold <kbd>Shift</kbd> while drawing to constrain rectangles to squares and circles to perfect circles
+- Hold <kbd>Shift</kbd> while drawing to constrain rectangles to squares and ovals to perfect circles
 - Hold <kbd>Option</kbd> while drawing to expand from the center point
 - Combine <kbd>Shift</kbd> + <kbd>Option</kbd> for constrained shapes that expand from center
+
+#### Layering and Filled Shapes
+
+Annotations stack by kind, bottom to top: arrows, lines, pen strokes, highlights, rectangles, ovals, labels, counters. Within a kind, newer draws over older.
+
+**Filled Rectangle** (<kbd>Shift</kbd> + <kbd>R</kbd>) and **Filled Oval** (<kbd>Shift</kbd> + <kbd>O</kbd>) fill the shape and its outline with the current color, and stack by when you draw them instead:
+
+- A filled shape covers everything drawn before it, whatever the kind
+- Annotations drawn after it go on top of it, stacked by kind as usual
+- Another filled shape covers those in turn, and so on
+- Moving a filled shape keeps its place in the stack, so it never covers annotations drawn after it
+- Clicking with the Select tool picks what you see on top, and click the inside of a filled shape to select it. The Eraser removes it from anywhere inside
+- Filled shapes fade in Fade Mode like other annotations; as one fades, what it covered shows again
+- On the toolbar, the filled tools share the Rectangle and Oval buttons: click for the outline, <kbd>Shift</kbd>-click for the filled version. The button shows whichever version you picked last
 
 #### Redact
 
@@ -286,7 +302,7 @@ The Select tool allows you to manipulate existing annotations with precision:
 - **Select Objects**: Press <kbd>V</kbd> to enter select mode
 
   - Click on objects to select them (lines, arrows, shapes, text, etc.)
-  - Circles and rectangles must be clicked on their edges
+  - Ovals and rectangles must be clicked on their edges
   - A blue dashed bounding box appears around selected objects
 
 - **Multiple Selection**:
@@ -403,7 +419,7 @@ open "annotate://tool/arrow"
 
 Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard, the menu bar icon, or the Shortcuts actions instead.
 
-- **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle`, `redact`, `text`, `counter`, `select`, `eraser`
+- **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle` (the Oval tool), `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
 
 Opening a link with plain `open` brings Annotate to the front for a moment. Once the link runs, focus goes back to the app you were in, unless an interactive overlay is still open, as it is after a tool or show link. When you open several links at once, that's decided after the last one. To keep a running Annotate in the background the whole time, open the link with `open -g`.
@@ -469,7 +485,7 @@ Cursor effects hide while the macOS screenshot selection (<kbd>Shift</kbd> + <kb
 
 - **After Capture**: Choose what Capture Screen and Capture Area do with the image: **Save to folder**, **Copy to clipboard**, or **Both** (the default). Copy to clipboard writes no file.
 - **Folder**: Captures save to `~/Pictures/Annotate` unless you pick another folder with **Choose…**. **Use Default** goes back to `~/Pictures/Annotate`. If the chosen folder is unavailable (deleted, in the Trash, or on a drive that isn't connected), captures save to `~/Pictures/Annotate` and Annotate says so, and the chosen folder is used again once it is back. **Show in Finder** opens the folder, and says so here if it can't create it.
-- **Save annotation data next to screenshots**: Off by default. When on, each saved capture also gets a JSON file with the same name (`Annotate 2026-11-01 at 10.23.45.json` beside `Annotate 2026-11-01 at 10.23.45.png`, including the ` (2)` names). It lists the annotations the image shows, bottom to top, with their kind, position in points from the display's top-left corner, sRGB hex color, and creation time, plus the captured area and the capture's time on both the system clock and the wall clock. For Capture Area, an annotation is listed only when part of what it draws (a label's text) is inside the area. Pixels under a redaction are never recorded, and an annotation is left out when a newer redaction covers any part of it, while one drawn beside a redaction stays. If the JSON can't be saved, the image is still saved and Annotate says so on the overlay, or in an alert when the overlay is closed or Hide Tool Feedback is on. With **Copy to clipboard**, no file is saved, so there is no JSON either.
+- **Save annotation data next to screenshots**: Off by default. When on, each saved capture also gets a JSON file with the same name (`Annotate 2026-11-01 at 10.23.45.json` beside `Annotate 2026-11-01 at 10.23.45.png`, including the ` (2)` names). It lists the annotations the image shows, bottom to top, with their kind, position in points from the display's top-left corner, sRGB hex color, and creation time, plus the captured area and the capture's time on both the system clock and the wall clock. For Capture Area, an annotation is listed only when part of what it draws (a label's text) is inside the area. Filled rectangles and ovals are listed as rectangles and ellipses with `"filled": true`, in their place in the stack. Pixels under a redaction are never recorded, and an annotation is left out when a newer redaction covers any part of it, while one drawn beside a redaction stays. An annotation under a filled shape is still listed. If the JSON can't be saved, the image is still saved and Annotate says so on the overlay, or in an alert when the overlay is closed or Hide Tool Feedback is on. With **Copy to clipboard**, no file is saved, so there is no JSON either.
 - **Notifications**: Each capture sends a notification with a preview. A saved capture's notification has **Show in Finder**, and clicking it does the same. Annotate asks for permission only from this pane (**Allow Notifications**), never from the overlay, where the system prompt would be hidden. If notifications are turned off, **Open System Settings** goes to Annotate's notification settings.
 - **Menu bar confirmation**: After a capture reaches its destination, the menu bar icon shows a saved or copied icon in place of the pencil for 1.5 seconds, and VoiceOver announces it. Another capture while it shows restarts the time.
 - **Recent Captures**: The menu bar icon's **Recent Captures** submenu, under Capture Area, lists the last 8 saved captures, newest first, each with a thumbnail and its day and time ("Today at 10:23 AM"). Hover one for its file name and folder. Each has **Copy**, **Open**, and **Show in Finder**. **Open Capture Folder** opens the folder captures go to now, creating `~/Pictures/Annotate` if needed. **Clear Menu** empties the list and leaves the files where they are; captures made after it show up as usual, and Annotate remembers the clear across launches. The list comes from the capture folder and `~/Pictures/Annotate` each time the menu opens: captures you rename or delete drop out, and choosing another folder drops the old folder's captures from the list. If the chosen folder can't be reached, the submenu says so and lists `~/Pictures/Annotate`. With **Copy to clipboard**, no file is saved, so nothing is listed. Open, Show in Finder, and Open Capture Folder close the interactive overlay first and keep its drawings; Always-On Mode stays on.
@@ -481,7 +497,7 @@ Cursor effects hide while the macOS screenshot selection (<kbd>Shift</kbd> + <kb
 Customize keys and modifier combinations for tools and utilities, organized into categories, with a **Reset All to Default** action:
 
 - **Drawing Tools**: Pen, Arrow, Line, Highlighter
-- **Shapes**: Rectangle, Circle
+- **Shapes**: Rectangle, Oval, Filled Rectangle, Filled Oval, Redact
 - **Advanced Tools**: Counter, Text, Select, Eraser
 - **Utilities**: Color Picker, Colors, Line Width, Toggle Board, Toggle Cursor Highlight, Toggle Background Dimming, Toggle Fade Mode, Toggle Toolbar, Decrease Size, Increase Size, Clear All, Capture Screen, Capture Area
 

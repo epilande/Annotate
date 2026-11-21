@@ -326,6 +326,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         (.highlighter, #selector(enableHighlighterMode(_:))),
         (.rectangle, #selector(enableRectangleMode(_:))),
         (.circle, #selector(enableCircleMode(_:))),
+        (.filledRectangle, #selector(enableFilledRectangleMode(_:))),
+        (.filledCircle, #selector(enableFilledCircleMode(_:))),
         (.redact, #selector(enableRedactMode(_:))),
         (.counter, #selector(enableCounterMode(_:))),
         (.text, #selector(enableTextMode(_:))),
@@ -737,6 +739,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switchTool(to: .circle)
     }
 
+    @objc func enableFilledRectangleMode(_ sender: NSMenuItem) {
+        switchTool(to: .filledRectangle)
+    }
+
+    @objc func enableFilledCircleMode(_ sender: NSMenuItem) {
+        switchTool(to: .filledCircle)
+    }
+
     @objc func enableRedactMode(_ sender: NSMenuItem) {
         switchTool(to: .redact)
     }
@@ -939,6 +949,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 action = .rectangle
             case #selector(enableCircleMode(_:)):
                 action = .circle
+            case #selector(enableFilledRectangleMode(_:)):
+                action = .filledRectangle
+            case #selector(enableFilledCircleMode(_:)):
+                action = .filledCircle
             case #selector(enableRedactMode(_:)):
                 action = .redact
             case #selector(enableCounterMode(_:)):

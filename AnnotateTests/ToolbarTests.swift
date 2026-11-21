@@ -404,13 +404,14 @@ final class ToolbarTests: XCTestCase {
     /// coordinates as the panel stands when it is sent, which is what the window server does.
     /// Points relative to where the bar started would add every move of the bar to the next one.
     private func drag(
-        _ panel: ToolbarPanel, from local: NSPoint, through offsets: [CGVector], release: Bool = true
+        _ panel: ToolbarPanel, from local: NSPoint, through offsets: [CGVector], release: Bool = true,
+        modifierFlags: NSEvent.ModifierFlags = []
     ) {
         let start = NSPoint(x: panel.frame.minX + local.x, y: panel.frame.minY + local.y)
         func inPanel(_ offset: CGVector) -> NSPoint {
             NSPoint(x: start.x + offset.dx - panel.frame.minX, y: start.y + offset.dy - panel.frame.minY)
         }
-        send(.leftMouseDown, at: inPanel(.zero), to: panel)
+        send(.leftMouseDown, at: inPanel(.zero), to: panel, modifierFlags: modifierFlags)
         var last = CGVector.zero
         for offset in offsets {
             // Several small steps, like a real drag, so the threshold is crossed partway.
@@ -422,12 +423,13 @@ final class ToolbarTests: XCTestCase {
                         CGVector(
                             dx: last.dx + (offset.dx - last.dx) * fraction,
                             dy: last.dy + (offset.dy - last.dy) * fraction)),
-                    to: panel)
+                    to: panel,
+                    modifierFlags: modifierFlags)
             }
             last = offset
         }
         if release {
-            send(.leftMouseUp, at: inPanel(last), to: panel)
+            send(.leftMouseUp, at: inPanel(last), to: panel, modifierFlags: modifierFlags)
         }
     }
 
@@ -477,15 +479,221 @@ final class ToolbarTests: XCTestCase {
     }
 
     @discardableResult
-    private func send(_ type: NSEvent.EventType, at location: NSPoint, to panel: ToolbarPanel) -> NSEvent? {
+    private func send(
+        _ type: NSEvent.EventType,
+        at location: NSPoint,
+        to panel: ToolbarPanel,
+        modifierFlags: NSEvent.ModifierFlags = []
+    ) -> NSEvent? {
         guard let event = TestEvents.createMouseEvent(
-            type: type, location: location, windowNumber: panel.windowNumber)
+            type: type, location: location, modifierFlags: modifierFlags, windowNumber: panel.windowNumber)
         else {
             XCTFail("Could not build a \(type) event")
             return nil
         }
         panel.sendEvent(event)
         return event
+    }
+
+    // MARK: - Shape chips (Rectangle and Circle, each with its filled version)
+
+    /// Clicks `point` on the bar, with Shift held or not.
+    private func click(_ point: NSPoint, on panel: ToolbarPanel, shift: Bool = false) {
+        let flags: NSEvent.ModifierFlags = shift ? .shift : []
+        send(.leftMouseDown, at: point, to: panel, modifierFlags: flags)
+        send(.leftMouseUp, at: point, to: panel, modifierFlags: flags)
+    }
+
+    func testEveryToolIsOnAToolbarChip() {
+        XCTAssertEqual(
+            ToolType.toolbarChips,
+            [.pen, .arrow, .line, .highlighter, .rectangle, .circle, .redact, .text, .counter, .select, .eraser])
+        for tool in ToolType.allCases {
+            XCTAssertTrue(ToolType.toolbarChips.contains(tool.toolbarChip), "\(tool) has no chip")
+        }
+        XCTAssertEqual(ToolType.filledRectangle.toolbarChip, .rectangle)
+        XCTAssertEqual(ToolType.filledCircle.toolbarChip, .circle)
+        XCTAssertEqual(ToolType.rectangle.filledVersion, .filledRectangle)
+        XCTAssertEqual(ToolType.circle.filledVersion, .filledCircle)
+        XCTAssertNil(ToolType.pen.filledVersion)
+        XCTAssertNil(ToolType.filledCircle.filledVersion)
+    }
+
+    func testAClickOnAShapeChipSelectsTheOutlineToolAndAShiftClickTheFilledOne() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        try showBarForPointerEvents(panel)
+
+        for (outline, filled) in [(ToolType.rectangle, ToolType.filledRectangle), (.circle, .filledCircle)] {
+            let chip = try chipPoint(
+                in: panel,
+                where: { spy.selectedTool == outline },
+                reset: { spy.selectedTool = nil })
+
+            click(chip, on: panel)
+            XCTAssertEqual(spy.selectedTool, outline)
+            click(chip, on: panel, shift: true)
+            XCTAssertEqual(spy.selectedTool, filled)
+
+            // Whatever the chip shows, a click is the outline tool and a Shift-click the filled one.
+            window.overlayView.currentTool = filled
+            window.refreshToolbar()
+            wait(for: 0.05)
+            click(chip, on: panel)
+            XCTAssertEqual(spy.selectedTool, outline, "A click on a chip showing \(filled)")
+            click(chip, on: panel, shift: true)
+            XCTAssertEqual(spy.selectedTool, filled, "A Shift-click on a chip showing \(filled)")
+
+            window.overlayView.currentTool = .pen
+            window.refreshToolbar()
+            wait(for: 0.05)
+            spy.selectedTool = nil
+        }
+    }
+
+    func testAShiftClickOnAnyOtherChipIsANormalClick() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        try showBarForPointerEvents(panel)
+        let pen = try chipPoint(
+            in: panel,
+            where: { spy.selectedTool == .pen },
+            reset: { spy.selectedTool = nil })
+
+        click(pen, on: panel, shift: true)
+        XCTAssertEqual(spy.selectedTool, .pen)
+    }
+
+    func testAShapeChipShowsTheVersionSelectedLast() {
+        let model = window.toolbarModel
+        func select(_ tool: ToolType) {
+            window.overlayView.currentTool = tool
+            window.refreshToolbar()
+        }
+        XCTAssertEqual(model.shownTool(on: .rectangle), .rectangle)
+        XCTAssertEqual(model.shownTool(on: .circle), .circle)
+
+        select(.filledRectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle).symbolName, "rectangle.fill")
+        XCTAssertEqual(model.activeTool.toolbarChip, .rectangle, "The Rectangle chip is the active one")
+        XCTAssertEqual(model.shownTool(on: .circle), .circle, "The other shape chip is untouched")
+
+        select(.pen)
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle, "The chip keeps its last version")
+
+        select(.filledCircle)
+        XCTAssertEqual(model.shownTool(on: .circle), .filledCircle)
+        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "circle.fill")
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle)
+
+        select(.rectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle), .rectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle).symbolName, "rectangle")
+        select(.circle)
+        XCTAssertEqual(model.shownTool(on: .circle), .circle)
+        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "circle")
+    }
+
+    func testTheShapeShortcutsUpdateTheChip() throws {
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        let model = window.toolbarModel
+        let presses: [(key: String, keyCode: UInt16, shift: Bool, tool: ToolType)] = [
+            ("r", 15, true, .filledRectangle), ("r", 15, false, .rectangle),
+            ("o", 31, true, .filledCircle), ("o", 31, false, .circle)
+        ]
+        for press in presses {
+            spy.selectedTool = nil
+            window.sendEvent(try shortcutEvent(press.key, keyCode: press.keyCode, modifiers: press.shift ? .shift : []))
+            XCTAssertEqual(spy.selectedTool, press.tool, "\(press.shift ? "Shift+" : "")\(press.key)")
+            // The app applies the tool to every overlay, which is what the chip follows.
+            window.overlayView.currentTool = press.tool
+            window.refreshToolbar()
+            XCTAssertEqual(model.shownTool(on: press.tool.toolbarChip), press.tool)
+            XCTAssertEqual(model.activeTool.toolbarChip, press.tool.toolbarChip)
+        }
+    }
+
+    func testTheBarRefitsWhenAShapeChipSwapsVersions() throws {
+        let wideWindow = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { wideWindow.close() }
+        let panel = try XCTUnwrap(wideWindow.toolbarPanel)
+        let available = 1_920 - ToolbarPanel.edgeInset * 2
+        let initial = try realizedToolbarFrame(wideWindow)
+
+        // The filled versions' keycaps (⇧R, ⇧O) are wider than R and O, so each swap widens
+        // its chip. The tool arrives the way the app applies it to every overlay.
+        for tool in [ToolType.filledRectangle, .filledCircle, .circle, .filledCircle] {
+            wideWindow.overlayView.currentTool = tool
+            wideWindow.refreshToolbar()
+            let frame = try realizedToolbarFrame(wideWindow)
+            let measured = panel.measuredSize(availableWidth: available)
+            XCTAssertEqual(frame.width, measured.width, accuracy: 1, "After \(tool), the panel fits the bar's width")
+            XCTAssertEqual(frame.height, initial.height, accuracy: 1, "After \(tool), the bar stays on one row")
+        }
+        XCTAssertGreaterThan(panel.frame.width, initial.width, "Both filled keycaps make the bar wider than at first")
+    }
+
+    func testAShiftDragFromAShapeChipMovesTheBarAndSelectsNothing() throws {
+        let panel = try XCTUnwrap(window.toolbarPanel)
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        try showBarForPointerEvents(panel)
+        let chip = try chipPoint(
+            in: panel,
+            where: { spy.selectedTool == .rectangle },
+            reset: { spy.selectedTool = nil })
+
+        let start = panel.frame.origin
+        drag(panel, from: chip, through: [CGVector(dx: 60, dy: 40)], modifierFlags: .shift)
+        wait(for: 0.05)
+
+        XCTAssertNil(spy.selectedTool, "A Shift-drag selects neither version")
+        XCTAssertEqual(panel.frame.origin.x, start.x + 60, accuracy: 0.5)
+        XCTAssertEqual(panel.frame.origin.y, start.y + 40, accuracy: 0.5)
+
+        click(chip, on: panel)
+        XCTAssertEqual(spy.selectedTool, .rectangle, "The next plain click is not taken as shifted")
+    }
+
+    func testVoiceOverCanSelectTheOtherVersionOfAShapeChip() throws {
+        let wasAttached = TestAccessibility.setAssistiveAppAttached(true)
+        defer { TestAccessibility.setAssistiveAppAttached(wasAttached) }
+        let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
+        AppDelegate.shared = spy
+        defer { AppDelegate.shared = appDelegate }
+        let host = try XCTUnwrap(window.toolbarPanel?.hostingView)
+
+        func actions(on identifier: String) -> [NSAccessibilityCustomAction] {
+            host.layoutSubtreeIfNeeded()
+            return TestAccessibility.customActions(in: host, identifier: identifier)
+        }
+
+        var offered = actions(on: "toolbar.tool.rectangle")
+        XCTAssertEqual(offered.map(\.name), ["Filled Rectangle"])
+        XCTAssertEqual(offered.first?.handler?(), true)
+        XCTAssertEqual(spy.selectedTool, .filledRectangle)
+
+        window.overlayView.currentTool = .filledCircle
+        window.refreshToolbar()
+        offered = actions(on: "toolbar.tool.circle")
+        XCTAssertEqual(offered.map(\.name), ["Oval"], "A chip showing the filled version offers the outline one")
+        XCTAssertEqual(offered.first?.handler?(), true)
+        XCTAssertEqual(spy.selectedTool, .circle)
+
+        XCTAssertTrue(actions(on: "toolbar.tool.pen").isEmpty, "Only the shape chips have a second version")
     }
 
     func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {

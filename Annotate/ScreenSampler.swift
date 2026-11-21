@@ -274,7 +274,7 @@ final class ScreenSampler: RedactionSampling {
         switch style {
         case .pixelate: filtered = pixelate(snapshot.image, pixelRect: rect, scale: scale)
         case .blur: filtered = blur(snapshot.image, pixelRect: rect, scale: scale)
-        case .outline, .solid: filtered = nil
+        case .outline, .filled, .solid: filtered = nil
         }
         guard let filtered else { return nil }
         return RedactionFilterResult(

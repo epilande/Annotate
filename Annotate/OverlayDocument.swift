@@ -4,9 +4,10 @@ import Cocoa
 /// what it draws.
 ///
 /// Every band except `selection` paints once per redaction layer (see
-/// `OverlayDocument.RedactionLayer`): a redaction covers what was created before it,
-/// whatever the band, and sits under what came after. `redactions` therefore comes after
-/// every content band, or a newer redaction would let older content show through.
+/// `OverlayDocument.RedactionLayer`): a covering shape (a redaction, filled rectangle or
+/// filled circle) covers what was created before it, whatever the band, and sits under what
+/// came after. `redactions`, which paints the covering shapes, therefore comes after every
+/// content band, or a newer one would let older content show through.
 /// `selection` is chrome with no creation time and paints once, over everything.
 enum OverlayBand: Int, CaseIterable, Comparable {
     case strokes
@@ -45,10 +46,10 @@ enum OverlayPaintStep: Equatable {
     /// The committed items of `content` created within `layer`. `includesLive` adds the
     /// item of that kind still being drawn, which is newer than everything committed.
     case content(OverlayContent, layer: OverlayDocument.RedactionLayer, includesLive: Bool)
-    /// The committed redaction at `index` in `rectangles`, closing its layer.
-    case redaction(index: Int)
-    /// The redaction still being drawn, if any, closing the top layer.
-    case liveRedaction
+    /// A committed covering shape, closing its layer.
+    case cover(OverlayDocument.Cover)
+    /// The covering shape still being drawn, if any, closing the top layer.
+    case liveCover
     case selection
 }
 
@@ -79,8 +80,40 @@ struct OverlayDocument {
     var selectionRectStart: NSPoint?
     var selectionRectEnd: NSPoint?
 
-    /// A stretch of creation times between two consecutive redactions. Everything created
-    /// in `start..<end` paints over the redaction made at `start` and under the one at `end`.
+    /// A shape that covers everything created before it and sits under everything after:
+    /// a redaction, a filled rectangle, or a filled circle (`coversOlder`).
+    enum Cover: Equatable, Hashable {
+        case rectangle(index: Int)
+        case circle(index: Int)
+    }
+
+    /// When `cover` was created.
+    func creationTime(of cover: Cover) -> CFTimeInterval? {
+        switch cover {
+        case .rectangle(let index): return rectangles[index].creationTime
+        case .circle(let index): return circles[index].creationTime
+        }
+    }
+
+    /// Covering shapes from oldest to newest, which is the order they paint in. Ties keep
+    /// rectangles before circles and each in array order.
+    var coversByCreation: [Cover] {
+        let covers =
+            rectangles.indices.filter { rectangles[$0].coversOlder }.map { Cover.rectangle(index: $0) }
+            + circles.indices.filter { circles[$0].coversOlder }.map { Cover.circle(index: $0) }
+        return covers
+            .enumerated()
+            .sorted {
+                let lhs = RedactionLayer.time(of: creationTime(of: $0.element))
+                let rhs = RedactionLayer.time(of: creationTime(of: $1.element))
+                return lhs != rhs ? lhs < rhs : $0.offset < $1.offset
+            }
+            .map(\.element)
+    }
+
+    /// A stretch of creation times between two consecutive covering shapes (see `Cover`; the
+    /// name predates filled shapes). Everything created in `start..<end` paints over the
+    /// covering shape made at `start` and under the one at `end`.
     struct RedactionLayer: Equatable {
         var start: CFTimeInterval = -.infinity
         var end: CFTimeInterval = .infinity
@@ -122,12 +155,12 @@ struct OverlayDocument {
         }
 
         var layer = RedactionLayer()
-        for index in redactionIndicesByCreation {
-            layer.end = RedactionLayer.time(of: rectangles[index].creationTime)
-            appendLayer(layer, closedBy: .redaction(index: index), isTop: false)
+        for cover in coversByCreation {
+            layer.end = RedactionLayer.time(of: creationTime(of: cover))
+            appendLayer(layer, closedBy: .cover(cover), isTop: false)
             layer = RedactionLayer(start: layer.end)
         }
-        appendLayer(layer, closedBy: .liveRedaction, isTop: true)
+        appendLayer(layer, closedBy: .liveCover, isTop: true)
         steps.append(.selection)
         return steps
     }

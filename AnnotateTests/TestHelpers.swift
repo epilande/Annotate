@@ -409,4 +409,19 @@ enum TestAccessibility {
         visit(root)
         return found
     }
+
+    /// The named actions VoiceOver offers on the element with `identifier`, besides pressing it.
+    static func customActions(in root: NSObject, identifier: String) -> [NSAccessibilityCustomAction] {
+        var actions: [NSAccessibilityCustomAction] = []
+        func visit(_ node: NSObject) {
+            if node.value(forKey: "accessibilityIdentifier") as? String == identifier {
+                actions = node.value(forKey: "accessibilityCustomActions") as? [NSAccessibilityCustomAction] ?? []
+            }
+            for child in node.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] {
+                visit(child)
+            }
+        }
+        visit(root)
+        return actions
+    }
 }

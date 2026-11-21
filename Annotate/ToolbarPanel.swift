@@ -55,7 +55,7 @@ final class ToolbarPanel: NSPanel {
         let press = ToolbarPress()
         self.press = press
         let deliverAction: (ToolbarAction) -> Void = { action in
-            press.deliver { perform(action) }
+            press.deliver { perform(press.resolve(action)) }
         }
         self.deliverAction = deliverAction
         host = ToolbarHostingView(rootView: ToolbarView(model: model, perform: deliverAction))
@@ -128,6 +128,7 @@ final class ToolbarPanel: NSPanel {
             isMovingBar = false
             dragStart = (point, frame.origin)
             press.begin(screenPoint: point, windowOrigin: frame.origin)
+            press.isShiftHeld = event.modifierFlags.contains(.shift)
             super.sendEvent(event)
         case .leftMouseDragged:
             let point = screenPoint(for: event)
@@ -143,6 +144,8 @@ final class ToolbarPanel: NSPanel {
             }
         case .leftMouseUp:
             press.consider(screenPoint: screenPoint(for: event))
+            // The chip's action fires inside this mouse-up, so Shift counts as held at release.
+            press.isShiftHeld = event.modifierFlags.contains(.shift)
             // A moving bar released its chip when the drag began. A second mouse-up could land
             // on whichever chip is under the pointer now.
             if !isMovingBar {
@@ -510,6 +513,9 @@ final class ToolbarPress {
     private var startScreenPoint: NSPoint?
     private var startWindowOrigin: NSPoint?
     private(set) var isDrag = false
+    /// Whether Shift is held for the press under way. False outside a press, so an action
+    /// that arrives without a click, such as one from VoiceOver, is never taken as shifted.
+    var isShiftHeld = false
 
     func begin(screenPoint: NSPoint, windowOrigin: NSPoint) {
         startScreenPoint = screenPoint
@@ -536,6 +542,14 @@ final class ToolbarPress {
         startScreenPoint = nil
         startWindowOrigin = nil
         isDrag = false
+        isShiftHeld = false
+    }
+
+    /// The action a chip's click stands for: a Shift-click on a shape chip asks for the
+    /// shape's filled tool. Shift changes nothing on any other chip.
+    func resolve(_ action: ToolbarAction) -> ToolbarAction {
+        guard isShiftHeld, case .tool(let tool) = action, let filled = tool.filledVersion else { return action }
+        return .tool(filled)
     }
 
     func deliver(_ body: () -> Void) {

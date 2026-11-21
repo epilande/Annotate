@@ -624,6 +624,7 @@ final class ShiftConstraintTests: XCTestCase, Sendable {
             let width = abs(circle.endPoint.x - circle.startPoint.x)
             let height = abs(circle.endPoint.y - circle.startPoint.y)
             XCTAssertEqual(width, height, accuracy: 0.1, "Should be perfect circle")
+            XCTAssertEqual(width, 100, accuracy: 0.1, "The circle's edge passes through the pointer, 50 from the center")
 
             // Center mode: anchor should be at center of the shape
             let centerX = (circle.startPoint.x + circle.endPoint.x) / 2

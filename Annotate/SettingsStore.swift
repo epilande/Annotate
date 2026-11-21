@@ -139,7 +139,7 @@ extension SettingKey<ToolbarLayout> {
 extension SettingKey<RectangleStyle> {
     /// The fill the Redact tool gives new rectangles. Never `.outline`: a stored outline falls
     /// back to the solid default so a redaction always hides.
-    static var redactionStyle: Self { .rawValue("RedactionStyle", default: .solid) { $0 != .outline } }
+    static var redactionStyle: Self { .rawValue("RedactionStyle", default: .solid) { RectangleStyle.redactionStyles.contains($0) } }
 }
 
 extension SettingKey<CounterStyle> {

@@ -112,7 +112,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         var layers: [[OverlayPaintStep]] = [[]]
         for step in order {
             layers[layers.count - 1].append(step)
-            if case .redaction = step { layers.append([]) }
+            if case .cover = step { layers.append([]) }
         }
         return layers[layer]
     }
@@ -133,7 +133,7 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         let layer = OverlayDocument.RedactionLayer()
         let expected: [OverlayPaintStep] =
             OverlayContent.allCases.map { .content($0, layer: layer, includesLive: true) }
-            + [.liveRedaction, .selection]
+            + [.liveCover, .selection]
         XCTAssertEqual(OverlayDocument().paintOrder(), expected)
     }
 
@@ -149,16 +149,16 @@ final class OverlayDocumentTests: XCTestCase, Sendable {
         let older = OverlayDocument.RedactionLayer(start: -.infinity, end: 2)
         XCTAssertEqual(
             steps(of: order, in: 0),
-            OverlayContent.allCases.map { .content($0, layer: older, includesLive: false) } + [.redaction(index: 2)],
+            OverlayContent.allCases.map { .content($0, layer: older, includesLive: false) } + [.cover(.rectangle(index: 2))],
             "Everything older than the first redaction, every band of it, paints under that redaction")
         let between = OverlayDocument.RedactionLayer(start: 2, end: 5)
         XCTAssertEqual(
             steps(of: order, in: 1),
-            OverlayContent.allCases.map { .content($0, layer: between, includesLive: false) } + [.redaction(index: 1)])
+            OverlayContent.allCases.map { .content($0, layer: between, includesLive: false) } + [.cover(.rectangle(index: 1))])
         let newest = OverlayDocument.RedactionLayer(start: 5, end: .infinity)
         XCTAssertEqual(
             steps(of: order, in: 2),
-            OverlayContent.allCases.map { .content($0, layer: newest, includesLive: true) } + [.liveRedaction, .selection],
+            OverlayContent.allCases.map { .content($0, layer: newest, includesLive: true) } + [.liveCover, .selection],
             "Live previews and the selection stay on top")
     }
 
