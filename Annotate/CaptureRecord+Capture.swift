@@ -107,8 +107,8 @@ extension CaptureRecord {
                     let outlines = document.rectangles.filter { !$0.coversOlder }
                     annotations += shown(outlines, in: layer, time: \.creationTime, ink: \.ink)
                         .map { .rectangle(Shape($0, space: space)) }
-                case .ovals:
-                    let outlines = document.ovals.filter { !$0.coversOlder }
+                case .circles:
+                    let outlines = document.circles.filter { !$0.coversOlder }
                     annotations += shown(outlines, in: layer, time: \.creationTime, ink: \.ink)
                         .map { .ellipse(Shape($0, space: space)) }
                 case .labels:
@@ -140,11 +140,11 @@ extension CaptureRecord {
                     !isRedacted(rectangle.ink, createdAt: rectangle.creationTime) {
                     annotations.append(.rectangle(Shape(rectangle, space: space)))
                 }
-            case .cover(.oval(let index)):
-                let oval = document.ovals[index]
-                if isVisible(oval.creationTime), reachesRegion(oval.ink),
-                    !isRedacted(oval.ink, createdAt: oval.creationTime) {
-                    annotations.append(.ellipse(Shape(oval, space: space)))
+            case .cover(.circle(let index)):
+                let circle = document.circles[index]
+                if isVisible(circle.creationTime), reachesRegion(circle.ink),
+                    !isRedacted(circle.ink, createdAt: circle.creationTime) {
+                    annotations.append(.ellipse(Shape(circle, space: space)))
                 }
             case .liveCover, .selection:
                 // A capture has no live previews, and selection chrome is never in the image.
@@ -231,15 +231,15 @@ extension CaptureRecord.Shape {
             solid: rectangle.style == .solidColor ? true : nil)
     }
 
-    init(_ oval: Oval, space: CaptureRecord.DisplaySpace) {
-        let bounds = AnnotationRenderer.paddedBounds(oval.startPoint, oval.endPoint, padding: 0)
+    init(_ circle: Circle, space: CaptureRecord.DisplaySpace) {
+        let bounds = AnnotationRenderer.paddedBounds(circle.startPoint, circle.endPoint, padding: 0)
         self.init(
-            id: oval.id.uuidString,
-            time: oval.creationTime,
-            color: CaptureRecord.hex(oval.color),
-            width: oval.lineWidth,
+            id: circle.id.uuidString,
+            time: circle.creationTime,
+            color: CaptureRecord.hex(circle.color),
+            width: circle.lineWidth,
             rect: space.rect(bounds),
-            solid: oval.solid ? true : nil)
+            solid: circle.solid ? true : nil)
     }
 }
 

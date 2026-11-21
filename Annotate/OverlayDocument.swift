@@ -5,7 +5,7 @@ import Cocoa
 ///
 /// Every band except `selection` paints once per redaction layer (see
 /// `OverlayDocument.RedactionLayer`): a covering shape (a redaction, solid rectangle or
-/// solid oval) covers what was created before it, whatever the band, and sits under what
+/// solid circle) covers what was created before it, whatever the band, and sits under what
 /// came after. `redactions`, which paints the covering shapes, therefore comes after every
 /// content band, or a newer one would let older content show through.
 /// `selection` is chrome with no creation time and paints once, over everything.
@@ -28,14 +28,14 @@ enum OverlayContent: CaseIterable {
     case penStrokes
     case highlights
     case outlines
-    case ovals
+    case circles
     case labels
     case counters
 
     var band: OverlayBand {
         switch self {
         case .arrows, .lines, .penStrokes, .highlights: return .strokes
-        case .outlines, .ovals: return .shapes
+        case .outlines, .circles: return .shapes
         case .labels, .counters: return .text
         }
     }
@@ -65,7 +65,7 @@ struct OverlayDocument {
     var paths: [DrawingPath] = []
     var highlightPaths: [DrawingPath] = []
     var rectangles: [Rectangle] = []
-    var ovals: [Oval] = []
+    var circles: [Circle] = []
     var textAnnotations: [TextAnnotation] = []
     var counterAnnotations: [CounterAnnotation] = []
     var nextCounterNumber: Int = 1
@@ -81,26 +81,26 @@ struct OverlayDocument {
     var selectionRectEnd: NSPoint?
 
     /// A shape that covers everything created before it and sits under everything after:
-    /// a redaction, a solid rectangle, or a solid oval (`coversOlder`).
+    /// a redaction, a solid rectangle, or a solid circle (`coversOlder`).
     enum Cover: Equatable, Hashable {
         case rectangle(index: Int)
-        case oval(index: Int)
+        case circle(index: Int)
     }
 
     /// When `cover` was created.
     func creationTime(of cover: Cover) -> CFTimeInterval? {
         switch cover {
         case .rectangle(let index): return rectangles[index].creationTime
-        case .oval(let index): return ovals[index].creationTime
+        case .circle(let index): return circles[index].creationTime
         }
     }
 
     /// Covering shapes from oldest to newest, which is the order they paint in. Ties keep
-    /// rectangles before ovals and each in array order.
+    /// rectangles before circles and each in array order.
     var coversByCreation: [Cover] {
         let covers =
             rectangles.indices.filter { rectangles[$0].coversOlder }.map { Cover.rectangle(index: $0) }
-            + ovals.indices.filter { ovals[$0].coversOlder }.map { Cover.oval(index: $0) }
+            + circles.indices.filter { circles[$0].coversOlder }.map { Cover.circle(index: $0) }
         return covers
             .enumerated()
             .sorted {

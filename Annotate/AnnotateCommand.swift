@@ -75,9 +75,7 @@ enum AnnotateCommand: Hashable, Sendable {
         case ("clear", nil): self = .clear
         case ("tool", let value?):
             // The path is lowercased, and some tool names, like solidRectangle, are not.
-            // Links written when the Oval tool was called Circle still select it.
-            let name = value == "circle" ? ToolType.oval.rawValue : value
-            guard let tool = ToolType.allCases.first(where: { $0.rawValue.lowercased() == name }) else { return nil }
+            guard let tool = ToolType.allCases.first(where: { $0.rawValue.lowercased() == value }) else { return nil }
             self = .tool(tool)
         case ("color", let value?):
             guard let color = PaletteColor(rawValue: value) else { return nil }

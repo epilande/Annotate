@@ -207,11 +207,11 @@ final class AppDelegateTests: XCTestCase, Sendable {
         appDelegate.pointerLocationOverride = NSPoint(x: mainScreen.frame.midX, y: mainScreen.frame.midY)
         defer { appDelegate.pointerLocationOverride = nil }
 
-        overlay.overlayView.currentTool = .oval
+        overlay.overlayView.currentTool = .circle
         try openStatusMenu()
         appDelegate.menuDidClose(try XCTUnwrap(appDelegate.statusItem.menu))
 
-        try assertToolMenuShows(.oval)
+        try assertToolMenuShows(.circle)
         XCTAssertEqual(testDefaults.settings[.lastUsedTool], .pen)
     }
 

@@ -19,10 +19,9 @@ final class ToolbarAccessibilityTests: XCTestCase {
         ("toolbar.tool.arrow", "Arrow", "Shortcut: a"),
         ("toolbar.tool.line", "Line", "Shortcut: l"),
         ("toolbar.tool.highlighter", "Highlighter", "Shortcut: h"),
-        ("toolbar.tool.rectangle", "Rectangle", "Shortcut: r"),
-        ("toolbar.tool.oval", "Oval", "Shortcut: o"),
-        ("toolbar.tool.solidRectangle", "Solid Rectangle", "Shortcut: ⇧R"),
-        ("toolbar.tool.solidOval", "Solid Oval", "Shortcut: ⇧O"),
+        // One chip per shape. It names the version it shows, the outline one to begin with.
+        ("toolbar.tool.rectangle", "Rectangle", "Shortcut: r. Shift-click for the solid version"),
+        ("toolbar.tool.circle", "Oval", "Shortcut: o. Shift-click for the solid version"),
         ("toolbar.tool.redact", "Redact", "Shortcut: x"),
         ("toolbar.tool.text", "Text", "Shortcut: t"),
         ("toolbar.tool.counter", "Counter", "Shortcut: n"),
@@ -59,7 +58,7 @@ final class ToolbarAccessibilityTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeOverlay(width: CGFloat = 1_400) -> OverlayWindow {
+    private func makeOverlay(width: CGFloat = 1_200) -> OverlayWindow {
         let window = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: 800),
             styleMask: .borderless,
@@ -160,6 +159,42 @@ final class ToolbarAccessibilityTests: XCTestCase {
             let selected = try chips(on: window).filter(\.value.isSelected).map(\.key)
             XCTAssertEqual(selected, ["toolbar.tool.\(tool.rawValue)"])
         }
+    }
+
+    func testAShapeChipIsNamedForTheVersionItShowsAndSelectedForEither() throws {
+        let window = makeOverlay()
+        let shiftClick = "Shift-click for the solid version"
+        let cases: [(tool: ToolType, chip: String, label: String, hint: String)] = [
+            (.solidRectangle, "toolbar.tool.rectangle", "Solid Rectangle", "Shortcut: ⇧R. \(shiftClick)"),
+            (.rectangle, "toolbar.tool.rectangle", "Rectangle", "Shortcut: r. \(shiftClick)"),
+            (.solidCircle, "toolbar.tool.circle", "Solid Oval", "Shortcut: ⇧O. \(shiftClick)"),
+            (.circle, "toolbar.tool.circle", "Oval", "Shortcut: o. \(shiftClick)")
+        ]
+        for testCase in cases {
+            window.overlayView.currentTool = testCase.tool
+            let chips = try chips(on: window)
+            XCTAssertEqual(chips[testCase.chip]?.label, testCase.label)
+            XCTAssertEqual(chips[testCase.chip]?.hint, testCase.hint)
+            XCTAssertEqual(chips.filter(\.value.isSelected).map(\.key), [testCase.chip], "\(testCase.tool)")
+        }
+
+        // The chip keeps its last version, and its name, while another tool is active.
+        window.overlayView.currentTool = .solidRectangle
+        window.overlayView.currentTool = .pen
+        let chips = try chips(on: window)
+        XCTAssertEqual(chips["toolbar.tool.rectangle"]?.label, "Solid Rectangle")
+        XCTAssertEqual(chips["toolbar.tool.rectangle"]?.isSelected, false)
+        XCTAssertEqual(chips["toolbar.tool.circle"]?.label, "Oval")
+    }
+
+    func testAShapeChipWithACustomOrClearedShortcutStillExplainsShiftClick() throws {
+        let window = makeOverlay()
+        ShortcutManager.shared.setShortcut("", for: .rectangle)
+        apply(showsShortcuts: true, layout: .horizontal)
+
+        XCTAssertEqual(
+            try chips(on: window)["toolbar.tool.rectangle"]?.hint,
+            "Shift-click for the solid version")
     }
 
     func testFadeChipReportsWhetherFadeModeIsOn() throws {

@@ -116,7 +116,7 @@ struct LivePreviews {
     var highlight: DrawingPath?
     var highlightBezier: NSBezierPath?
     var rectangle: Rectangle?
-    var oval: Oval?
+    var circle: Circle?
 }
 
 /// Paints an `OverlayDocument` into a graphics context, in the order
@@ -168,17 +168,17 @@ struct AnnotationRenderer {
                 if let alpha = fade.alpha(for: rectangle, at: now), isDirty(rectangle.redrawBounds) {
                     drawRectangle(rectangle, alpha: alpha)
                 }
-            case .cover(.oval(let index)):
-                let oval = document.ovals[index]
-                if let alpha = fade.alpha(creationTime: oval.creationTime, at: now), isDirty(oval.redrawBounds) {
-                    drawOval(oval, alpha: alpha)
+            case .cover(.circle(let index)):
+                let circle = document.circles[index]
+                if let alpha = fade.alpha(creationTime: circle.creationTime, at: now), isDirty(circle.redrawBounds) {
+                    drawCircle(circle, alpha: alpha)
                 }
             case .liveCover:
                 if let rectangle = live?.rectangle, rectangle.coversOlder, isDirty(rectangle.redrawBounds) {
                     drawRectangle(rectangle, alpha: 1)
                 }
-                if let oval = live?.oval, oval.coversOlder, isDirty(oval.redrawBounds) {
-                    drawOval(oval, alpha: 1)
+                if let circle = live?.circle, circle.coversOlder, isDirty(circle.redrawBounds) {
+                    drawCircle(circle, alpha: 1)
                 }
             case .selection:
                 // Chrome belongs to the view, which paints it after this pass.
@@ -257,15 +257,15 @@ struct AnnotationRenderer {
                 drawRectangle(rectangle, alpha: 1)
             }
 
-        case .ovals:
-            for oval in document.ovals where !oval.coversOlder && layer.contains(oval.creationTime) {
-                guard let alpha = fade.alpha(creationTime: oval.creationTime, at: now) else { continue }
-                guard isDirty(oval.redrawBounds) else { continue }
-                drawOval(oval, alpha: alpha)
+        case .circles:
+            for circle in document.circles where !circle.coversOlder && layer.contains(circle.creationTime) {
+                guard let alpha = fade.alpha(creationTime: circle.creationTime, at: now) else { continue }
+                guard isDirty(circle.redrawBounds) else { continue }
+                drawCircle(circle, alpha: alpha)
             }
 
-            if let oval = live?.oval, !oval.coversOlder, isDirty(oval.redrawBounds) {
-                drawOval(oval, alpha: 1)
+            if let circle = live?.circle, !circle.coversOlder, isDirty(circle.redrawBounds) {
+                drawCircle(circle, alpha: 1)
             }
 
         case .labels:
@@ -415,19 +415,19 @@ struct AnnotationRenderer {
         }
     }
 
-    private func drawOval(_ oval: Oval, alpha: CGFloat) {
-        let adaptedColor = board.adapt(oval.color)
+    private func drawCircle(_ circle: Circle, alpha: CGFloat) {
+        let adaptedColor = board.adapt(circle.color)
 
         let rect = NSRect(
-            x: min(oval.startPoint.x, oval.endPoint.x),
-            y: min(oval.startPoint.y, oval.endPoint.y),
-            width: abs(oval.endPoint.x - oval.startPoint.x),
-            height: abs(oval.endPoint.y - oval.startPoint.y)
+            x: min(circle.startPoint.x, circle.endPoint.x),
+            y: min(circle.startPoint.y, circle.endPoint.y),
+            width: abs(circle.endPoint.x - circle.startPoint.x),
+            height: abs(circle.endPoint.y - circle.startPoint.y)
         )
 
         let path = NSBezierPath(ovalIn: rect)
-        path.lineWidth = oval.lineWidth
-        if oval.solid {
+        path.lineWidth = circle.lineWidth
+        if circle.solid {
             drawSolid(path, color: adaptedColor, alpha: alpha)
             return
         }
@@ -511,7 +511,7 @@ struct AnnotationRenderer {
         let numberString = "\(counter.number)"
         let textSize = numberString.size(withAttributes: attributes)
 
-        // Center the text in the oval
+        // Center the text in the circle
         let textRect = NSRect(
             x: counter.position.x - textSize.width / 2,
             y: counter.position.y - textSize.height / 2,
@@ -604,8 +604,8 @@ extension Rectangle {
     }
 }
 
-extension Oval {
-    /// An outline's stroke, or for a solid oval the ellipse together with that stroke. The
+extension Circle {
+    /// An outline's stroke, or for a solid circle the ellipse together with that stroke. The
     /// stroke's outer edge is not itself an ellipse: between the axes it reaches a little
     /// past the ellipse grown by half the line width.
     var ink: CGPath {
@@ -651,7 +651,7 @@ extension Line {
     var redrawBounds: NSRect { AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: lineWidth / 2 + 6) }
 }
 
-extension Oval {
+extension Circle {
     var redrawBounds: NSRect { AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: lineWidth / 2 + 6) }
 }
 

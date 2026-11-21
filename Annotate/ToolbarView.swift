@@ -30,6 +30,29 @@ extension ToolbarAction {
     }
 }
 
+extension ToolType {
+    /// The overlay toolbar's tool chips, in order. A solid tool has no chip of its own: it
+    /// shares its shape's chip (`toolbarChip`), which shows whichever of the two was selected
+    /// last and selects the solid one on a Shift-click.
+    static let toolbarChips: [ToolType] = [
+        .pen, .arrow, .line, .highlighter, .rectangle, .circle, .redact, .text, .counter, .select, .eraser,
+    ]
+
+    /// The chip this tool is shown on: its own, or for a solid tool its shape's chip.
+    var toolbarChip: ToolType {
+        switch self {
+        case .solidRectangle: return .rectangle
+        case .solidCircle: return .circle
+        default: return self
+        }
+    }
+
+    /// The solid tool that shares this tool's chip, for the two outline shapes.
+    var solidVersion: ToolType? {
+        ToolType.allCases.first { $0 != self && $0.toolbarChip == self }
+    }
+}
+
 /// Which way the floating toolbar runs.
 enum ToolbarLayout: String, CaseIterable {
     /// One row along the bottom, wrapping onto two rows on a narrow display.
@@ -47,7 +70,15 @@ enum ToolbarLayout: String, CaseIterable {
 
 @MainActor
 final class ToolbarModel: ObservableObject {
-    @Published var activeTool: ToolType = .pen
+    @Published var activeTool: ToolType = .pen {
+        didSet {
+            let chip = activeTool.toolbarChip
+            if shownTools[chip] != activeTool { shownTools[chip] = activeTool }
+        }
+    }
+    /// The tool each chip showed last, for the chips two tools share. Not saved between
+    /// launches.
+    @Published private var shownTools: [ToolType: ToolType] = [:]
     @Published var currentColor: NSColor = .systemRed
     @Published var currentWidth: CGFloat = 3
     @Published var fadeMode = true
@@ -59,6 +90,12 @@ final class ToolbarModel: ObservableObject {
     /// Bumped after the live host is given a new measured size so `ViewThatFits` remounts
     /// against that width instead of keeping a stacked choice from a previous overlay.
     @Published var layoutGeneration = 0
+
+    /// The tool `chip` shows: the current tool when it is one of the chip's tools, otherwise
+    /// the one of them selected last, starting with the chip's own.
+    func shownTool(on chip: ToolType) -> ToolType {
+        shownTools[chip] ?? chip
+    }
 
     var widthDotDiameter: CGFloat {
         let index = QuickPickerView.nearestIndex(in: QuickPickerView.widthOptions, to: currentWidth)
@@ -140,15 +177,8 @@ struct ToolbarView: View {
 
     private var toolsSegment: some View {
         segmentLayout {
-            ForEach(ToolType.allCases, id: \.self) { tool in
-                let active = model.activeTool == tool
-                toolbarButton(.tool(tool), identifier: "toolbar.tool.\(tool.rawValue)") {
-                    chip(symbol: tool.symbolName, keycap: keycapText(for: .tool(tool)), active: active)
-                        .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
-                            active ? $0 : nil
-                        }
-                }
-                .accessibilityAddTraits(active ? .isSelected : [])
+            ForEach(ToolType.toolbarChips, id: \.self) { chipTool in
+                toolChip(chipTool)
             }
         }
         .backgroundPreferenceValue(SelectedToolBounds.self) { anchor in
@@ -242,6 +272,35 @@ struct ToolbarView: View {
             .accessibilityIdentifier(identifier)
             .accessibilityLabel(action.accessibilityLabel)
             .accessibilityHint(shortcutHint(for: action))
+    }
+
+    /// A tool chip. It shows, and is named for, the tool it showed last (`shownTool(on:)`),
+    /// and is active while either of its tools is current. Its action always asks for the
+    /// chip's own tool: the panel turns a Shift-click on a shape chip into the solid tool,
+    /// and VoiceOver, which can't Shift-click, gets the other version as a named action.
+    private func toolChip(_ chipTool: ToolType) -> some View {
+        let shown = model.shownTool(on: chipTool)
+        let active = model.activeTool.toolbarChip == chipTool
+        let other = chipTool.solidVersion.map { shown == chipTool ? $0 : chipTool }
+        return HoverScaleButton(action: { perform(.tool(chipTool)) }, label: {
+            chip(symbol: shown.symbolName, keycap: keycapText(for: .tool(shown)), active: active)
+                .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
+                    active ? $0 : nil
+                }
+        })
+        .accessibilityIdentifier("toolbar.tool.\(chipTool.rawValue)")
+        .accessibilityLabel(shown.displayName)
+        .accessibilityHint(toolHint(showing: shown, hasSolidVersion: other != nil))
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .otherVersionAction(other) { perform(.tool($0)) }
+    }
+
+    /// The shortcut of the tool the chip shows, then how to reach the solid version.
+    private func toolHint(showing shown: ToolType, hasSolidVersion: Bool) -> String {
+        let shortcut = shortcutHint(for: .tool(shown))
+        guard hasSolidVersion else { return shortcut }
+        let shiftClick = "Shift-click for the solid version"
+        return shortcut.isEmpty ? shiftClick : "\(shortcut). \(shiftClick)"
     }
 
     private func chip(symbol: String, keycap text: String, active: Bool = false) -> some View {
@@ -374,6 +433,16 @@ private extension View {
     /// targets line up. `EqualWidthColumn` gives every segment the widest one's width.
     func chipWidth(filling: Bool) -> some View {
         frame(maxWidth: filling ? .infinity : nil, alignment: .leading)
+    }
+
+    /// Adds an accessibility action named after `other` that selects it, when there is one.
+    @ViewBuilder
+    func otherVersionAction(_ other: ToolType?, select: @escaping (ToolType) -> Void) -> some View {
+        if let other {
+            accessibilityAction(named: Text(other.displayName)) { select(other) }
+        } else {
+            self
+        }
     }
 
     func chipPadding() -> some View {

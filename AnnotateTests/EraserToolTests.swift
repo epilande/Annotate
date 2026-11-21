@@ -117,19 +117,19 @@ final class EraserToolTests: XCTestCase, Sendable {
         XCTAssertEqual(overlayView.rectangles.count, 0)
     }
 
-    func testEraseOval() {
-        let oval = Oval(
+    func testEraseCircle() {
+        let circle = Circle(
             startPoint: NSPoint(x: 200, y: 200),
             endPoint: NSPoint(x: 300, y: 300),
             color: .systemPurple,
             lineWidth: 3.0
         )
-        overlayView.ovals.append(oval)
-        XCTAssertEqual(overlayView.ovals.count, 1)
+        overlayView.circles.append(circle)
+        XCTAssertEqual(overlayView.circles.count, 1)
 
         overlayView.eraseAtPoint(NSPoint(x: 250, y: 200))
 
-        XCTAssertEqual(overlayView.ovals.count, 0)
+        XCTAssertEqual(overlayView.circles.count, 0)
     }
 
     func testEraseTextAnnotation() {

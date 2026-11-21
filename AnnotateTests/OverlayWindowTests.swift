@@ -393,54 +393,54 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         undoManager.endUndoGrouping()
     }
 
-    func testUndoingAnOvalRemovesThatOvalAfterDeleteLastReorderedThem() throws {
+    func testUndoingAnCircleRemovesThatCircleAfterDeleteLastReorderedThem() throws {
         let view = window.overlayView!
         view.fadeMode = false
-        let outline = TestFactory.createOval(time: 1)
-        var solid = TestFactory.createOval(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        let outline = TestFactory.createCircle(time: 1)
+        var solid = TestFactory.createCircle(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
         solid.solid = true
-        for oval in [outline, solid] {
+        for circle in [outline, solid] {
             try undoStep {
-                view.registerUndo(action: .addOval(oval))
-                view.ovals.append(oval)
+                view.registerUndo(action: .addCircle(circle))
+                view.circles.append(circle)
             }
         }
 
-        // Delete Last with the Oval tool takes the outline from under the solid oval, and
+        // Delete Last with the Circle tool takes the outline from under the solid circle, and
         // undoing that puts it back at the end.
-        view.currentTool = .oval
+        view.currentTool = .circle
         try undoStep { view.deleteLastItem() }
         view.undo()
-        XCTAssertEqual(view.ovals.map(\.id), [solid.id, outline.id])
+        XCTAssertEqual(view.circles.map(\.id), [solid.id, outline.id])
 
         view.undo()
-        XCTAssertEqual(view.ovals.map(\.id), [outline.id], "Undo removes the solid oval it added, not the last one")
+        XCTAssertEqual(view.circles.map(\.id), [outline.id], "Undo removes the solid circle it added, not the last one")
     }
 
-    func testUndoingAnOvalMoveMovesThatOvalAfterDeleteLastReorderedThem() throws {
+    func testUndoingAnCircleMoveMovesThatCircleAfterDeleteLastReorderedThem() throws {
         let view = window.overlayView!
         view.fadeMode = false
-        let outline = TestFactory.createOval(time: 1)
-        var solid = TestFactory.createOval(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        let outline = TestFactory.createCircle(time: 1)
+        var solid = TestFactory.createCircle(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
         solid.solid = true
-        view.ovals = [outline, solid]
+        view.circles = [outline, solid]
 
-        view.ovals[1].startPoint = NSPoint(x: 210, y: 200)
-        view.ovals[1].endPoint = NSPoint(x: 310, y: 300)
+        view.circles[1].startPoint = NSPoint(x: 210, y: 200)
+        view.circles[1].endPoint = NSPoint(x: 310, y: 300)
         try undoStep {
             view.registerMoveUndo(
-                object: .oval(index: 1),
+                object: .circle(index: 1),
                 from: (solid.startPoint, solid.endPoint),
                 to: (NSPoint(x: 210, y: 200), NSPoint(x: 310, y: 300)))
         }
-        view.currentTool = .oval
+        view.currentTool = .circle
         try undoStep { view.deleteLastItem() }
         view.undo()
-        XCTAssertEqual(view.ovals.map(\.id), [solid.id, outline.id])
+        XCTAssertEqual(view.circles.map(\.id), [solid.id, outline.id])
 
         view.undo()
-        XCTAssertEqual(view.ovals.first?.startPoint, solid.startPoint, "The moved oval goes back")
-        XCTAssertEqual(view.ovals.last?.startPoint, outline.startPoint, "The other oval stays put")
+        XCTAssertEqual(view.circles.first?.startPoint, solid.startPoint, "The moved circle goes back")
+        XCTAssertEqual(view.circles.last?.startPoint, outline.startPoint, "The other circle stays put")
     }
 
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
@@ -1055,7 +1055,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         window.showToolFeedback(.line)
         window.showToolFeedback(.highlighter)
         window.showToolFeedback(.rectangle)
-        window.showToolFeedback(.oval)
+        window.showToolFeedback(.circle)
         window.showToolFeedback(.counter)
         window.showToolFeedback(.text)
         
@@ -1065,7 +1065,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     
     func testToolFeedbackForDrawingTools() {
         // Test that drawing tools can show feedback
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
         
         for tool in drawingTools {
             window.overlayView.currentTool = tool
@@ -1126,7 +1126,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             creationTime: nil
         ))
 
-        window.overlayView.ovals.append(Oval(
+        window.overlayView.circles.append(Circle(
             startPoint: NSPoint(x: 300, y: 300),
             endPoint: NSPoint(x: 400, y: 400),
             color: .blue,
@@ -1275,7 +1275,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testCmdXOnlyWorksInSelectMode() {
-        window.overlayView.ovals.append(Oval(
+        window.overlayView.circles.append(Circle(
             startPoint: NSPoint(x: 100, y: 100),
             endPoint: NSPoint(x: 200, y: 200),
             color: .blue,
@@ -1283,7 +1283,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
             creationTime: nil
         ))
 
-        window.overlayView.selectedObjects = [.oval(index: 0)]
+        window.overlayView.selectedObjects = [.circle(index: 0)]
         window.overlayView.currentTool = .highlighter
 
         let cmdXEvent = TestEvents.createKeyEvent(
@@ -1323,7 +1323,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     // MARK: - Conditional Line Width Display Tests
 
     func testDrawingToolsShowLineWidthInFeedback() {
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
 
         for tool in drawingTools {
             window.overlayView.currentTool = tool
@@ -1384,7 +1384,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testAllDrawingToolsWithVariousLineWidths() {
-        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .oval]
+        let drawingTools: [ToolType] = [.pen, .arrow, .line, .highlighter, .rectangle, .circle]
         let widths: [CGFloat] = [0.5, 1.0, 3.0, 5.0, 10.0, 20.0]
 
         for tool in drawingTools {
@@ -1401,7 +1401,7 @@ final class OverlayWindowTests: XCTestCase, Sendable {
     }
 
     func testFeedbackConsistencyAcrossToolTypes() {
-        for tool in [ToolType.pen, .arrow, .line, .highlighter, .rectangle, .oval, .counter, .text, .select] {
+        for tool in [ToolType.pen, .arrow, .line, .highlighter, .rectangle, .circle, .counter, .text, .select] {
             window.overlayView.currentTool = tool
             window.overlayView.currentLineWidth = 3.0
             window.overlayView.currentColor = .blue

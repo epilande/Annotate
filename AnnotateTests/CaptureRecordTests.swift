@@ -110,8 +110,8 @@ final class CaptureRecordTests: XCTestCase {
                 style: .pixelate,
                 id: Self.id(7)),
         ]
-        document.ovals = [
-            Oval(
+        document.circles = [
+            Circle(
                 startPoint: NSPoint(x: 300, y: 50),
                 endPoint: NSPoint(x: 350, y: 100),
                 color: Self.srgb(1, 0.5, 0),
@@ -465,7 +465,7 @@ final class CaptureRecordTests: XCTestCase {
             color: .red,
             lineWidth: 2,
             creationTime: 1)
-        let ellipse = Oval(
+        let ellipse = Circle(
             startPoint: NSPoint(x: 60, y: 100),
             endPoint: NSPoint(x: 110, y: 140),
             color: .red,
@@ -478,7 +478,7 @@ final class CaptureRecordTests: XCTestCase {
             $0.arrows = [crossing, headOnly]
             $0.paths = [dot]
             $0.rectangles = [edge]
-            $0.ovals = [ellipse]
+            $0.circles = [ellipse]
             $0.textAnnotations = [label]
         }
 

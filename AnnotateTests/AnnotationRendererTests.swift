@@ -169,8 +169,8 @@ final class AnnotationRendererTests: XCTestCase {
                 lineWidth: 4,
                 creationTime: 2)
         ]
-        view.ovals = [
-            Oval(
+        view.circles = [
+            Circle(
                 startPoint: NSPoint(x: 120, y: 120),
                 endPoint: NSPoint(x: 180, y: 180),
                 color: .purple,

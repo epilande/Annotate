@@ -101,14 +101,14 @@ enum TestFactory {
         Rectangle(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
     }
 
-    static func createOval(
+    static func createCircle(
         start: NSPoint = .zero,
         end: NSPoint = NSPoint(x: 100, y: 100),
         color: NSColor = .purple,
         lineWidth: CGFloat = 3.0,
         time: CFTimeInterval? = nil
-    ) -> Oval {
-        Oval(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
+    ) -> Circle {
+        Circle(startPoint: start, endPoint: end, color: color, lineWidth: lineWidth, creationTime: time)
     }
 
     static func createTextAnnotation(
@@ -408,5 +408,20 @@ enum TestAccessibility {
         }
         visit(root)
         return found
+    }
+
+    /// The named actions VoiceOver offers on the element with `identifier`, besides pressing it.
+    static func customActions(in root: NSObject, identifier: String) -> [NSAccessibilityCustomAction] {
+        var actions: [NSAccessibilityCustomAction] = []
+        func visit(_ node: NSObject) {
+            if node.value(forKey: "accessibilityIdentifier") as? String == identifier {
+                actions = node.value(forKey: "accessibilityCustomActions") as? [NSAccessibilityCustomAction] ?? []
+            }
+            for child in node.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] {
+                visit(child)
+            }
+        }
+        visit(root)
+        return actions
     }
 }

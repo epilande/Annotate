@@ -563,9 +563,9 @@ final class RedactionTests: XCTestCase, Sendable {
 
     func testRedactionsLayerByCreationNotByKind() throws {
         overlayView.fadeMode = false
-        // An older redaction under an oval, a newer one over it, side by side.
-        overlayView.ovals = [
-            TestFactory.createOval(
+        // An older redaction under an circle, a newer one over it, side by side.
+        overlayView.circles = [
+            TestFactory.createCircle(
                 start: NSPoint(x: 20, y: 20), end: NSPoint(x: 180, y: 180), color: .red, lineWidth: 6, time: 2)
         ]
         overlayView.rectangles = [
@@ -578,24 +578,24 @@ final class RedactionTests: XCTestCase, Sendable {
         ]
         XCTAssertEqual(overlayView.redactionIndicesByCreation, [1, 0])
 
-        assertBlack(try renderedColor(at: NSPoint(x: 20, y: 100)), "The newer redaction covers the oval")
+        assertBlack(try renderedColor(at: NSPoint(x: 20, y: 100)), "The newer redaction covers the circle")
         assertColor(try renderedColor(at: NSPoint(x: 180, y: 100)), red: 1, green: 0, blue: 0, "The older one sits under it")
     }
 
     func testWithoutRedactionsKindsKeepTheirPaintOrder() throws {
         overlayView.fadeMode = false
-        // A newer arrow still paints under an older oval: kinds keep their fixed order.
+        // A newer arrow still paints under an older circle: kinds keep their fixed order.
         overlayView.arrows = [
             TestFactory.createArrow(
                 start: NSPoint(x: 20, y: 100), end: NSPoint(x: 180, y: 100), color: .blue, lineWidth: 8, time: 2)
         ]
-        overlayView.ovals = [
-            TestFactory.createOval(
+        overlayView.circles = [
+            TestFactory.createCircle(
                 start: NSPoint(x: 40, y: 40), end: NSPoint(x: 160, y: 160), color: .red, lineWidth: 8, time: 1)
         ]
         XCTAssertTrue(overlayView.redactionIndicesByCreation.isEmpty)
 
-        assertColor(try renderedColor(at: NSPoint(x: 40, y: 100)), red: 1, green: 0, blue: 0, "The oval paints last")
+        assertColor(try renderedColor(at: NSPoint(x: 40, y: 100)), red: 1, green: 0, blue: 0, "The circle paints last")
         assertColor(try renderedColor(at: NSPoint(x: 100, y: 100)), red: 0, green: 0, blue: 1)
     }
 

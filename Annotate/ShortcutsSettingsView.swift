@@ -119,9 +119,9 @@ struct ShortcutsSettingsView: View {
                     editingShortcut: $editingShortcut
                 )
                 ShortcutSettingRow(
-                    tool: .oval,
+                    tool: .circle,
                     label: "Oval",
-                    description: "Draw circular shapes",
+                    description: "Draw oval shapes",
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )
@@ -133,8 +133,8 @@ struct ShortcutsSettingsView: View {
                     editingShortcut: $editingShortcut
                 )
                 ShortcutSettingRow(
-                    tool: .solidOval,
-                    label: ShortcutKey.solidOval.displayName,
+                    tool: .solidCircle,
+                    label: ShortcutKey.solidCircle.displayName,
                     description: "Draw a solid oval in the current color, over everything drawn before it",
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut

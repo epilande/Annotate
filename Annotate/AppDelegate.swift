@@ -325,9 +325,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         (.pen, #selector(enablePenMode(_:))),
         (.highlighter, #selector(enableHighlighterMode(_:))),
         (.rectangle, #selector(enableRectangleMode(_:))),
-        (.oval, #selector(enableOvalMode(_:))),
+        (.circle, #selector(enableCircleMode(_:))),
         (.solidRectangle, #selector(enableSolidRectangleMode(_:))),
-        (.solidOval, #selector(enableSolidOvalMode(_:))),
+        (.solidCircle, #selector(enableSolidCircleMode(_:))),
         (.redact, #selector(enableRedactMode(_:))),
         (.counter, #selector(enableCounterMode(_:))),
         (.text, #selector(enableTextMode(_:))),
@@ -735,16 +735,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
         switchTool(to: .rectangle)
     }
 
-    @objc func enableOvalMode(_ sender: NSMenuItem) {
-        switchTool(to: .oval)
+    @objc func enableCircleMode(_ sender: NSMenuItem) {
+        switchTool(to: .circle)
     }
 
     @objc func enableSolidRectangleMode(_ sender: NSMenuItem) {
         switchTool(to: .solidRectangle)
     }
 
-    @objc func enableSolidOvalMode(_ sender: NSMenuItem) {
-        switchTool(to: .solidOval)
+    @objc func enableSolidCircleMode(_ sender: NSMenuItem) {
+        switchTool(to: .solidCircle)
     }
 
     @objc func enableRedactMode(_ sender: NSMenuItem) {
@@ -947,12 +947,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItem
                 action = .highlighter
             case #selector(enableRectangleMode(_:)):
                 action = .rectangle
-            case #selector(enableOvalMode(_:)):
-                action = .oval
+            case #selector(enableCircleMode(_:)):
+                action = .circle
             case #selector(enableSolidRectangleMode(_:)):
                 action = .solidRectangle
-            case #selector(enableSolidOvalMode(_:)):
-                action = .solidOval
+            case #selector(enableSolidCircleMode(_:)):
+                action = .solidCircle
             case #selector(enableRedactMode(_:)):
                 action = .redact
             case #selector(enableCounterMode(_:)):

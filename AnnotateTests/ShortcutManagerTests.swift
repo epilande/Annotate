@@ -370,7 +370,7 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
         XCTAssertEqual(ShortcutKey.line.defaultKey, "l", "Line should be 'l'")
         XCTAssertEqual(ShortcutKey.highlighter.defaultKey, "h", "Highlighter should be 'h'")
         XCTAssertEqual(ShortcutKey.rectangle.defaultKey, "r", "Rectangle should be 'r'")
-        XCTAssertEqual(ShortcutKey.oval.defaultKey, "o", "Oval should be 'o'")
+        XCTAssertEqual(ShortcutKey.circle.defaultKey, "o", "Circle should be 'o'")
         XCTAssertEqual(ShortcutKey.redact.defaultKey, "x", "Redact should be 'x'")
         XCTAssertEqual(ShortcutKey.counter.defaultKey, "n", "Counter should be 'n'")
         XCTAssertEqual(ShortcutKey.text.defaultKey, "t", "Text should be 't'")

@@ -8,9 +8,11 @@ enum ToolType: String, CaseIterable, Sendable {
     case line
     case highlighter
     case rectangle
-    case oval
+    /// Shown as Oval, and `solidCircle` as Solid Oval. The cases keep `circle` because their
+    /// raw values are what settings, `annotate://` links and Shortcuts actions store.
+    case circle
     case solidRectangle
-    case solidOval
+    case solidCircle
     case redact
     case text
     case counter
@@ -24,9 +26,9 @@ enum ToolType: String, CaseIterable, Sendable {
         case .arrow: return "Arrow"
         case .line: return "Line"
         case .rectangle: return "Rectangle"
-        case .oval: return "Oval"
+        case .circle: return "Oval"
         case .solidRectangle: return "Solid Rectangle"
-        case .solidOval: return "Solid Oval"
+        case .solidCircle: return "Solid Oval"
         case .redact: return "Redact"
         case .text: return "Text"
         case .counter: return "Counter"
@@ -44,9 +46,9 @@ enum ToolType: String, CaseIterable, Sendable {
         case .line: return .line
         case .highlighter: return .highlighter
         case .rectangle: return .rectangle
-        case .oval: return .oval
+        case .circle: return .circle
         case .solidRectangle: return .solidRectangle
-        case .solidOval: return .solidOval
+        case .solidCircle: return .solidCircle
         case .redact: return .redact
         case .text: return .text
         case .counter: return .counter
@@ -63,9 +65,9 @@ enum ToolType: String, CaseIterable, Sendable {
         case .line: return "line.diagonal"
         case .highlighter: return "highlighter"
         case .rectangle: return "rectangle"
-        case .oval: return "circle"
+        case .circle: return "circle"
         case .solidRectangle: return "rectangle.fill"
-        case .solidOval: return "circle.fill"
+        case .solidCircle: return "circle.fill"
         case .redact: return "eye.slash"
         case .text: return "textformat"
         case .counter: return "number"
@@ -119,7 +121,7 @@ enum SelectedObject: Equatable, Hashable {
     case line(index: Int)
     case highlight(index: Int)
     case rectangle(index: Int)
-    case oval(index: Int)
+    case circle(index: Int)
     case text(index: Int)
     case counter(index: Int)
     case none
@@ -130,7 +132,7 @@ enum SelectedObject: Equatable, Hashable {
         case .arrow(let idx): return (0, idx)
         case .line(let idx): return (1, idx)
         case .rectangle(let idx): return (2, idx)
-        case .oval(let idx): return (3, idx)
+        case .circle(let idx): return (3, idx)
         case .path(let idx): return (4, idx)
         case .highlight(let idx): return (5, idx)
         case .text(let idx): return (6, idx)
@@ -272,7 +274,7 @@ struct Rectangle {
 }
 
 /// Represents a circular annotation defined by two corner points of its bounding box.
-struct Oval {
+struct Circle {
     var startPoint: NSPoint
     var endPoint: NSPoint
     var color: NSColor
@@ -284,7 +286,7 @@ struct Oval {
     /// equality. A pasted or duplicated copy gets a fresh one.
     var id = UUID()
 
-    /// Whether this oval covers everything created before it, as a solid rectangle does.
+    /// Whether this circle covers everything created before it, as a solid rectangle does.
     var coversOlder: Bool { solid }
 
     /// The bounds of the ellipse, spanned by the two corner points.
@@ -487,7 +489,7 @@ enum ClipboardItem {
     case path(DrawingPath)
     case highlight(DrawingPath)
     case rectangle(Rectangle)
-    case oval(Oval)
+    case circle(Circle)
     case text(TextAnnotation)
     case counter(CounterAnnotation)
 
@@ -498,7 +500,7 @@ enum ClipboardItem {
         case .line(let line): return line.creationTime
         case .path(let path), .highlight(let path): return path.creationTime
         case .rectangle(let rectangle): return rectangle.creationTime
-        case .oval(let oval): return oval.creationTime
+        case .circle(let circle): return circle.creationTime
         case .text(let text): return text.creationTime
         case .counter(let counter): return counter.creationTime
         }
@@ -512,14 +514,14 @@ enum DrawingAction {
     case addLine(Line)
     case addHighlight(DrawingPath)
     case addRectangle(Rectangle)
-    case addOval(Oval)
+    case addCircle(Circle)
     case addCounter(CounterAnnotation)
     case removePath(DrawingPath)
     case removeArrow(Arrow)
     case removeLine(Line)
     case removeHighlight(DrawingPath)
     case removeRectangle(Rectangle)
-    case removeOval(Oval)
+    case removeCircle(Circle)
     case removeCounter(CounterAnnotation)
     case addText(TextAnnotation)
     case removeText(TextAnnotation)
@@ -528,20 +530,20 @@ enum DrawingAction {
     case moveArrow(Int, NSPoint, NSPoint, NSPoint, NSPoint)  // index, fromStart, fromEnd, toStart, toEnd
     case moveLine(Int, NSPoint, NSPoint, NSPoint, NSPoint)
     case moveRectangle(Int, NSPoint, NSPoint, NSPoint, NSPoint)
-    case moveOval(UUID, NSPoint, NSPoint, NSPoint, NSPoint)
+    case moveCircle(UUID, NSPoint, NSPoint, NSPoint, NSPoint)
     case movePath(Int, NSPoint)  // index, delta
     case moveHighlight(Int, NSPoint)  // index, delta
     case moveCounter(Int, NSPoint, NSPoint)  // index, from, to
     case clearAll(
-        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Oval], [TextAnnotation],
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
         [CounterAnnotation])
     case pasteObjects([SelectedObject])  // For undo: remove pasted objects
     case cutObjects([SelectedObject])  // For undo: restore cut objects
     case eraseAnnotations(
-        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Oval], [TextAnnotation],
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
         [CounterAnnotation])  // Stores all deleted items for undo
     case restoreAnnotations(
-        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Oval], [TextAnnotation],
+        [DrawingPath], [Arrow], [Line], [DrawingPath], [Rectangle], [Circle], [TextAnnotation],
         [CounterAnnotation])  // Reciprocal action for eraseAnnotations
 }
 
@@ -581,8 +583,8 @@ extension Rectangle: Equatable {
     }
 }
 
-extension Oval: Equatable {
-    public static func == (lhs: Oval, rhs: Oval) -> Bool {
+extension Circle: Equatable {
+    public static func == (lhs: Circle, rhs: Circle) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
             && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
             && lhs.solid == rhs.solid

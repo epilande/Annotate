@@ -957,9 +957,9 @@ class OverlayWindow: NSPanel {
         case .line: AppDelegate.shared?.enableLineMode(NSMenuItem())
         case .highlighter: AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
         case .rectangle: AppDelegate.shared?.enableRectangleMode(NSMenuItem())
-        case .oval: AppDelegate.shared?.enableOvalMode(NSMenuItem())
+        case .circle: AppDelegate.shared?.enableCircleMode(NSMenuItem())
         case .solidRectangle: AppDelegate.shared?.enableSolidRectangleMode(NSMenuItem())
-        case .solidOval: AppDelegate.shared?.enableSolidOvalMode(NSMenuItem())
+        case .solidCircle: AppDelegate.shared?.enableSolidCircleMode(NSMenuItem())
         case .redact: AppDelegate.shared?.enableRedactMode(NSMenuItem())
         case .counter: AppDelegate.shared?.enableCounterMode(NSMenuItem())
         case .text: AppDelegate.shared?.enableTextMode(NSMenuItem())
@@ -1297,15 +1297,15 @@ class OverlayWindow: NSPanel {
             if overlayView.currentRectangle?.needsSample == true {
                 overlayView.beginRedactionDrag()
             }
-        case .oval, .solidOval:
+        case .circle, .solidCircle:
             activeShapeTool = overlayView.currentTool
-            overlayView.currentOval = Oval(
+            overlayView.currentCircle = Circle(
                 startPoint: startPoint,
                 endPoint: startPoint,
                 color: overlayView.currentColor,
                 lineWidth: overlayView.currentLineWidth,
                 creationTime: nil,
-                solid: overlayView.currentTool == .solidOval)
+                solid: overlayView.currentTool == .solidCircle)
         case .text:
             break
         case .counter:
@@ -1495,7 +1495,7 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentRectangle?.startPoint = newStart
             overlayView.currentRectangle?.endPoint = newEnd
-        case .oval, .solidOval:
+        case .circle, .solidCircle:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1515,8 +1515,8 @@ class OverlayWindow: NSPanel {
                 )
             }
 
-            overlayView.currentOval?.startPoint = newStart
-            overlayView.currentOval?.endPoint = newEnd
+            overlayView.currentCircle?.startPoint = newStart
+            overlayView.currentCircle?.endPoint = newEnd
         default:
             break
         }
@@ -1586,12 +1586,12 @@ class OverlayWindow: NSPanel {
                 overlayView.rectangles.append(currentRectangle)
                 overlayView.currentRectangle = nil
             }
-        case .oval, .solidOval:
-            if var currentOval = overlayView.currentOval {
-                currentOval.creationTime = CACurrentMediaTime()
-                overlayView.registerUndo(action: .addOval(currentOval))
-                overlayView.ovals.append(currentOval)
-                overlayView.currentOval = nil
+        case .circle, .solidCircle:
+            if var currentCircle = overlayView.currentCircle {
+                currentCircle.creationTime = CACurrentMediaTime()
+                overlayView.registerUndo(action: .addCircle(currentCircle))
+                overlayView.circles.append(currentCircle)
+                overlayView.currentCircle = nil
             }
         default:
             break
@@ -1636,7 +1636,7 @@ class OverlayWindow: NSPanel {
         overlayView.currentArrow = nil
         overlayView.currentLine = nil
         overlayView.currentRectangle = nil
-        overlayView.currentOval = nil
+        overlayView.currentCircle = nil
         overlayView.endRedactionDrag()
         overlayView.cancelTextBoxDrag()
     }
@@ -1838,7 +1838,7 @@ class OverlayWindow: NSPanel {
         let optionPressed = event.modifierFlags.contains(.option)
         let shiftPressed = event.modifierFlags.contains(.shift)
 
-        // Handle Option key for center mode (rectangles and ovals)
+        // Handle Option key for center mode (rectangles and circles)
         if !isOptionCurrentlyPressed && optionPressed {
             if !wasOptionPressedOnMouseDown {
                 recenterAnchorForCurrentShape()
@@ -1875,12 +1875,12 @@ class OverlayWindow: NSPanel {
                 height: abs(rect.endPoint.y - rect.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
-        } else if let oval = overlayView.currentOval {
+        } else if let circle = overlayView.currentCircle {
             let boundingRect = NSRect(
-                x: min(oval.startPoint.x, oval.endPoint.x),
-                y: min(oval.startPoint.y, oval.endPoint.y),
-                width: abs(oval.endPoint.x - oval.startPoint.x),
-                height: abs(oval.endPoint.y - oval.startPoint.y)
+                x: min(circle.startPoint.x, circle.endPoint.x),
+                y: min(circle.startPoint.y, circle.endPoint.y),
+                width: abs(circle.endPoint.x - circle.startPoint.x),
+                height: abs(circle.endPoint.y - circle.startPoint.y)
             )
             anchorPoint = NSPoint(x: boundingRect.midX, y: boundingRect.midY)
         }
@@ -1890,8 +1890,8 @@ class OverlayWindow: NSPanel {
     private func reanchorFromCenterToCorner() {
         if let rect = overlayView.currentRectangle {
             anchorPoint = rect.startPoint
-        } else if let oval = overlayView.currentOval {
-            anchorPoint = oval.startPoint
+        } else if let circle = overlayView.currentCircle {
+            anchorPoint = circle.startPoint
         }
     }
 
@@ -2181,13 +2181,13 @@ class OverlayWindow: NSPanel {
         case .rectangle:
             toolName = "Rectangle"
             icon = "🔲"
-        case .oval:
+        case .circle:
             toolName = "Oval"
             icon = "⭕"
         case .solidRectangle:
             toolName = "Solid Rectangle"
             icon = "⬛"
-        case .solidOval:
+        case .solidCircle:
             toolName = "Solid Oval"
             icon = "⚫"
         case .redact:
@@ -2210,7 +2210,7 @@ class OverlayWindow: NSPanel {
         let currentWidth = overlayView.currentLineWidth
 
         switch tool {
-        case .pen, .arrow, .line, .highlighter, .rectangle, .oval, .solidRectangle, .solidOval:
+        case .pen, .arrow, .line, .highlighter, .rectangle, .circle, .solidRectangle, .solidCircle:
             let widthText = String(format: "%.2f px", currentWidth)
             let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)
@@ -2465,7 +2465,7 @@ class OverlayWindow: NSPanel {
 
             let hasAnnotations = !overlayView.arrows.isEmpty || !overlayView.lines.isEmpty ||
                                 !overlayView.paths.isEmpty || !overlayView.highlightPaths.isEmpty ||
-                                !overlayView.rectangles.isEmpty || !overlayView.ovals.isEmpty ||
+                                !overlayView.rectangles.isEmpty || !overlayView.circles.isEmpty ||
                                 !overlayView.textAnnotations.isEmpty || !overlayView.counterAnnotations.isEmpty
 
             if hasAnnotations {
