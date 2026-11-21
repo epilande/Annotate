@@ -137,7 +137,7 @@ struct CaptureRecord: Codable, Equatable, Sendable {
         var end: Point
     }
 
-    /// An outlined rectangle or ellipse, or a solid one.
+    /// An outlined rectangle or ellipse, or a filled one.
     struct Shape: Codable, Equatable, Sendable {
         var id: String
         var time: Double?
@@ -145,9 +145,9 @@ struct CaptureRecord: Codable, Equatable, Sendable {
         /// Line width in points as drawn.
         var width: Double
         var rect: Rect
-        /// `true` when drawn in solid `color` rather than as an outline, by the Solid Rectangle or
-        /// Solid Oval tool. Absent for an outline, so outlines read as they did in version 1.
-        var solid: Bool?
+        /// `true` when filled with `color` rather than drawn as an outline, by the Filled Rectangle or
+        /// Filled Oval tool. Absent for an outline, so outlines read as they did in version 1.
+        var filled: Bool?
     }
 
     /// A rectangle that hides what is under it. The hidden pixels are never recorded.

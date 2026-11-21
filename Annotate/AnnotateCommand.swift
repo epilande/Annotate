@@ -74,7 +74,7 @@ enum AnnotateCommand: Hashable, Sendable {
         case ("hide", nil): self = .hide
         case ("clear", nil): self = .clear
         case ("tool", let value?):
-            // The path is lowercased, and some tool names, like solidRectangle, are not.
+            // The path is lowercased, and some tool names, like filledRectangle, are not.
             guard let tool = ToolType.allCases.first(where: { $0.rawValue.lowercased() == value }) else { return nil }
             self = .tool(tool)
         case ("color", let value?):

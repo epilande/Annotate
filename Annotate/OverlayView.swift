@@ -1299,10 +1299,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var redactionIndicesByCreation: [Int] { document.redactionIndicesByCreation }
 
-    /// Whether a covering shape (a redaction, solid rectangle or solid circle) newer than
+    /// Whether a covering shape (a redaction, filled rectangle or filled circle) newer than
     /// something created at `creationTime` covers `point`, so interactions do not reach what
-    /// it hides. A solid shape that has faded out no longer covers anything. Coverage is
-    /// what the shape paints, so a solid shape's outline counts as well as its inside.
+    /// it hides. A filled shape that has faded out no longer covers anything. Coverage is
+    /// what the shape paints, so a filled shape's outline counts as well as its inside.
     func isPointCovered(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
         let time = RedactionLayer.time(of: creationTime)
         func isNewer(_ other: CFTimeInterval?) -> Bool { RedactionLayer.time(of: other) > time }
@@ -1784,13 +1784,13 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastHighlight = highlightPaths.last!
             registerUndo(action: .removeHighlight(lastHighlight))
             highlightPaths.removeLast()
-        case .rectangle, .solidRectangle, .redact:
+        case .rectangle, .filledRectangle, .redact:
             // Only the active tool's kind, so the Rectangle tool never deletes a redaction.
             let tool = currentTool
             guard let index = rectangles.lastIndex(where: { rectangle in
                 switch tool {
                 case .redact: return rectangle.isRedaction
-                case .solidRectangle: return rectangle.style == .solidColor
+                case .filledRectangle: return rectangle.style == .filled
                 default: return rectangle.style == .outline
                 }
             }) else { return }
@@ -1799,10 +1799,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
             lastRectangle.sample = nil
             registerUndo(action: .removeRectangle(lastRectangle))
             rectangles.remove(at: index)
-        case .circle, .solidCircle:
+        case .circle, .filledCircle:
             // Only the active tool's kind, as for rectangles.
-            let wantsSolid = currentTool == .solidCircle
-            guard let index = circles.lastIndex(where: { $0.solid == wantsSolid }) else { return }
+            let wantsFilled = currentTool == .filledCircle
+            guard let index = circles.lastIndex(where: { $0.filled == wantsFilled }) else { return }
             registerUndo(action: .removeCircle(circles[index]))
             circles.remove(at: index)
         case .text:
@@ -3008,7 +3008,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let outerBounds = bounds.insetBy(dx: -edgeTolerance, dy: -edgeTolerance)
         let innerBounds = bounds.insetBy(dx: edgeTolerance, dy: edgeTolerance)
 
-        // A redaction or solid rectangle is a solid block, so its whole area is clickable.
+        // A redaction or filled rectangle is a solid block, so its whole area is clickable.
         if rect.coversOlder { return outerBounds.contains(point) }
 
         // Point is on edge if it's in outer but not in inner
@@ -3031,8 +3031,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             miterLimit: 10)
         if edge.contains(point) { return true }
 
-        // A solid circle's whole area is clickable; an outline is not clickable inside.
-        return circle.solid && ellipse.contains(point)
+        // A filled circle's whole area is clickable; an outline is not clickable inside.
+        return circle.filled && ellipse.contains(point)
     }
 
     private func hitTestText(_ text: TextAnnotation, point: NSPoint) -> Bool {
@@ -3209,7 +3209,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Check if point is near any of the four edges
         let bounds = rectangle.bounds
 
-        // A redaction or solid rectangle is a solid block, so the eraser removes it from
+        // A redaction or filled rectangle is a solid block, so the eraser removes it from
         // anywhere inside.
         if rectangle.coversOlder && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
             return true
@@ -3240,8 +3240,8 @@ class OverlayView: NSView, NSTextFieldDelegate {
             miterLimit: 10)
         if reach.contains(point) { return true }
 
-        // The eraser removes a solid circle from anywhere inside.
-        return circle.solid && ellipse.contains(point)
+        // The eraser removes a filled circle from anywhere inside.
+        return circle.filled && ellipse.contains(point)
     }
 
     private func textIntersectsPoint(_ text: TextAnnotation, point: NSPoint, radius: CGFloat) -> Bool {

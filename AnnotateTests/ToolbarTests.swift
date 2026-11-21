@@ -479,7 +479,7 @@ final class ToolbarTests: XCTestCase {
         return event
     }
 
-    // MARK: - Shape chips (Rectangle and Circle, each with its solid version)
+    // MARK: - Shape chips (Rectangle and Circle, each with its filled version)
 
     /// Clicks `point` on the bar, with Shift held or not.
     private func click(_ point: NSPoint, on panel: ToolbarPanel, shift: Bool = false) {
@@ -495,22 +495,22 @@ final class ToolbarTests: XCTestCase {
         for tool in ToolType.allCases {
             XCTAssertTrue(ToolType.toolbarChips.contains(tool.toolbarChip), "\(tool) has no chip")
         }
-        XCTAssertEqual(ToolType.solidRectangle.toolbarChip, .rectangle)
-        XCTAssertEqual(ToolType.solidCircle.toolbarChip, .circle)
-        XCTAssertEqual(ToolType.rectangle.solidVersion, .solidRectangle)
-        XCTAssertEqual(ToolType.circle.solidVersion, .solidCircle)
-        XCTAssertNil(ToolType.pen.solidVersion)
-        XCTAssertNil(ToolType.solidCircle.solidVersion)
+        XCTAssertEqual(ToolType.filledRectangle.toolbarChip, .rectangle)
+        XCTAssertEqual(ToolType.filledCircle.toolbarChip, .circle)
+        XCTAssertEqual(ToolType.rectangle.filledVersion, .filledRectangle)
+        XCTAssertEqual(ToolType.circle.filledVersion, .filledCircle)
+        XCTAssertNil(ToolType.pen.filledVersion)
+        XCTAssertNil(ToolType.filledCircle.filledVersion)
     }
 
-    func testAClickOnAShapeChipSelectsTheOutlineToolAndAShiftClickTheSolidOne() throws {
+    func testAClickOnAShapeChipSelectsTheOutlineToolAndAShiftClickTheFilledOne() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
         AppDelegate.shared = spy
         defer { AppDelegate.shared = appDelegate }
         try showBarForPointerEvents(panel)
 
-        for (outline, solid) in [(ToolType.rectangle, ToolType.solidRectangle), (.circle, .solidCircle)] {
+        for (outline, filled) in [(ToolType.rectangle, ToolType.filledRectangle), (.circle, .filledCircle)] {
             let chip = try chipPoint(
                 in: panel,
                 where: { spy.selectedTool == outline },
@@ -519,16 +519,16 @@ final class ToolbarTests: XCTestCase {
             click(chip, on: panel)
             XCTAssertEqual(spy.selectedTool, outline)
             click(chip, on: panel, shift: true)
-            XCTAssertEqual(spy.selectedTool, solid)
+            XCTAssertEqual(spy.selectedTool, filled)
 
-            // Whatever the chip shows, a click is the outline tool and a Shift-click the solid one.
-            window.overlayView.currentTool = solid
+            // Whatever the chip shows, a click is the outline tool and a Shift-click the filled one.
+            window.overlayView.currentTool = filled
             window.refreshToolbar()
             wait(for: 0.05)
             click(chip, on: panel)
-            XCTAssertEqual(spy.selectedTool, outline, "A click on a chip showing \(solid)")
+            XCTAssertEqual(spy.selectedTool, outline, "A click on a chip showing \(filled)")
             click(chip, on: panel, shift: true)
-            XCTAssertEqual(spy.selectedTool, solid, "A Shift-click on a chip showing \(solid)")
+            XCTAssertEqual(spy.selectedTool, filled, "A Shift-click on a chip showing \(filled)")
 
             window.overlayView.currentTool = .pen
             window.refreshToolbar()
@@ -561,19 +561,19 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(model.shownTool(on: .rectangle), .rectangle)
         XCTAssertEqual(model.shownTool(on: .circle), .circle)
 
-        select(.solidRectangle)
-        XCTAssertEqual(model.shownTool(on: .rectangle), .solidRectangle)
+        select(.filledRectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle)
         XCTAssertEqual(model.shownTool(on: .rectangle).symbolName, "rectangle.fill")
         XCTAssertEqual(model.activeTool.toolbarChip, .rectangle, "The Rectangle chip is the active one")
         XCTAssertEqual(model.shownTool(on: .circle), .circle, "The other shape chip is untouched")
 
         select(.pen)
-        XCTAssertEqual(model.shownTool(on: .rectangle), .solidRectangle, "The chip keeps its last version")
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle, "The chip keeps its last version")
 
-        select(.solidCircle)
-        XCTAssertEqual(model.shownTool(on: .circle), .solidCircle)
+        select(.filledCircle)
+        XCTAssertEqual(model.shownTool(on: .circle), .filledCircle)
         XCTAssertEqual(model.shownTool(on: .circle).symbolName, "circle.fill")
-        XCTAssertEqual(model.shownTool(on: .rectangle), .solidRectangle)
+        XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle)
 
         select(.rectangle)
         XCTAssertEqual(model.shownTool(on: .rectangle), .rectangle)
@@ -589,8 +589,8 @@ final class ToolbarTests: XCTestCase {
         defer { AppDelegate.shared = appDelegate }
         let model = window.toolbarModel
         let presses: [(key: String, keyCode: UInt16, shift: Bool, tool: ToolType)] = [
-            ("r", 15, true, .solidRectangle), ("r", 15, false, .rectangle),
-            ("o", 31, true, .solidCircle), ("o", 31, false, .circle)
+            ("r", 15, true, .filledRectangle), ("r", 15, false, .rectangle),
+            ("o", 31, true, .filledCircle), ("o", 31, false, .circle)
         ]
         for press in presses {
             spy.selectedTool = nil
@@ -648,14 +648,14 @@ final class ToolbarTests: XCTestCase {
         }
 
         var offered = actions(on: "toolbar.tool.rectangle")
-        XCTAssertEqual(offered.map(\.name), ["Solid Rectangle"])
+        XCTAssertEqual(offered.map(\.name), ["Filled Rectangle"])
         XCTAssertEqual(offered.first?.handler?(), true)
-        XCTAssertEqual(spy.selectedTool, .solidRectangle)
+        XCTAssertEqual(spy.selectedTool, .filledRectangle)
 
-        window.overlayView.currentTool = .solidCircle
+        window.overlayView.currentTool = .filledCircle
         window.refreshToolbar()
         offered = actions(on: "toolbar.tool.circle")
-        XCTAssertEqual(offered.map(\.name), ["Oval"], "A chip showing the solid version offers the outline one")
+        XCTAssertEqual(offered.map(\.name), ["Oval"], "A chip showing the filled version offers the outline one")
         XCTAssertEqual(offered.first?.handler?(), true)
         XCTAssertEqual(spy.selectedTool, .circle)
 

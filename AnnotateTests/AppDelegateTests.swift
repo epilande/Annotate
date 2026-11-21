@@ -77,8 +77,8 @@ final class AppDelegateTests: XCTestCase, Sendable {
         XCTAssertEqual(
             try toolSubmenu().items.map(\.title),
             [
-                "Arrow", "Line", "Pen", "Highlighter", "Rectangle", "Oval", "Solid Rectangle",
-                "Solid Oval", "Redact", "Counter", "Text", "Select", "Eraser",
+                "Arrow", "Line", "Pen", "Highlighter", "Rectangle", "Oval", "Filled Rectangle",
+                "Filled Oval", "Redact", "Counter", "Text", "Select", "Eraser",
             ])
     }
 

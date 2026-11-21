@@ -354,17 +354,17 @@ struct AnnotationRenderer {
 
         let path = NSBezierPath(rect: rect)
         path.lineWidth = rectangle.lineWidth
-        guard rectangle.style == .solidColor else {
+        guard rectangle.style == .filled else {
             board.adapt(rectangle.color).withAlphaComponent(alpha).setStroke()
             path.stroke()
             return
         }
-        drawSolid(path, color: board.adapt(rectangle.color), alpha: alpha)
+        drawFilled(path, color: board.adapt(rectangle.color), alpha: alpha)
     }
 
     /// Fills `path` and strokes its outline in `color`, fading the two together so the
     /// outline doesn't show darker where it overlaps the fill.
-    private func drawSolid(_ path: NSBezierPath, color: NSColor, alpha: CGFloat) {
+    private func drawFilled(_ path: NSBezierPath, color: NSColor, alpha: CGFloat) {
         let context = NSGraphicsContext.current?.cgContext
         context?.saveGState()
         context?.setAlpha(alpha)
@@ -427,8 +427,8 @@ struct AnnotationRenderer {
 
         let path = NSBezierPath(ovalIn: rect)
         path.lineWidth = circle.lineWidth
-        if circle.solid {
-            drawSolid(path, color: adaptedColor, alpha: alpha)
+        if circle.filled {
+            drawFilled(path, color: adaptedColor, alpha: alpha)
             return
         }
         adaptedColor.withAlphaComponent(alpha).setStroke()
@@ -592,11 +592,11 @@ extension Line {
 }
 
 extension Rectangle {
-    /// An outline's stroke. A redaction fills its whole rect, and a solid rectangle its rect
+    /// An outline's stroke. A redaction fills its whole rect, and a filled rectangle its rect
     /// and the outer half of its outline.
     var ink: CGPath {
         if isRedaction { return CGPath(rect: bounds, transform: nil) }
-        if style == .solidColor {
+        if style == .filled {
             return CGPath(rect: bounds.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2), transform: nil)
         }
         return CGPath(rect: bounds, transform: nil)
@@ -605,13 +605,13 @@ extension Rectangle {
 }
 
 extension Circle {
-    /// An outline's stroke, or for a solid circle the ellipse together with that stroke. The
+    /// An outline's stroke, or for a filled circle the ellipse together with that stroke. The
     /// stroke's outer edge is not itself an ellipse: between the axes it reaches a little
     /// past the ellipse grown by half the line width.
     var ink: CGPath {
         let ellipse = CGPath(ellipseIn: AnnotationRenderer.paddedBounds(startPoint, endPoint, padding: 0), transform: nil)
         let outline = ellipse.copy(strokingWithWidth: lineWidth, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
-        return solid ? ellipse.union(outline) : outline
+        return filled ? ellipse.union(outline) : outline
     }
 }
 

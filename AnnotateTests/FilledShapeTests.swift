@@ -2,10 +2,10 @@ import XCTest
 
 @testable import Annotate
 
-/// Solid Rectangle and Solid Circle: each covers everything drawn before it, whatever the
+/// Filled Rectangle and Filled Circle: each covers everything drawn before it, whatever the
 /// kind, and annotations drawn after it stack on top of it by kind as usual.
 @MainActor
-final class SolidShapeTests: XCTestCase {
+final class FilledShapeTests: XCTestCase {
     private var overlayView: OverlayView!
     private var originalBoardManager: BoardManager!
 
@@ -32,24 +32,24 @@ final class SolidShapeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func solidRectangle(time: CFTimeInterval, color: NSColor = .blue) -> Rectangle {
+    private func filledRectangle(time: CFTimeInterval, color: NSColor = .blue) -> Rectangle {
         Rectangle(
             startPoint: NSPoint(x: 50, y: 50),
             endPoint: NSPoint(x: 150, y: 150),
             color: color,
             lineWidth: 3,
             creationTime: time,
-            style: .solidColor)
+            style: .filled)
     }
 
-    private func solidCircle(time: CFTimeInterval, color: NSColor = .green) -> Circle {
+    private func filledCircle(time: CFTimeInterval, color: NSColor = .green) -> Circle {
         Circle(
             startPoint: NSPoint(x: 60, y: 60),
             endPoint: NSPoint(x: 140, y: 140),
             color: color,
             lineWidth: 3,
             creationTime: time,
-            solid: true)
+            filled: true)
     }
 
     private func redArrow(y: CGFloat, time: CFTimeInterval) -> Arrow {
@@ -110,27 +110,27 @@ final class SolidShapeTests: XCTestCase {
 
     // MARK: - Model
 
-    func testSolidShapesCoverOlderAnnotationsButAreNotRedactions() {
-        let rectangle = solidRectangle(time: 1)
+    func testFilledShapesCoverOlderAnnotationsButAreNotRedactions() {
+        let rectangle = filledRectangle(time: 1)
         XCTAssertTrue(rectangle.coversOlder)
-        XCTAssertFalse(rectangle.isRedaction, "A solid rectangle fades and draws in its color")
+        XCTAssertFalse(rectangle.isRedaction, "A filled rectangle fades and draws in its color")
         XCTAssertFalse(TestFactory.createRectangle().coversOlder)
-        XCTAssertTrue(solidCircle(time: 1).coversOlder)
+        XCTAssertTrue(filledCircle(time: 1).coversOlder)
         XCTAssertFalse(TestFactory.createCircle().coversOlder)
-        XCTAssertFalse(RectangleStyle.redactionStyles.contains(.solidColor), "The Redact tool doesn't offer the Solid Rectangle style")
+        XCTAssertFalse(RectangleStyle.redactionStyles.contains(.filled), "The Redact tool doesn't offer the Filled Rectangle style")
         let outlinedCircle = Circle(
             startPoint: NSPoint(x: 60, y: 60),
             endPoint: NSPoint(x: 140, y: 140),
             color: .green,
             lineWidth: 3,
             creationTime: 1)
-        XCTAssertNotEqual(solidCircle(time: 1), outlinedCircle)
+        XCTAssertNotEqual(filledCircle(time: 1), outlinedCircle)
     }
 
-    func testEachSolidShapeClosesALayerInTheOrderItWasDrawn() {
+    func testEachFilledShapeClosesALayerInTheOrderItWasDrawn() {
         var document = OverlayDocument()
-        document.rectangles = [TestFactory.createRectangle(time: 1), solidRectangle(time: 3)]
-        document.circles = [solidCircle(time: 2), TestFactory.createCircle(time: 4)]
+        document.rectangles = [TestFactory.createRectangle(time: 1), filledRectangle(time: 3)]
+        document.circles = [filledCircle(time: 2), TestFactory.createCircle(time: 4)]
 
         XCTAssertEqual(document.coversByCreation, [.circle(index: 0), .rectangle(index: 1)])
         let covers = document.paintOrder().filter {
@@ -142,35 +142,35 @@ final class SolidShapeTests: XCTestCase {
 
     // MARK: - Rendering
 
-    func testASolidRectangleCoversEverythingDrawnBeforeIt() throws {
+    func testAFilledRectangleCoversEverythingDrawnBeforeIt() throws {
         overlayView.paths = [redStroke(y: 90, time: 1)]
         overlayView.arrows = [redArrow(y: 110, time: 1)]
-        overlayView.rectangles = [solidRectangle(time: 2)]
+        overlayView.rectangles = [filledRectangle(time: 2)]
 
         assertColor(try renderedColor(at: NSPoint(x: 80, y: 90)), red: 0, green: 0, blue: 1, "An older pen stroke is covered")
         assertColor(try renderedColor(at: NSPoint(x: 80, y: 110)), red: 0, green: 0, blue: 1, "An older arrow is covered")
     }
 
-    func testAnnotationsDrawnAfterASolidShapeGoOnTop() throws {
+    func testAnnotationsDrawnAfterAFilledShapeGoOnTop() throws {
         overlayView.arrows = [redArrow(y: 110, time: 3)]
-        overlayView.rectangles = [solidRectangle(time: 2)]
+        overlayView.rectangles = [filledRectangle(time: 2)]
 
         assertColor(try renderedColor(at: NSPoint(x: 80, y: 110)), red: 1, green: 0, blue: 0, "A newer arrow")
         assertColor(try renderedColor(at: NSPoint(x: 100, y: 140)), red: 0, green: 0, blue: 1, "The fill around it")
     }
 
-    func testANewerSolidShapeCoversWhatWasDrawnOnTheOlderOne() throws {
-        overlayView.rectangles = [solidRectangle(time: 2)]
+    func testANewerFilledShapeCoversWhatWasDrawnOnTheOlderOne() throws {
+        overlayView.rectangles = [filledRectangle(time: 2)]
         overlayView.arrows = [redArrow(y: 100, time: 3)]
-        overlayView.circles = [solidCircle(time: 4)]
+        overlayView.circles = [filledCircle(time: 4)]
 
         assertColor(try renderedColor(at: NSPoint(x: 100, y: 100)), red: 0, green: 1, blue: 0, "The circle covers the arrow")
         assertColor(try renderedColor(at: NSPoint(x: 55, y: 55)), red: 0, green: 0, blue: 1, "The rectangle outside the circle")
     }
 
-    func testASolidCircleBeingDrawnCoversCommittedAnnotations() throws {
+    func testAFilledCircleBeingDrawnCoversCommittedAnnotations() throws {
         overlayView.arrows = [redArrow(y: 100, time: CACurrentMediaTime())]
-        overlayView.currentCircle = solidCircle(time: 0)
+        overlayView.currentCircle = filledCircle(time: 0)
 
         assertColor(try renderedColor(at: NSPoint(x: 100, y: 100)), red: 0, green: 1, blue: 0)
     }
@@ -181,7 +181,7 @@ final class SolidShapeTests: XCTestCase {
         overlayView.counterAnnotations = [
             CounterAnnotation(number: 1, position: NSPoint(x: 100, y: 100), color: .red, creationTime: 1)
         ]
-        overlayView.rectangles = [solidRectangle(time: 2)]
+        overlayView.rectangles = [filledRectangle(time: 2)]
         overlayView.arrows = [redArrow(y: 120, time: 3)]
 
         XCTAssertEqual(
@@ -192,8 +192,8 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 10, y: 10)), .none)
     }
 
-    func testASolidCircleIsSelectableInsideButNotAtItsCorners() {
-        overlayView.circles = [solidCircle(time: 1)]
+    func testAFilledCircleIsSelectableInsideButNotAtItsCorners() {
+        overlayView.circles = [filledCircle(time: 1)]
 
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 100)), .circle(index: 0))
         XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 62, y: 62)), .none)
@@ -201,10 +201,10 @@ final class SolidShapeTests: XCTestCase {
 
     func testAFlatCircleIsClickableOnlyWithinAFewPointsOfItsEdge() {
         var flat = TestFactory.createCircle(start: NSPoint(x: 20, y: 90), end: NSPoint(x: 180, y: 110), time: 1)
-        for solid in [false, true] {
-            flat.solid = solid
+        for filled in [false, true] {
+            flat.filled = filled
             overlayView.circles = [flat]
-            let kind = solid ? "solid" : "outlined"
+            let kind = filled ? "filled" : "outlined"
 
             XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 183, y: 100)), .circle(index: 0), kind)
             XCTAssertEqual(overlayView.findObjectAt(point: NSPoint(x: 100, y: 113)), .circle(index: 0), kind)
@@ -214,16 +214,16 @@ final class SolidShapeTests: XCTestCase {
                 "\(kind): 15 points past the end of the long axis is not on the circle")
             XCTAssertEqual(
                 overlayView.findObjectAt(point: NSPoint(x: 100, y: 100)),
-                solid ? .circle(index: 0) : .none,
-                "\(kind): only a solid circle is clickable inside")
+                filled ? .circle(index: 0) : .none,
+                "\(kind): only a filled circle is clickable inside")
         }
     }
 
-    func testASolidShapesOutlineCoversWhatIsUnderIt() {
+    func testAFilledShapesOutlineCoversWhatIsUnderIt() {
         // Each paints 10 points past its bounds with a 20 point line.
-        var rectangle = solidRectangle(time: 2)
+        var rectangle = filledRectangle(time: 2)
         rectangle.lineWidth = 20
-        var circle = solidCircle(time: 2)
+        var circle = filledCircle(time: 2)
         circle.lineWidth = 20
 
         overlayView.rectangles = [rectangle]
@@ -248,22 +248,22 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 155, y: 100), over: 1), "A redaction paints only its bounds")
     }
 
-    func testASolidShapeStopsClicksReachingWhatItCovers() {
-        overlayView.rectangles = [solidRectangle(time: 2)]
+    func testAFilledShapeStopsClicksReachingWhatItCovers() {
+        overlayView.rectangles = [filledRectangle(time: 2)]
 
         XCTAssertTrue(overlayView.isPointCovered(NSPoint(x: 100, y: 100), over: 1))
         XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 100, y: 100), over: 3), "Newer items aren't covered")
         XCTAssertFalse(overlayView.isPointCovered(NSPoint(x: 10, y: 10), over: 1))
     }
 
-    func testASolidCirclesInkIncludesItsOutlineBetweenTheAxes() {
+    func testAFilledCirclesInkIncludesItsOutlineBetweenTheAxes() {
         let circle = Circle(
             startPoint: .zero,
             endPoint: NSPoint(x: 200, y: 20),
             color: .green,
             lineWidth: 20,
             creationTime: 1,
-            solid: true)
+            filled: true)
         // 9.5 points out from the ellipse along its normal, so inside the 10 point half
         // stroke, but outside the ellipse grown by 10 points on each axis.
         let onTheOutline = NSPoint(x: 202.21, y: 20.506)
@@ -285,9 +285,9 @@ final class SolidShapeTests: XCTestCase {
         XCTAssertTrue(overlayView.circles.isEmpty, "3 points past the end is within reach")
     }
 
-    func testTheEraserRemovesSolidShapesFromInside() {
-        overlayView.rectangles = [solidRectangle(time: 1)]
-        overlayView.circles = [solidCircle(time: 2)]
+    func testTheEraserRemovesFilledShapesFromInside() {
+        overlayView.rectangles = [filledRectangle(time: 1)]
+        overlayView.circles = [filledCircle(time: 2)]
 
         overlayView.eraseAtPoint(NSPoint(x: 100, y: 100))
 
@@ -296,16 +296,16 @@ final class SolidShapeTests: XCTestCase {
     }
 
     func testDeleteLastRemovesOnlyTheActiveToolsKind() {
-        overlayView.circles = [TestFactory.createCircle(time: 1), solidCircle(time: 2), TestFactory.createCircle(time: 3)]
-        overlayView.currentTool = .solidCircle
+        overlayView.circles = [TestFactory.createCircle(time: 1), filledCircle(time: 2), TestFactory.createCircle(time: 3)]
+        overlayView.currentTool = .filledCircle
         overlayView.deleteLastItem()
-        XCTAssertEqual(overlayView.circles.map(\.solid), [false, false])
+        XCTAssertEqual(overlayView.circles.map(\.filled), [false, false])
 
         overlayView.rectangles = [
-            TestFactory.createRectangle(time: 1), solidRectangle(time: 2),
+            TestFactory.createRectangle(time: 1), filledRectangle(time: 2),
             Rectangle(startPoint: .zero, endPoint: NSPoint(x: 10, y: 10), color: .red, lineWidth: 3, creationTime: 3, style: .solid),
         ]
-        overlayView.currentTool = .solidRectangle
+        overlayView.currentTool = .filledRectangle
         overlayView.deleteLastItem()
         XCTAssertEqual(overlayView.rectangles.map(\.style), [.outline, .solid])
         overlayView.currentTool = .rectangle
@@ -316,29 +316,29 @@ final class SolidShapeTests: XCTestCase {
     // MARK: - Tools, shortcuts and commands
 
     func testTheToolsHaveShiftShortcutsBesideTheirOutlineTools() {
-        XCTAssertEqual(ToolType.solidRectangle.shortcutKey.defaultBinding, ShortcutBinding("r", modifiers: .shift))
-        XCTAssertEqual(ToolType.solidCircle.shortcutKey.defaultBinding, ShortcutBinding("o", modifiers: .shift))
-        XCTAssertNotEqual(ShortcutKey.solidRectangle.defaultBinding, ShortcutKey.rectangle.defaultBinding)
-        XCTAssertTrue(ShortcutKey.newlyEditable.contains(.solidRectangle))
-        XCTAssertTrue(ShortcutKey.newlyEditable.contains(.solidCircle))
-        XCTAssertTrue(AppDelegate.statusMenuTools.contains { $0.tool == .solidRectangle })
-        XCTAssertTrue(AppDelegate.statusMenuTools.contains { $0.tool == .solidCircle })
+        XCTAssertEqual(ToolType.filledRectangle.shortcutKey.defaultBinding, ShortcutBinding("r", modifiers: .shift))
+        XCTAssertEqual(ToolType.filledCircle.shortcutKey.defaultBinding, ShortcutBinding("o", modifiers: .shift))
+        XCTAssertNotEqual(ShortcutKey.filledRectangle.defaultBinding, ShortcutKey.rectangle.defaultBinding)
+        XCTAssertTrue(ShortcutKey.newlyEditable.contains(.filledRectangle))
+        XCTAssertTrue(ShortcutKey.newlyEditable.contains(.filledCircle))
+        XCTAssertTrue(AppDelegate.statusMenuTools.contains { $0.tool == .filledRectangle })
+        XCTAssertTrue(AppDelegate.statusMenuTools.contains { $0.tool == .filledCircle })
     }
 
     func testLinksSelectTheToolsWhateverTheCase() {
-        XCTAssertEqual(AnnotateCommand(path: "/tool/solidRectangle"), .tool(.solidRectangle))
-        XCTAssertEqual(AnnotateCommand(path: "tool/SOLIDCIRCLE"), .tool(.solidCircle))
+        XCTAssertEqual(AnnotateCommand(path: "/tool/filledRectangle"), .tool(.filledRectangle))
+        XCTAssertEqual(AnnotateCommand(path: "tool/FILLEDCIRCLE"), .tool(.filledCircle))
         XCTAssertEqual(AnnotateCommand(path: "/tool/circle"), .tool(.circle), "Oval keeps its link name")
         XCTAssertNil(AnnotateCommand(path: "/tool/oval"), "The display name is not a link name")
     }
 
     // MARK: - Capture record
 
-    func testTheCaptureRecordMarksSolidShapes() {
+    func testTheCaptureRecordMarksFilledShapes() {
         let space = CaptureRecord.DisplaySpace(height: 200)
-        XCTAssertEqual(CaptureRecord.Shape(solidRectangle(time: 1), space: space).solid, true)
-        XCTAssertEqual(CaptureRecord.Shape(solidCircle(time: 1), space: space).solid, true)
-        XCTAssertNil(CaptureRecord.Shape(TestFactory.createRectangle(), space: space).solid)
-        XCTAssertNil(CaptureRecord.Shape(TestFactory.createCircle(), space: space).solid)
+        XCTAssertEqual(CaptureRecord.Shape(filledRectangle(time: 1), space: space).filled, true)
+        XCTAssertEqual(CaptureRecord.Shape(filledCircle(time: 1), space: space).filled, true)
+        XCTAssertNil(CaptureRecord.Shape(TestFactory.createRectangle(), space: space).filled)
+        XCTAssertNil(CaptureRecord.Shape(TestFactory.createCircle(), space: space).filled)
     }
 }

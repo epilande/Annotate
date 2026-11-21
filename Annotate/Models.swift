@@ -8,11 +8,11 @@ enum ToolType: String, CaseIterable, Sendable {
     case line
     case highlighter
     case rectangle
-    /// Shown as Oval, and `solidCircle` as Solid Oval. The cases keep `circle` because their
+    /// Shown as Oval, and `filledCircle` as Filled Oval. The cases keep `circle` because their
     /// raw values are what settings, `annotate://` links and Shortcuts actions store.
     case circle
-    case solidRectangle
-    case solidCircle
+    case filledRectangle
+    case filledCircle
     case redact
     case text
     case counter
@@ -27,8 +27,8 @@ enum ToolType: String, CaseIterable, Sendable {
         case .line: return "Line"
         case .rectangle: return "Rectangle"
         case .circle: return "Oval"
-        case .solidRectangle: return "Solid Rectangle"
-        case .solidCircle: return "Solid Oval"
+        case .filledRectangle: return "Filled Rectangle"
+        case .filledCircle: return "Filled Oval"
         case .redact: return "Redact"
         case .text: return "Text"
         case .counter: return "Counter"
@@ -47,8 +47,8 @@ enum ToolType: String, CaseIterable, Sendable {
         case .highlighter: return .highlighter
         case .rectangle: return .rectangle
         case .circle: return .circle
-        case .solidRectangle: return .solidRectangle
-        case .solidCircle: return .solidCircle
+        case .filledRectangle: return .filledRectangle
+        case .filledCircle: return .filledCircle
         case .redact: return .redact
         case .text: return .text
         case .counter: return .counter
@@ -66,8 +66,8 @@ enum ToolType: String, CaseIterable, Sendable {
         case .highlighter: return "highlighter"
         case .rectangle: return "rectangle"
         case .circle: return "circle"
-        case .solidRectangle: return "rectangle.fill"
-        case .solidCircle: return "circle.fill"
+        case .filledRectangle: return "rectangle.fill"
+        case .filledCircle: return "circle.fill"
         case .redact: return "eye.slash"
         case .text: return "textformat"
         case .counter: return "number"
@@ -212,11 +212,11 @@ struct Line {
 }
 
 /// How a rectangle annotation is painted. `.outline` is the plain Rectangle tool and
-/// `.solidColor` the Solid Rectangle tool; the other three are the Redact tool's styles and
+/// `.filled` the Filled Rectangle tool; the other three are the Redact tool's styles and
 /// hide whatever sits under the rectangle.
 enum RectangleStyle: String, CaseIterable {
     case outline
-    case solidColor
+    case filled
     case solid
     case pixelate
     case blur
@@ -227,7 +227,7 @@ enum RectangleStyle: String, CaseIterable {
     var displayName: String {
         switch self {
         case .outline: return "Outline"
-        case .solidColor: return "Solid"
+        case .filled: return "Filled"
         case .solid: return "Solid"
         case .pixelate: return "Pixelate"
         case .blur: return "Blur"
@@ -256,7 +256,7 @@ struct Rectangle {
     var isRedaction: Bool { RectangleStyle.redactionStyles.contains(style) }
 
     /// Whether this rectangle covers everything created before it, whatever the kind, and
-    /// sits under everything created after it. Redactions and solid rectangles do.
+    /// sits under everything created after it. Redactions and filled rectangles do.
     var coversOlder: Bool { style != .outline }
 
     /// Whether this rectangle needs captured screen pixels to render its style.
@@ -280,14 +280,14 @@ struct Circle {
     var color: NSColor
     var lineWidth: CGFloat
     var creationTime: CFTimeInterval?
-    /// Whether the Solid Oval tool drew it, in solid `color` rather than as an outline.
-    var solid = false
+    /// Whether the Filled Oval tool drew it, filled with `color` rather than drawn as an outline.
+    var filled = false
     /// Stable identity that survives moves, edits, undo and fade compaction. Not part of
     /// equality. A pasted or duplicated copy gets a fresh one.
     var id = UUID()
 
-    /// Whether this circle covers everything created before it, as a solid rectangle does.
-    var coversOlder: Bool { solid }
+    /// Whether this circle covers everything created before it, as a filled rectangle does.
+    var coversOlder: Bool { filled }
 
     /// The bounds of the ellipse, spanned by the two corner points.
     var bounds: NSRect {
@@ -587,7 +587,7 @@ extension Circle: Equatable {
     public static func == (lhs: Circle, rhs: Circle) -> Bool {
         return lhs.startPoint == rhs.startPoint && lhs.endPoint == rhs.endPoint
             && lhs.color.isEqual(rhs.color) && lhs.lineWidth == rhs.lineWidth && lhs.creationTime == rhs.creationTime
-            && lhs.solid == rhs.solid
+            && lhs.filled == rhs.filled
     }
 }
 

@@ -228,7 +228,7 @@ extension CaptureRecord.Shape {
             color: CaptureRecord.hex(rectangle.color),
             width: rectangle.lineWidth,
             rect: space.rect(rectangle.bounds),
-            solid: rectangle.style == .solidColor ? true : nil)
+            filled: rectangle.style == .filled ? true : nil)
     }
 
     init(_ circle: Circle, space: CaptureRecord.DisplaySpace) {
@@ -239,7 +239,7 @@ extension CaptureRecord.Shape {
             color: CaptureRecord.hex(circle.color),
             width: circle.lineWidth,
             rect: space.rect(bounds),
-            solid: circle.solid ? true : nil)
+            filled: circle.filled ? true : nil)
     }
 }
 

@@ -31,24 +31,24 @@ extension ToolbarAction {
 }
 
 extension ToolType {
-    /// The overlay toolbar's tool chips, in order. A solid tool has no chip of its own: it
+    /// The overlay toolbar's tool chips, in order. A filled tool has no chip of its own: it
     /// shares its shape's chip (`toolbarChip`), which shows whichever of the two was selected
-    /// last and selects the solid one on a Shift-click.
+    /// last and selects the filled one on a Shift-click.
     static let toolbarChips: [ToolType] = [
         .pen, .arrow, .line, .highlighter, .rectangle, .circle, .redact, .text, .counter, .select, .eraser,
     ]
 
-    /// The chip this tool is shown on: its own, or for a solid tool its shape's chip.
+    /// The chip this tool is shown on: its own, or for a filled tool its shape's chip.
     var toolbarChip: ToolType {
         switch self {
-        case .solidRectangle: return .rectangle
-        case .solidCircle: return .circle
+        case .filledRectangle: return .rectangle
+        case .filledCircle: return .circle
         default: return self
         }
     }
 
-    /// The solid tool that shares this tool's chip, for the two outline shapes.
-    var solidVersion: ToolType? {
+    /// The filled tool that shares this tool's chip, for the two outline shapes.
+    var filledVersion: ToolType? {
         ToolType.allCases.first { $0 != self && $0.toolbarChip == self }
     }
 }
@@ -276,12 +276,12 @@ struct ToolbarView: View {
 
     /// A tool chip. It shows, and is named for, the tool it showed last (`shownTool(on:)`),
     /// and is active while either of its tools is current. Its action always asks for the
-    /// chip's own tool: the panel turns a Shift-click on a shape chip into the solid tool,
+    /// chip's own tool: the panel turns a Shift-click on a shape chip into the filled tool,
     /// and VoiceOver, which can't Shift-click, gets the other version as a named action.
     private func toolChip(_ chipTool: ToolType) -> some View {
         let shown = model.shownTool(on: chipTool)
         let active = model.activeTool.toolbarChip == chipTool
-        let other = chipTool.solidVersion.map { shown == chipTool ? $0 : chipTool }
+        let other = chipTool.filledVersion.map { shown == chipTool ? $0 : chipTool }
         return HoverScaleButton(action: { perform(.tool(chipTool)) }, label: {
             chip(symbol: shown.symbolName, keycap: keycapText(for: .tool(shown)), active: active)
                 .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
@@ -290,16 +290,16 @@ struct ToolbarView: View {
         })
         .accessibilityIdentifier("toolbar.tool.\(chipTool.rawValue)")
         .accessibilityLabel(shown.displayName)
-        .accessibilityHint(toolHint(showing: shown, hasSolidVersion: other != nil))
+        .accessibilityHint(toolHint(showing: shown, hasFilledVersion: other != nil))
         .accessibilityAddTraits(active ? .isSelected : [])
         .otherVersionAction(other) { perform(.tool($0)) }
     }
 
-    /// The shortcut of the tool the chip shows, then how to reach the solid version.
-    private func toolHint(showing shown: ToolType, hasSolidVersion: Bool) -> String {
+    /// The shortcut of the tool the chip shows, then how to reach the filled version.
+    private func toolHint(showing shown: ToolType, hasFilledVersion: Bool) -> String {
         let shortcut = shortcutHint(for: .tool(shown))
-        guard hasSolidVersion else { return shortcut }
-        let shiftClick = "Shift-click for the solid version"
+        guard hasFilledVersion else { return shortcut }
+        let shiftClick = "Shift-click for the filled version"
         return shortcut.isEmpty ? shiftClick : "\(shortcut). \(shiftClick)"
     }
 

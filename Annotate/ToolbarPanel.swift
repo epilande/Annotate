@@ -589,10 +589,10 @@ final class ToolbarPress {
     }
 
     /// The action a chip's click stands for: a Shift-click on a shape chip asks for the
-    /// shape's solid tool. Shift changes nothing on any other chip.
+    /// shape's filled tool. Shift changes nothing on any other chip.
     func resolve(_ action: ToolbarAction) -> ToolbarAction {
-        guard isShiftHeld, case .tool(let tool) = action, let solid = tool.solidVersion else { return action }
-        return .tool(solid)
+        guard isShiftHeld, case .tool(let tool) = action, let filled = tool.filledVersion else { return action }
+        return .tool(filled)
     }
 
     func deliver(_ body: () -> Void) {

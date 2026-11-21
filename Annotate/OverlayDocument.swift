@@ -4,8 +4,8 @@ import Cocoa
 /// what it draws.
 ///
 /// Every band except `selection` paints once per redaction layer (see
-/// `OverlayDocument.RedactionLayer`): a covering shape (a redaction, solid rectangle or
-/// solid circle) covers what was created before it, whatever the band, and sits under what
+/// `OverlayDocument.RedactionLayer`): a covering shape (a redaction, filled rectangle or
+/// filled circle) covers what was created before it, whatever the band, and sits under what
 /// came after. `redactions`, which paints the covering shapes, therefore comes after every
 /// content band, or a newer one would let older content show through.
 /// `selection` is chrome with no creation time and paints once, over everything.
@@ -81,7 +81,7 @@ struct OverlayDocument {
     var selectionRectEnd: NSPoint?
 
     /// A shape that covers everything created before it and sits under everything after:
-    /// a redaction, a solid rectangle, or a solid circle (`coversOlder`).
+    /// a redaction, a filled rectangle, or a filled circle (`coversOlder`).
     enum Cover: Equatable, Hashable {
         case rectangle(index: Int)
         case circle(index: Int)
@@ -112,7 +112,7 @@ struct OverlayDocument {
     }
 
     /// A stretch of creation times between two consecutive covering shapes (see `Cover`; the
-    /// name predates solid shapes). Everything created in `start..<end` paints over the
+    /// name predates filled shapes). Everything created in `start..<end` paints over the
     /// covering shape made at `start` and under the one at `end`.
     struct RedactionLayer: Equatable {
         var start: CFTimeInterval = -.infinity
