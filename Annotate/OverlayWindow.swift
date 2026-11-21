@@ -179,7 +179,18 @@ class OverlayWindow: NSPanel {
     func refreshToolbar() {
         guard overlayView != nil else { return }
         if toolbarModel.activeTool != overlayView.currentTool {
+            let chip = overlayView.currentTool.toolbarChip
+            let shownBefore = toolbarModel.shownTool(on: chip)
             toolbarModel.activeTool = overlayView.currentTool
+            // A shape chip that swaps versions swaps keycaps too (O and ⇧O), which changes its
+            // width, so the bar has to be re-measured or it wraps inside the old frame.
+            if toolbarModel.shownTool(on: chip) != shownBefore, let panel = toolbarPanel {
+                panel.fitToContent()
+                if panel.isAttached {
+                    // Re-measuring kept the bar centered, so a parked bar's saved offset is stale.
+                    panel.resavePositionIfParked()
+                }
+            }
         }
         if toolbarModel.currentColor != overlayView.currentColor {
             toolbarModel.currentColor = overlayView.currentColor

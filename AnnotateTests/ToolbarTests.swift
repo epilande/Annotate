@@ -620,6 +620,31 @@ final class ToolbarTests: XCTestCase {
         }
     }
 
+    func testTheBarRefitsWhenAShapeChipSwapsVersions() throws {
+        let wideWindow = OverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { wideWindow.close() }
+        let panel = try XCTUnwrap(wideWindow.toolbarPanel)
+        let available = 1_920 - ToolbarPanel.edgeInset * 2
+        let initial = try realizedToolbarFrame(wideWindow)
+
+        // The filled versions' keycaps (⇧R, ⇧O) are wider than R and O, so each swap widens
+        // its chip. The tool arrives the way the app applies it to every overlay.
+        for tool in [ToolType.filledRectangle, .filledCircle, .circle, .filledCircle] {
+            wideWindow.overlayView.currentTool = tool
+            wideWindow.refreshToolbar()
+            let frame = try realizedToolbarFrame(wideWindow)
+            let measured = panel.measuredSize(availableWidth: available)
+            XCTAssertEqual(frame.width, measured.width, accuracy: 1, "After \(tool), the panel fits the bar's width")
+            XCTAssertEqual(frame.height, initial.height, accuracy: 1, "After \(tool), the bar stays on one row")
+        }
+        XCTAssertGreaterThan(panel.frame.width, initial.width, "Both filled keycaps make the bar wider than at first")
+    }
+
     func testAShiftDragFromAShapeChipMovesTheBarAndSelectsNothing() throws {
         let panel = try XCTUnwrap(window.toolbarPanel)
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
