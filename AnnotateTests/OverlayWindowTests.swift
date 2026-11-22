@@ -384,6 +384,65 @@ final class OverlayWindowTests: XCTestCase, Sendable {
         XCTAssertTrue(window.overlayView.arrows.isEmpty, "The arrow is on the undo stack")
     }
 
+    /// Runs `step` as its own undo step, as each user action is.
+    private func undoStep(_ step: () -> Void) throws {
+        let undoManager = try XCTUnwrap(window.undoManager)
+        undoManager.groupsByEvent = false
+        undoManager.beginUndoGrouping()
+        step()
+        undoManager.endUndoGrouping()
+    }
+
+    func testUndoingAnCircleRemovesThatCircleAfterDeleteLastReorderedThem() throws {
+        let view = window.overlayView!
+        view.fadeMode = false
+        let outline = TestFactory.createCircle(time: 1)
+        var filled = TestFactory.createCircle(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        filled.filled = true
+        for circle in [outline, filled] {
+            try undoStep {
+                view.registerUndo(action: .addCircle(circle))
+                view.circles.append(circle)
+            }
+        }
+
+        // Delete Last with the Circle tool takes the outline from under the filled circle, and
+        // undoing that puts it back at the end.
+        view.currentTool = .circle
+        try undoStep { view.deleteLastItem() }
+        view.undo()
+        XCTAssertEqual(view.circles.map(\.id), [filled.id, outline.id])
+
+        view.undo()
+        XCTAssertEqual(view.circles.map(\.id), [outline.id], "Undo removes the filled circle it added, not the last one")
+    }
+
+    func testUndoingAnCircleMoveMovesThatCircleAfterDeleteLastReorderedThem() throws {
+        let view = window.overlayView!
+        view.fadeMode = false
+        let outline = TestFactory.createCircle(time: 1)
+        var filled = TestFactory.createCircle(start: NSPoint(x: 200, y: 200), end: NSPoint(x: 300, y: 300), time: 2)
+        filled.filled = true
+        view.circles = [outline, filled]
+
+        view.circles[1].startPoint = NSPoint(x: 210, y: 200)
+        view.circles[1].endPoint = NSPoint(x: 310, y: 300)
+        try undoStep {
+            view.registerMoveUndo(
+                object: .circle(index: 1),
+                from: (filled.startPoint, filled.endPoint),
+                to: (NSPoint(x: 210, y: 200), NSPoint(x: 310, y: 300)))
+        }
+        view.currentTool = .circle
+        try undoStep { view.deleteLastItem() }
+        view.undo()
+        XCTAssertEqual(view.circles.map(\.id), [filled.id, outline.id])
+
+        view.undo()
+        XCTAssertEqual(view.circles.first?.startPoint, filled.startPoint, "The moved circle goes back")
+        XCTAssertEqual(view.circles.last?.startPoint, outline.startPoint, "The other circle stays put")
+    }
+
     func testClearAllMidDragDropsFurtherPointsWithoutTrapping() {
         window.overlayView.paths = [
             DrawingPath(

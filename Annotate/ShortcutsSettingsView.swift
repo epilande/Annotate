@@ -120,8 +120,22 @@ struct ShortcutsSettingsView: View {
                 )
                 ShortcutSettingRow(
                     tool: .circle,
-                    label: "Circle",
-                    description: "Draw circular shapes",
+                    label: "Oval",
+                    description: "Draw oval shapes",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .filledRectangle,
+                    label: ShortcutKey.filledRectangle.displayName,
+                    description: "Draw a filled rectangle in the current color, over everything drawn before it",
+                    shortcuts: $shortcuts,
+                    editingShortcut: $editingShortcut
+                )
+                ShortcutSettingRow(
+                    tool: .filledCircle,
+                    label: ShortcutKey.filledCircle.displayName,
+                    description: "Draw a filled oval in the current color, over everything drawn before it",
                     shortcuts: $shortcuts,
                     editingShortcut: $editingShortcut
                 )

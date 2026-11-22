@@ -15,7 +15,7 @@ struct ToolsSettingsView: View {
     var showCapturePane: (() -> Void)?
 
     /// The Redact tool's fills. `.outline` is the plain Rectangle tool, not a redaction.
-    static let redactionStyles = RectangleStyle.allCases.filter { $0 != .outline }
+    static let redactionStyles = RectangleStyle.redactionStyles
 
     var body: some View {
         let minTextSize = Double(textAnnotationFontSizeRange.lowerBound)

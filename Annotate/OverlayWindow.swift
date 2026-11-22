@@ -179,7 +179,18 @@ class OverlayWindow: NSPanel {
     func refreshToolbar() {
         guard overlayView != nil else { return }
         if toolbarModel.activeTool != overlayView.currentTool {
+            let chip = overlayView.currentTool.toolbarChip
+            let shownBefore = toolbarModel.shownTool(on: chip)
             toolbarModel.activeTool = overlayView.currentTool
+            // A shape chip that swaps versions swaps keycaps too (O and ⇧O), which changes its
+            // width, so the bar has to be re-measured or it wraps inside the old frame.
+            if toolbarModel.shownTool(on: chip) != shownBefore, let panel = toolbarPanel {
+                panel.fitToContent()
+                if panel.isAttached {
+                    // Re-measuring kept the bar centered, so a parked bar's saved offset is stale.
+                    panel.resavePositionIfParked()
+                }
+            }
         }
         if toolbarModel.currentColor != overlayView.currentColor {
             toolbarModel.currentColor = overlayView.currentColor
@@ -958,6 +969,8 @@ class OverlayWindow: NSPanel {
         case .highlighter: AppDelegate.shared?.enableHighlighterMode(NSMenuItem())
         case .rectangle: AppDelegate.shared?.enableRectangleMode(NSMenuItem())
         case .circle: AppDelegate.shared?.enableCircleMode(NSMenuItem())
+        case .filledRectangle: AppDelegate.shared?.enableFilledRectangleMode(NSMenuItem())
+        case .filledCircle: AppDelegate.shared?.enableFilledCircleMode(NSMenuItem())
         case .redact: AppDelegate.shared?.enableRedactMode(NSMenuItem())
         case .counter: AppDelegate.shared?.enableCounterMode(NSMenuItem())
         case .text: AppDelegate.shared?.enableTextMode(NSMenuItem())
@@ -1211,7 +1224,7 @@ class OverlayWindow: NSPanel {
             // A label under a newer redaction, even partly, stays out of reach, so a drag or
             // double-click there can never bring out its hidden text.
             for (index, annotation) in overlayView.textAnnotations.enumerated()
-            where !overlayView.isPointCoveredByRedaction(startPoint, over: annotation.creationTime)
+            where !overlayView.isPointCovered(startPoint, over: annotation.creationTime)
                 && !overlayView.isTextCoveredByRedaction(annotation) {
                 let textRect = getTextRect(for: annotation)
                 if textRect.contains(startPoint) {
@@ -1277,19 +1290,33 @@ class OverlayWindow: NSPanel {
                 ),
                 tool: .highlighter
             )
-        case .rectangle, .redact:
+        case .rectangle, .filledRectangle, .redact:
             activeShapeTool = overlayView.currentTool
+            let style: RectangleStyle
+            switch overlayView.currentTool {
+            case .redact: style = overlayView.pickerSettings[.redactionStyle]
+            case .filledRectangle: style = .filled
+            default: style = .outline
+            }
             overlayView.currentRectangle = Rectangle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor,
-                lineWidth: overlayView.currentLineWidth, creationTime: nil,
-                style: overlayView.currentTool == .redact ? overlayView.pickerSettings[.redactionStyle] : .outline)
+                startPoint: startPoint,
+                endPoint: startPoint,
+                color: overlayView.currentColor,
+                lineWidth: overlayView.currentLineWidth,
+                creationTime: nil,
+                style: style)
             if overlayView.currentRectangle?.needsSample == true {
                 overlayView.beginRedactionDrag()
             }
-        case .circle:
-            activeShapeTool = .circle
+        case .circle, .filledCircle:
+            activeShapeTool = overlayView.currentTool
             overlayView.currentCircle = Circle(
-                startPoint: startPoint, endPoint: startPoint, color: overlayView.currentColor, lineWidth: overlayView.currentLineWidth, creationTime: nil)
+                startPoint: startPoint,
+                endPoint: startPoint,
+                color: overlayView.currentColor,
+                lineWidth: overlayView.currentLineWidth,
+                creationTime: nil,
+                filled: overlayView.currentTool == .filledCircle)
         case .text:
             break
         case .counter:
@@ -1457,7 +1484,7 @@ class OverlayWindow: NSPanel {
             overlayView.currentLine?.endPoint = isShiftConstraintActive
                 ? snapToStraightLine(from: anchorPoint, to: currentPoint)
                 : currentPoint
-        case .rectangle, .redact:
+        case .rectangle, .filledRectangle, .redact:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1479,7 +1506,7 @@ class OverlayWindow: NSPanel {
 
             overlayView.currentRectangle?.startPoint = newStart
             overlayView.currentRectangle?.endPoint = newEnd
-        case .circle:
+        case .circle, .filledCircle:
             var newStart = anchorPoint
             var newEnd = currentPoint
 
@@ -1560,7 +1587,7 @@ class OverlayWindow: NSPanel {
                 overlayView.lines.append(currentLine)
                 overlayView.currentLine = nil
             }
-        case .rectangle, .redact:
+        case .rectangle, .filledRectangle, .redact:
             if var currentRectangle = overlayView.currentRectangle {
                 currentRectangle.creationTime = CACurrentMediaTime()
                 // Keep the live sample on screen, but not on the undo stack.
@@ -1570,7 +1597,7 @@ class OverlayWindow: NSPanel {
                 overlayView.rectangles.append(currentRectangle)
                 overlayView.currentRectangle = nil
             }
-        case .circle:
+        case .circle, .filledCircle:
             if var currentCircle = overlayView.currentCircle {
                 currentCircle.creationTime = CACurrentMediaTime()
                 overlayView.registerUndo(action: .addCircle(currentCircle))
@@ -1914,9 +1941,11 @@ class OverlayWindow: NSPanel {
         let signY: CGFloat = end.y >= start.y ? 1.0 : -1.0
 
         if centerMode {
+            // `start` and `end` already span the whole box around the anchor.
+            let half = size / 2
             return (
-                NSPoint(x: anchor.x - signX * size, y: anchor.y - signY * size),
-                NSPoint(x: anchor.x + signX * size, y: anchor.y + signY * size)
+                NSPoint(x: anchor.x - signX * half, y: anchor.y - signY * half),
+                NSPoint(x: anchor.x + signX * half, y: anchor.y + signY * half)
             )
         } else {
             return (start, NSPoint(x: start.x + signX * size, y: start.y + signY * size))
@@ -2164,8 +2193,14 @@ class OverlayWindow: NSPanel {
             toolName = "Rectangle"
             icon = "🔲"
         case .circle:
-            toolName = "Circle"
+            toolName = "Oval"
             icon = "⭕"
+        case .filledRectangle:
+            toolName = "Filled Rectangle"
+            icon = "⬛"
+        case .filledCircle:
+            toolName = "Filled Oval"
+            icon = "⚫"
         case .redact:
             toolName = "Redact"
             icon = "🕶️"
@@ -2186,7 +2221,7 @@ class OverlayWindow: NSPanel {
         let currentWidth = overlayView.currentLineWidth
 
         switch tool {
-        case .pen, .arrow, .line, .highlighter, .rectangle, .circle:
+        case .pen, .arrow, .line, .highlighter, .rectangle, .circle, .filledRectangle, .filledCircle:
             let widthText = String(format: "%.2f px", currentWidth)
             let text = "\(icon) \(toolName) • \(widthText)"
             showFeedback(text, lineColor: overlayView.currentColor, lineWidth: currentWidth)

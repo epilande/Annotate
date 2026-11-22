@@ -633,8 +633,10 @@ class OverlayView: NSView, NSTextFieldDelegate {
         case .addCircle(let circle):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if !target.circles.isEmpty {
-                        target.circles.removeLast()
+                    // Match by id: Delete Last removes the newest circle of the active tool's
+                    // kind, and undoing that appends it, so this circle may not be last.
+                    if let index = target.circles.lastIndex(where: { $0.id == circle.id }) {
+                        target.circles.remove(at: index)
                         target.registerUndo(action: .removeCircle(circle))
                     }
                 }
@@ -718,13 +720,14 @@ class OverlayView: NSView, NSTextFieldDelegate {
                     }
                 }
             }
-        case .moveCircle(let index, let fromStart, let fromEnd, let toStart, let toEnd):
+        case let .moveCircle(id, fromStart, fromEnd, toStart, toEnd):
             manager?.registerUndo(withTarget: self) { target in
                 MainActor.assumeIsolated {
-                    if index < target.circles.count {
+                    // By id, since deleting an circle or undoing that shifts the indices.
+                    if let index = target.circles.firstIndex(where: { $0.id == id }) {
                         target.circles[index].startPoint = fromStart
                         target.circles[index].endPoint = fromEnd
-                        target.registerUndo(action: .moveCircle(index, toStart, toEnd, fromStart, fromEnd))
+                        target.registerUndo(action: .moveCircle(id, toStart, toEnd, fromStart, fromEnd))
                     }
                 }
             }
@@ -1296,12 +1299,22 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     var redactionIndicesByCreation: [Int] { document.redactionIndicesByCreation }
 
-    /// Whether a redaction newer than something created at `creationTime` covers `point`,
-    /// so interactions do not reach what that redaction hides.
-    func isPointCoveredByRedaction(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
+    /// Whether a covering shape (a redaction, filled rectangle or filled circle) newer than
+    /// something created at `creationTime` covers `point`, so interactions do not reach what
+    /// it hides. A filled shape that has faded out no longer covers anything. Coverage is
+    /// what the shape paints, so a filled shape's outline counts as well as its inside.
+    func isPointCovered(_ point: NSPoint, over creationTime: CFTimeInterval?) -> Bool {
         let time = RedactionLayer.time(of: creationTime)
-        return rectangles.contains {
-            $0.isRedaction && RedactionLayer.time(of: $0.creationTime) > time && $0.bounds.contains(point)
+        func isNewer(_ other: CFTimeInterval?) -> Bool { RedactionLayer.time(of: other) > time }
+        let byRectangle = rectangles.indices.contains { index in
+            let rectangle = rectangles[index]
+            return rectangle.coversOlder && isNewer(rectangle.creationTime)
+                && rectangle.ink.contains(point) && !isFadedOut(.rectangle(index: index))
+        }
+        return byRectangle || circles.indices.contains { index in
+            let circle = circles[index]
+            return circle.coversOlder && isNewer(circle.creationTime)
+                && circle.ink.contains(point) && !isFadedOut(.circle(index: index))
         }
     }
 
@@ -1771,20 +1784,27 @@ class OverlayView: NSView, NSTextFieldDelegate {
             let lastHighlight = highlightPaths.last!
             registerUndo(action: .removeHighlight(lastHighlight))
             highlightPaths.removeLast()
-        case .rectangle, .redact:
+        case .rectangle, .filledRectangle, .redact:
             // Only the active tool's kind, so the Rectangle tool never deletes a redaction.
-            let wantsRedaction = currentTool == .redact
-            guard let index = rectangles.lastIndex(where: { $0.isRedaction == wantsRedaction }) else { return }
+            let tool = currentTool
+            guard let index = rectangles.lastIndex(where: { rectangle in
+                switch tool {
+                case .redact: return rectangle.isRedaction
+                case .filledRectangle: return rectangle.style == .filled
+                default: return rectangle.style == .outline
+                }
+            }) else { return }
             var lastRectangle = rectangles[index]
             // Undo resamples instead of restoring an old capture.
             lastRectangle.sample = nil
             registerUndo(action: .removeRectangle(lastRectangle))
             rectangles.remove(at: index)
-        case .circle:
-            guard !circles.isEmpty else { return }
-            let lastCircle = circles.last!
-            registerUndo(action: .removeCircle(lastCircle))
-            circles.removeLast()
+        case .circle, .filledCircle:
+            // Only the active tool's kind, as for rectangles.
+            let wantsFilled = currentTool == .filledCircle
+            guard let index = circles.lastIndex(where: { $0.filled == wantsFilled }) else { return }
+            registerUndo(action: .removeCircle(circles[index]))
+            circles.remove(at: index)
         case .text:
             guard !textAnnotations.isEmpty else { return }
             let lastText = textAnnotations.last!
@@ -2670,21 +2690,29 @@ class OverlayView: NSView, NSTextFieldDelegate {
 
     /// Find object at point, checking in reverse order (topmost/latest first)
     func findObjectAt(point: NSPoint) -> SelectedObject {
-        // Walk the redaction layers newest first, mirroring how draw stacks them: the
-        // annotations above a redaction, then the redaction itself, then what it covers.
+        // Walk the layers newest first, mirroring how draw stacks them: the annotations above
+        // a covering shape, then the shape itself, then what it covers.
         var layer = RedactionLayer()
-        for index in redactionIndicesByCreation.reversed() {
-            layer.start = RedactionLayer.time(of: rectangles[index].creationTime)
+        for cover in document.coversByCreation.reversed() {
+            layer.start = RedactionLayer.time(of: document.creationTime(of: cover))
             if let object = findAnnotation(at: point, in: layer) { return object }
-            if !isFadedOut(.rectangle(index: index)) && hitTestRectangle(rectangles[index], point: point) {
-                return .rectangle(index: index)
+            switch cover {
+            case .rectangle(let index):
+                if !isFadedOut(.rectangle(index: index)) && hitTestRectangle(rectangles[index], point: point) {
+                    return .rectangle(index: index)
+                }
+            case .circle(let index):
+                if !isFadedOut(.circle(index: index)) && hitTestCircle(circles[index], point: point) {
+                    return .circle(index: index)
+                }
             }
             layer = RedactionLayer(end: layer.start)
         }
         return findAnnotation(at: point, in: layer) ?? .none
     }
 
-    /// The topmost non-redaction annotation created within `layer` that contains `point`.
+    /// The topmost annotation created within `layer` that contains `point`, apart from the
+    /// covering shapes, which `findObjectAt` checks between layers.
     private func findAnnotation(at point: NSPoint, in layer: RedactionLayer) -> SelectedObject? {
         // Check in reverse order - last drawn is on top
 
@@ -2704,7 +2732,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         }
         
         // 3. Check circles
-        for (index, circle) in circles.enumerated().reversed() where layer.contains(circle.creationTime) {
+        for (index, circle) in circles.enumerated().reversed()
+            where !circle.coversOlder && layer.contains(circle.creationTime)
+        {
             if isFadedOut(.circle(index: index)) { continue }
             if hitTestCircle(circle, point: point) {
                 return .circle(index: index)
@@ -2713,7 +2743,7 @@ class OverlayView: NSView, NSTextFieldDelegate {
         
         // 4. Check rectangles
         for (index, rect) in rectangles.enumerated().reversed()
-            where !rect.isRedaction && layer.contains(rect.creationTime)
+            where !rect.coversOlder && layer.contains(rect.creationTime)
         {
             if isFadedOut(.rectangle(index: index)) { continue }
             if hitTestRectangle(rect, point: point) {
@@ -2978,44 +3008,33 @@ class OverlayView: NSView, NSTextFieldDelegate {
         let outerBounds = bounds.insetBy(dx: -edgeTolerance, dy: -edgeTolerance)
         let innerBounds = bounds.insetBy(dx: edgeTolerance, dy: edgeTolerance)
 
-        // A redaction is a filled block, so its whole area is clickable.
-        if rect.isRedaction { return outerBounds.contains(point) }
+        // A redaction or filled rectangle is a solid block, so its whole area is clickable.
+        if rect.coversOlder { return outerBounds.contains(point) }
 
         // Point is on edge if it's in outer but not in inner
         return outerBounds.contains(point) && !innerBounds.contains(point)
     }
     
     private func hitTestCircle(_ circle: Circle, point: NSPoint) -> Bool {
-        let bounds = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
-        )
-        
-        let centerX = bounds.midX
-        let centerY = bounds.midY
-        let radiusX = bounds.width / 2
-        let radiusY = bounds.height / 2
-        
-        let dx = (point.x - centerX) / radiusX
-        let dy = (point.y - centerY) / radiusY
-        let normalizedDistance = sqrt(dx * dx + dy * dy)
-        
-        // Only check edge/perimeter (not inside)
-        let baseTolerance = circle.lineWidth / 2.0
-        let minClickableTolerance: CGFloat = 5.0
-        let edgeTolerance = max(baseTolerance, minClickableTolerance)
-        
-        let toleranceNormalized = edgeTolerance / min(radiusX, radiusY)
-        
-        // Point is on edge if distance is between (1.0 - tolerance) and (1.0 + tolerance)
-        let innerBoundary = max(0, 1.0 - toleranceNormalized)
-        let outerBoundary = 1.0 + toleranceNormalized
-        
-        return normalizedDistance >= innerBoundary && normalizedDistance <= outerBoundary
+        let ellipse = CGPath(
+            ellipseIn: AnnotationRenderer.paddedBounds(circle.startPoint, circle.endPoint, padding: 0),
+            transform: nil)
+
+        // The outline is clickable within its own half width, or 5 points when it is thinner.
+        // Measured in points from the ellipse itself, so the reach is the same all the way
+        // round, however flat the circle is.
+        let edgeTolerance = max(circle.lineWidth / 2.0, 5.0)
+        let edge = ellipse.copy(
+            strokingWithWidth: edgeTolerance * 2,
+            lineCap: .butt,
+            lineJoin: .miter,
+            miterLimit: 10)
+        if edge.contains(point) { return true }
+
+        // A filled circle's whole area is clickable; an outline is not clickable inside.
+        return circle.filled && ellipse.contains(point)
     }
-    
+
     private func hitTestText(_ text: TextAnnotation, point: NSPoint) -> Bool {
         let textRect = getTextRect(for: text)
         return textRect.contains(point)
@@ -3190,8 +3209,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
         // Check if point is near any of the four edges
         let bounds = rectangle.bounds
 
-        // A redaction is a filled block, so the eraser removes it from anywhere inside.
-        if rectangle.isRedaction && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
+        // A redaction or filled rectangle is a solid block, so the eraser removes it from
+        // anywhere inside.
+        if rectangle.coversOlder && bounds.insetBy(dx: -radius, dy: -radius).contains(point) {
             return true
         }
 
@@ -3207,25 +3227,21 @@ class OverlayView: NSView, NSTextFieldDelegate {
     }
 
     private func circleIntersectsPoint(_ circle: Circle, point: NSPoint, radius: CGFloat) -> Bool {
-        let bounds = NSRect(
-            x: min(circle.startPoint.x, circle.endPoint.x),
-            y: min(circle.startPoint.y, circle.endPoint.y),
-            width: abs(circle.endPoint.x - circle.startPoint.x),
-            height: abs(circle.endPoint.y - circle.startPoint.y)
-        )
+        let ellipse = CGPath(
+            ellipseIn: AnnotationRenderer.paddedBounds(circle.startPoint, circle.endPoint, padding: 0),
+            transform: nil)
 
-        let centerX = bounds.midX
-        let centerY = bounds.midY
-        let radiusX = bounds.width / 2
-        let radiusY = bounds.height / 2
+        // Within the eraser's radius of the ellipse, measured in points so the reach is the
+        // same all the way round, however flat the circle is.
+        let reach = ellipse.copy(
+            strokingWithWidth: radius * 2,
+            lineCap: .butt,
+            lineJoin: .miter,
+            miterLimit: 10)
+        if reach.contains(point) { return true }
 
-        // Distance from point to ellipse edge (approximate)
-        let dx = point.x - centerX
-        let dy = point.y - centerY
-        let normalizedDist = sqrt((dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY))
-        let edgeDistance = abs(normalizedDist - 1.0) * min(radiusX, radiusY)
-
-        return edgeDistance <= radius
+        // The eraser removes a filled circle from anywhere inside.
+        return circle.filled && ellipse.contains(point)
     }
 
     private func textIntersectsPoint(_ text: TextAnnotation, point: NSPoint, radius: CGFloat) -> Bool {
@@ -3365,8 +3381,9 @@ class OverlayView: NSView, NSTextFieldDelegate {
             }
         case .circle(let index):
             if let oldPositions = oldPos as? (NSPoint, NSPoint),
-               let newPositions = newPos as? (NSPoint, NSPoint) {
-                registerUndo(action: .moveCircle(index, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
+               let newPositions = newPos as? (NSPoint, NSPoint), circles.indices.contains(index) {
+                let id = circles[index].id
+                registerUndo(action: .moveCircle(id, oldPositions.0, oldPositions.1, newPositions.0, newPositions.1))
             }
         case .text(let index):
             if let oldPosition = oldPos as? NSPoint,
