@@ -284,7 +284,11 @@ struct ToolbarView: View {
         let active = model.activeTool.toolbarChip == chipTool
         let other = chipTool.filledVersion.map { shown == chipTool ? $0 : chipTool }
         return HoverScaleButton(action: { perform(.tool(chipTool)) }, label: {
-            chip(symbol: shown.symbolName, keycap: keycapText(for: .tool(shown)), active: active)
+            chip(
+                symbol: shown.symbolName,
+                keycap: keycapText(for: .tool(shown)),
+                reserving: other.map { [keycapText(for: .tool($0))] } ?? [],
+                active: active)
                 .anchorPreference(key: SelectedToolBounds.self, value: .bounds) {
                     active ? $0 : nil
                 }
@@ -305,13 +309,17 @@ struct ToolbarView: View {
         return shortcut.isEmpty ? shiftClick : "\(shortcut). \(shiftClick)"
     }
 
-    private func chip(symbol: String, keycap text: String, active: Bool = false) -> some View {
+    /// `reserving` names keycaps the chip can switch to, such as a shape chip's other version
+    /// (R and ⇧R), so the chip keeps one width whichever it shows.
+    private func chip(
+        symbol: String, keycap text: String, reserving reserved: [String] = [], active: Bool = false
+    ) -> some View {
         HStack(spacing: 6) {
             iconSlot {
                 Image(systemName: symbol)
                     .font(Self.symbolFont)
             }
-            keycap(text, lit: active)
+            keycap(text, lit: active, reserving: reserved)
         }
         .chipWidth(filling: isVertical)
         .foregroundStyle(Color.primary.opacity(active ? 1 : 0.76))
@@ -341,25 +349,30 @@ struct ToolbarView: View {
     }
 
     @ViewBuilder
-    private func keycap(_ text: String, lit: Bool = false) -> some View {
+    private func keycap(_ text: String, lit: Bool = false, reserving reserved: [String] = []) -> some View {
         if model.showsShortcuts {
-            keycapLabel(text, lit: lit)
+            keycapLabel(text, lit: lit, reserving: reserved)
         }
     }
 
-    private func keycapLabel(_ text: String, lit: Bool) -> some View {
-        Text(keycap: text.uppercased())
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
-            // The chip's hint speaks the shortcut, so the keycap stays out of its label.
-            .accessibilityHidden(true)
-            .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
-            .fixedSize()
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.primary.opacity(0.1))
-            )
+    /// The keycap is as wide as the widest of `text` and `reserved`, with `text` centered in it.
+    /// The reserved keycaps are laid out hidden, so the width follows custom shortcuts too.
+    private func keycapLabel(_ text: String, lit: Bool, reserving reserved: [String] = []) -> some View {
+        ZStack {
+            ForEach(reserved, id: \.self) { Text(keycap: $0.uppercased()).hidden() }
+            Text(keycap: text.uppercased())
+        }
+        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        // The chip's hint speaks the shortcut, so the keycap stays out of its label.
+        .accessibilityHidden(true)
+        .foregroundStyle(Color.primary.opacity(lit ? 0.95 : 0.58))
+        .fixedSize()
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.primary.opacity(0.1))
+        )
     }
 
     private func shortcut(for key: ShortcutKey) -> String {
