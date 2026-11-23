@@ -517,6 +517,8 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(ToolType.circle.filledVersion, .filledCircle)
         XCTAssertNil(ToolType.pen.filledVersion)
         XCTAssertNil(ToolType.filledCircle.filledVersion)
+        XCTAssertEqual(ToolType.circle.symbolName, "oval", "The Oval chip shows an oval, not a circle")
+        XCTAssertEqual(ToolType.filledCircle.symbolName, "oval.fill")
     }
 
     func testAClickOnAShapeChipSelectsTheOutlineToolAndAShiftClickTheFilledOne() throws {
@@ -588,7 +590,7 @@ final class ToolbarTests: XCTestCase {
 
         select(.filledCircle)
         XCTAssertEqual(model.shownTool(on: .circle), .filledCircle)
-        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "circle.fill")
+        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "oval.fill")
         XCTAssertEqual(model.shownTool(on: .rectangle), .filledRectangle)
 
         select(.rectangle)
@@ -596,7 +598,7 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(model.shownTool(on: .rectangle).symbolName, "rectangle")
         select(.circle)
         XCTAssertEqual(model.shownTool(on: .circle), .circle)
-        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "circle")
+        XCTAssertEqual(model.shownTool(on: .circle).symbolName, "oval")
     }
 
     func testTheShapeShortcutsUpdateTheChip() throws {
@@ -620,7 +622,7 @@ final class ToolbarTests: XCTestCase {
         }
     }
 
-    func testTheBarRefitsWhenAShapeChipSwapsVersions() throws {
+    func testAShapeChipKeepsItsWidthWhenItSwapsVersions() throws {
         let wideWindow = OverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
             styleMask: .borderless,
@@ -630,19 +632,29 @@ final class ToolbarTests: XCTestCase {
         defer { wideWindow.close() }
         let panel = try XCTUnwrap(wideWindow.toolbarPanel)
         let available = 1_920 - ToolbarPanel.edgeInset * 2
-        let initial = try realizedToolbarFrame(wideWindow)
 
-        // The filled versions' keycaps (⇧R, ⇧O) are wider than R and O, so each swap widens
-        // its chip. The tool arrives the way the app applies it to every overlay.
-        for tool in [ToolType.filledRectangle, .filledCircle, .circle, .filledCircle] {
-            wideWindow.overlayView.currentTool = tool
+        // Each shape chip reserves room for both keycaps (R and ⇧R), so swapping versions
+        // never changes the bar. The tool arrives the way the app applies it to every overlay.
+        func assertSwapsKeepTheBar(_ context: String) throws {
+            wideWindow.overlayView.currentTool = .rectangle
             wideWindow.refreshToolbar()
-            let frame = try realizedToolbarFrame(wideWindow)
-            let measured = panel.measuredSize(availableWidth: available)
-            XCTAssertEqual(frame.width, measured.width, accuracy: 1, "After \(tool), the panel fits the bar's width")
-            XCTAssertEqual(frame.height, initial.height, accuracy: 1, "After \(tool), the bar stays on one row")
+            let initial = try realizedToolbarFrame(wideWindow)
+            for tool in [ToolType.filledRectangle, .filledCircle, .circle, .filledCircle, .rectangle] {
+                wideWindow.overlayView.currentTool = tool
+                wideWindow.refreshToolbar()
+                let frame = try realizedToolbarFrame(wideWindow)
+                XCTAssertEqual(frame.size.width, initial.width, accuracy: 0.5, "\(context): \(tool) keeps the width")
+                XCTAssertEqual(frame.size.height, initial.height, accuracy: 0.5, "\(context): \(tool) keeps one row")
+                let measured = panel.measuredSize(availableWidth: available)
+                XCTAssertEqual(frame.size.width, measured.width, accuracy: 1, "\(context): \(tool) fits the panel")
+            }
         }
-        XCTAssertGreaterThan(panel.frame.width, initial.width, "Both filled keycaps make the bar wider than at first")
+        try assertSwapsKeepTheBar("Default shortcuts")
+
+        // A custom shortcut far longer than its pair still keeps both versions one width.
+        wideWindow.toolbarModel.shortcuts[.filledCircle] = "⌃⌥⇧O"
+        panel.fitToContent()
+        try assertSwapsKeepTheBar("Custom Filled Oval shortcut")
     }
 
     func testAShiftDragFromAShapeChipMovesTheBarAndSelectsNothing() throws {
