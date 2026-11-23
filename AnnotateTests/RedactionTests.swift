@@ -258,7 +258,7 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertNotEqual(makeRectangle(style: .solid), makeRectangle(style: .blur))
     }
 
-    func testRedactionStyleSettingDefaultsToFilledAndNeverOutline() {
+    func testRedactionStyleSettingDefaultsToSolidAndNeverOutline() {
         let defaults = TestUserDefaults.create()
         XCTAssertEqual(defaults.settings[.redactionStyle], .solid)
 
@@ -563,7 +563,7 @@ final class RedactionTests: XCTestCase, Sendable {
 
     func testRedactionsLayerByCreationNotByKind() throws {
         overlayView.fadeMode = false
-        // An older redaction under an circle, a newer one over it, side by side.
+        // An older redaction under a circle, a newer one over it, side by side.
         overlayView.circles = [
             TestFactory.createCircle(
                 start: NSPoint(x: 20, y: 20), end: NSPoint(x: 180, y: 180), color: .red, lineWidth: 6, time: 2)
@@ -599,7 +599,7 @@ final class RedactionTests: XCTestCase, Sendable {
         assertColor(try renderedColor(at: NSPoint(x: 100, y: 100)), red: 0, green: 0, blue: 1)
     }
 
-    func testFilledRendersOpaqueBlackAndOutlineStaysClear() throws {
+    func testSolidRendersOpaqueBlackAndOutlineStaysClear() throws {
         overlayView.rectangles = [makeRectangle(style: .solid)]
         assertBlack(try renderedColor(at: NSPoint(x: 100, y: 100)))
 
@@ -644,7 +644,7 @@ final class RedactionTests: XCTestCase, Sendable {
         assertColor(try renderedColor(at: NSPoint(x: 130, y: 70)), red: 1, green: 1, blue: 0, "Bottom-right of the display")
     }
 
-    func testNewerSampledRedactionKeepsAnOlderFilledOneOpaque() throws {
+    func testNewerSampledRedactionKeepsAnOlderSolidOneOpaque() throws {
         overlayView.fadeMode = false
         overlayView.rectangles = [
             makeRectangle(style: .solid, creationTime: 1),
@@ -661,7 +661,7 @@ final class RedactionTests: XCTestCase, Sendable {
 
         assertBlack(
             try renderedColor(at: NSPoint(x: 120, y: 140)),
-            "A sampled redaction never shows real content over a filled one")
+            "A sampled redaction never shows real content over a solid one")
         assertBlack(try renderedColor(at: NSPoint(x: 120, y: 120)), "The overlap hides the arrow too")
         assertColor(try renderedColor(at: NSPoint(x: 70, y: 120)), red: 1, green: 0, blue: 0, "The arrow over the solid block alone")
         assertColor(try renderedColor(at: NSPoint(x: 170, y: 170)), red: 0, green: 1, blue: 0, "The pixelate alone shows its sample")
@@ -751,7 +751,7 @@ final class RedactionTests: XCTestCase, Sendable {
         XCTAssertEqual(sampler.captureCount, 1)
     }
 
-    func testBoardEnabledDrawsFilledOnlyAndDoesNotSample() throws {
+    func testBoardEnabledDrawsSolidOnlyAndDoesNotSample() throws {
         BoardManager.shared.isEnabled = true
         overlayView.updateAdaptColors(boardEnabled: true)
         overlayView.rectangles = [makeRectangle(style: .pixelate)]

@@ -668,7 +668,7 @@ final class ToolbarTests: XCTestCase {
         XCTAssertEqual(spy.selectedTool, .rectangle, "The next plain click is not taken as shifted")
     }
 
-    func testVoiceOverCanSelectTheOtherVersionOfAShapeChip() throws {
+    func testVoiceOverSelectsTheVersionEachShapeChipAnnounces() throws {
         let wasAttached = TestAccessibility.setAssistiveAppAttached(true)
         defer { TestAccessibility.setAssistiveAppAttached(wasAttached) }
         let spy = ToolbarAppDelegateSpy(userDefaults: defaults)
@@ -676,24 +676,34 @@ final class ToolbarTests: XCTestCase {
         defer { AppDelegate.shared = appDelegate }
         let host = try XCTUnwrap(window.toolbarPanel?.hostingView)
 
-        func actions(on identifier: String) -> [NSAccessibilityCustomAction] {
+        let cases: [(shown: ToolType, other: ToolType, chip: String)] = [
+            (.rectangle, .filledRectangle, "toolbar.tool.rectangle"),
+            (.filledRectangle, .rectangle, "toolbar.tool.rectangle"),
+            (.circle, .filledCircle, "toolbar.tool.circle"),
+            (.filledCircle, .circle, "toolbar.tool.circle")
+        ]
+        for testCase in cases {
+            window.overlayView.currentTool = testCase.shown
+            window.refreshToolbar()
             host.layoutSubtreeIfNeeded()
-            return TestAccessibility.customActions(in: host, identifier: identifier)
+            let label = TestAccessibility.elements(in: host)[testCase.chip]?.label
+            XCTAssertEqual(label, testCase.shown.displayName)
+
+            spy.selectedTool = nil
+            TestAccessibility.press(in: host, identifier: testCase.chip)
+            XCTAssertEqual(spy.selectedTool, testCase.shown, "Pressing the chip announced as \(label ?? "nil")")
+
+            spy.selectedTool = nil
+            let offered = TestAccessibility.customActions(in: host, identifier: testCase.chip)
+            XCTAssertEqual(offered.map(\.name), [testCase.other.displayName], "On the chip showing \(testCase.shown)")
+            XCTAssertEqual(offered.first?.handler?(), true)
+            XCTAssertEqual(spy.selectedTool, testCase.other, "The named action on the chip showing \(testCase.shown)")
         }
 
-        var offered = actions(on: "toolbar.tool.rectangle")
-        XCTAssertEqual(offered.map(\.name), ["Filled Rectangle"])
-        XCTAssertEqual(offered.first?.handler?(), true)
-        XCTAssertEqual(spy.selectedTool, .filledRectangle)
-
-        window.overlayView.currentTool = .filledCircle
-        window.refreshToolbar()
-        offered = actions(on: "toolbar.tool.circle")
-        XCTAssertEqual(offered.map(\.name), ["Oval"], "A chip showing the filled version offers the outline one")
-        XCTAssertEqual(offered.first?.handler?(), true)
-        XCTAssertEqual(spy.selectedTool, .circle)
-
-        XCTAssertTrue(actions(on: "toolbar.tool.pen").isEmpty, "Only the shape chips have a second version")
+        host.layoutSubtreeIfNeeded()
+        XCTAssertTrue(
+            TestAccessibility.customActions(in: host, identifier: "toolbar.tool.pen").isEmpty,
+            "Only the shape chips have a second version")
     }
 
     func testAStoredPositionIsRestoredOnAFreshOverlayForTheSameDisplay() throws {

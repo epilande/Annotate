@@ -419,7 +419,7 @@ open "annotate://tool/arrow"
 
 Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard, the menu bar icon, or the Shortcuts actions instead.
 
-- **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle` (the Oval tool), `redact`, `text`, `counter`, `select`, `eraser`
+- **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle` (the Oval tool), `filledRectangle`, `filledCircle` (the Filled Oval tool), `redact`, `text`, `counter`, `select`, `eraser`
 - **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
 
 Opening a link with plain `open` brings Annotate to the front for a moment. Once the link runs, focus goes back to the app you were in, unless an interactive overlay is still open, as it is after a tool or show link. When you open several links at once, that's decided after the last one. To keep a running Annotate in the background the whole time, open the link with `open -g`.

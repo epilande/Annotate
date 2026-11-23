@@ -275,9 +275,10 @@ struct ToolbarView: View {
     }
 
     /// A tool chip. It shows, and is named for, the tool it showed last (`shownTool(on:)`),
-    /// and is active while either of its tools is current. Its action always asks for the
-    /// chip's own tool: the panel turns a Shift-click on a shape chip into the filled tool,
-    /// and VoiceOver, which can't Shift-click, gets the other version as a named action.
+    /// and is active while either of its tools is current. A click always asks for the chip's
+    /// own tool, and the panel turns a Shift-click on a shape chip into the filled tool.
+    /// VoiceOver can't Shift-click, so its press selects the tool the chip is named for and
+    /// the other version is a named action.
     private func toolChip(_ chipTool: ToolType) -> some View {
         let shown = model.shownTool(on: chipTool)
         let active = model.activeTool.toolbarChip == chipTool
@@ -292,6 +293,7 @@ struct ToolbarView: View {
         .accessibilityLabel(shown.displayName)
         .accessibilityHint(toolHint(showing: shown, hasFilledVersion: other != nil))
         .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityAction { perform(.tool(shown)) }
         .otherVersionAction(other) { perform(.tool($0)) }
     }
 
