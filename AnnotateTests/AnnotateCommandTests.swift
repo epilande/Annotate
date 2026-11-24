@@ -86,9 +86,10 @@ final class AnnotateCommandTests: XCTestCase {
     }
 
     func testPaletteSlotsCountFromOneInPaletteOrder() {
-        XCTAssertEqual(PaletteColor.allCases.map(\.slot), Array(1...9))
-        XCTAssertEqual((1...9).map { PaletteColor(slot: $0) }, PaletteColor.allCases)
-        for slot in [Int.min, -1, 0, 10, Int.max] {
+        let count = PaletteColor.allCases.count
+        XCTAssertEqual(PaletteColor.allCases.map(\.slot), Array(1...count))
+        XCTAssertEqual((1...count).map { PaletteColor(slot: $0) }, PaletteColor.allCases)
+        for slot in [Int.min, -1, 0, count + 1, Int.max] {
             XCTAssertNil(PaletteColor(slot: slot), "\(slot)")
         }
     }
@@ -2036,19 +2037,34 @@ final class AnnotateCommandTests: XCTestCase {
     func testSetColorIntentTakesPaletteSlotsWhateverTheColorShortcuts() throws {
         XCTAssertTrue(ShortcutManager.shared.setShortcut("7", for: .color(.green)))
 
-        XCTAssertEqual(try (1...9).map { try SetColorIntent(slot: $0).command }, PaletteColor.allCases.map(AnnotateCommand.color))
-        for slot in [-1, 0, 10] {
+        let count = PaletteColor.allCases.count
+        XCTAssertEqual(
+            try (1...count).map { try SetColorIntent(slot: $0).command }, PaletteColor.allCases.map(AnnotateCommand.color))
+        for slot in [-1, 0, count + 1] {
             XCTAssertThrowsError(try SetColorIntent(slot: slot).command) { error in
                 XCTAssertEqual(error as? AnnotateIntentError, .unknownColorSlot, "\(slot)")
             }
         }
     }
 
+    func testSetColorIntentLiteralsMatchThePalette() {
+        // The bound can't be read back, so a palette change has to come through here.
+        XCTAssertEqual(PaletteColor.allCases.count, 9, "Update inclusiveRange in SetColorIntent")
+        let slots = PaletteColor.allCases.map { "\($0.slot) \($0.displayName.lowercased())" }.joined(separator: ", ")
+        // Typed, or it resolves to the protocol's optional default.
+        let intentDescription: IntentDescription = SetColorIntent.description
+        let description = String(localized: intentDescription.descriptionText)
+        XCTAssertTrue(description.contains("palette slot: \(slots)."), description)
+        XCTAssertEqual(
+            String(localized: AnnotateIntentError.unknownColorSlot.localizedStringResource),
+            "Choose a color slot from 1 to 9.")
+    }
+
     func testSetColorIntentLeavesTheColorAloneWhenTheSlotIsUnknown() async {
         let before = appDelegate.currentColor
         do {
-            _ = try await SetColorIntent(slot: 10).perform()
-            XCTFail("Slot 10 ran")
+            _ = try await SetColorIntent(slot: PaletteColor.allCases.count + 1).perform()
+            XCTFail("An unknown slot ran")
         } catch {
             XCTAssertEqual(error as? AnnotateIntentError, .unknownColorSlot)
         }

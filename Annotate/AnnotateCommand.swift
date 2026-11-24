@@ -78,8 +78,8 @@ enum AnnotateCommand: Hashable, Sendable {
             guard let tool = ToolType.allCases.first(where: { $0.rawValue.lowercased() == value }) else { return nil }
             self = .tool(tool)
         case ("color", let value?):
-            // Not `Int(value)`, which also takes "+1" and "01".
-            guard let color = PaletteColor.allCases.first(where: { String($0.slot) == value }) else { return nil }
+            // `Int` also takes "+1" and "01", which aren't how a slot is written.
+            guard let slot = Int(value), String(slot) == value, let color = PaletteColor(slot: slot) else { return nil }
             self = .color(color)
         case ("toolbar", let value?):
             guard let target = CommandSwitch(rawValue: value) else { return nil }

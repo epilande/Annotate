@@ -50,7 +50,7 @@ enum AnnotateIntentError: Error, Equatable, CustomLocalizedStringResourceConvert
         case .appNotReady:
             return "Annotate is still starting up. Try again in a moment."
         case .unknownColorSlot:
-            return "Choose a color slot from 1 to 9."
+            return "Choose a color slot from 1 to \(PaletteColor.allCases.count)."
         case .screenRecordingOff:
             return "Annotate needs Screen Recording permission to capture. Turn it on in Annotate's Settings, in the Capture pane."
         case .captureCancelled:
@@ -111,8 +111,9 @@ struct SelectToolIntent: AnnotateCommandIntent {
 struct SetColorIntent: AnnotateCommandIntent {
     static let title: LocalizedStringResource = "Set Color"
     static let description = IntentDescription(
-        "Sets the annotation color to a palette slot from 1 to 9. Doesn't open the overlay.")
+        "Sets the annotation color to a palette slot: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 indigo, 7 magenta, 8 white, 9 black. Doesn't open the overlay.")
 
+    // Xcode only extracts literal bounds, so a test ties them to the palette.
     @Parameter(title: "Slot", inclusiveRange: (1, 9))
     var slot: Int
 
