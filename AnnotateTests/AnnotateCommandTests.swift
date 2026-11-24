@@ -85,6 +85,14 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(PaletteColor.indigo.displayName, "Indigo")
     }
 
+    func testPaletteSlotsCountFromOneInPaletteOrder() {
+        XCTAssertEqual(PaletteColor.allCases.map(\.slot), Array(1...9))
+        XCTAssertEqual((1...9).map { PaletteColor(slot: $0) }, PaletteColor.allCases)
+        for slot in [Int.min, -1, 0, 10, Int.max] {
+            XCTAssertNil(PaletteColor(slot: slot), "\(slot)")
+        }
+    }
+
     func testSwitchResolvesAgainstTheCurrentState() {
         XCTAssertTrue(CommandSwitch.on.resolve(current: true))
         XCTAssertTrue(CommandSwitch.on.resolve(current: false))
@@ -530,7 +538,7 @@ final class AnnotateCommandTests: XCTestCase {
     func testPathsAreStable() {
         XCTAssertEqual(AnnotateCommand.toggle.path, "/toggle")
         XCTAssertEqual(AnnotateCommand.tool(.highlighter).path, "/tool/highlighter")
-        XCTAssertEqual(AnnotateCommand.color(.indigo).path, "/color/indigo")
+        XCTAssertEqual(AnnotateCommand.color(.indigo).path, "/color/6")
         XCTAssertEqual(AnnotateCommand.toolbar(.off).path, "/toolbar/off")
         XCTAssertEqual(AnnotateCommand.fade(.toggle).path, "/fade/toggle")
         XCTAssertEqual(AnnotateCommand.board(.on).path, "/board/on")
@@ -542,12 +550,13 @@ final class AnnotateCommandTests: XCTestCase {
         XCTAssertEqual(AnnotateCommand(path: "show"), .show)
         XCTAssertEqual(AnnotateCommand(path: "/show/"), .show)
         XCTAssertEqual(AnnotateCommand(path: "/Tool/Arrow"), .tool(.arrow))
-        XCTAssertEqual(AnnotateCommand(path: "color/RED/"), .color(.red))
+        XCTAssertEqual(AnnotateCommand(path: "color/1/"), .color(.red))
     }
 
     func testPathParsingRejectsMalformedPaths() {
         let invalid = [
-            "", "/", "//", "/nope", "/tool", "/tool/", "/tool/brush", "/color/purple",
+            "", "/", "//", "/nope", "/tool", "/tool/", "/tool/brush", "/color", "/color/", "/color/red",
+            "/color/0", "/color/10", "/color/01", "/color/+1", "/color/-1", "/color/1.0", "/color/ 1", "/color/１",
             "/toolbar", "/toolbar/maybe", "/show/now", "/clear/all", "/tool/arrow/extra",
             "//show", "/fade//on", "/capture", "/capture/window",
         ]
@@ -2005,27 +2014,45 @@ final class AnnotateCommandTests: XCTestCase {
             let title = ToolType.caseDisplayRepresentations[tool].map { String(localized: $0.title) }
             XCTAssertEqual(title, tool.displayName)
         }
-        for color in PaletteColor.allCases {
-            let title = PaletteColor.caseDisplayRepresentations[color].map { String(localized: $0.title) }
-            XCTAssertEqual(title, color.displayName)
-        }
         for state in CommandSwitch.allCases {
             XCTAssertNotNil(CommandSwitch.caseDisplayRepresentations[state])
         }
     }
 
-    func testIntentsMapToTheirCommands() {
+    func testIntentsMapToTheirCommands() throws {
         XCTAssertEqual(ToggleOverlayIntent().command, .toggle)
         XCTAssertEqual(ShowOverlayIntent().command, .show)
         XCTAssertEqual(HideOverlayIntent().command, .hide)
         XCTAssertEqual(SelectToolIntent(tool: .counter).command, .tool(.counter))
-        XCTAssertEqual(SetColorIntent(color: .yellow).command, .color(.yellow))
+        XCTAssertEqual(try SetColorIntent(slot: 3).command, .color(.yellow))
         XCTAssertEqual(ClearAnnotationsIntent().command, .clear)
         XCTAssertEqual(SetToolbarIntent(state: .off).command, .toolbar(.off))
         XCTAssertEqual(SetFadeModeIntent(state: .on).command, .fade(.on))
         XCTAssertEqual(SetBoardIntent(state: .toggle).command, .board(.toggle))
         XCTAssertEqual(CaptureScreenIntent().command, .capture(.screen))
         XCTAssertEqual(CaptureAreaIntent().command, .capture(.area))
+    }
+
+    func testSetColorIntentTakesPaletteSlotsWhateverTheColorShortcuts() throws {
+        XCTAssertTrue(ShortcutManager.shared.setShortcut("7", for: .color(.green)))
+
+        XCTAssertEqual(try (1...9).map { try SetColorIntent(slot: $0).command }, PaletteColor.allCases.map(AnnotateCommand.color))
+        for slot in [-1, 0, 10] {
+            XCTAssertThrowsError(try SetColorIntent(slot: slot).command) { error in
+                XCTAssertEqual(error as? AnnotateIntentError, .unknownColorSlot, "\(slot)")
+            }
+        }
+    }
+
+    func testSetColorIntentLeavesTheColorAloneWhenTheSlotIsUnknown() async {
+        let before = appDelegate.currentColor
+        do {
+            _ = try await SetColorIntent(slot: 10).perform()
+            XCTFail("Slot 10 ran")
+        } catch {
+            XCTAssertEqual(error as? AnnotateIntentError, .unknownColorSlot)
+        }
+        XCTAssertEqual(appDelegate.currentColor, before)
     }
 
     func testIntentRunsItsCommandInTheApp() async throws {
