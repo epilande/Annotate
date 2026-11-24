@@ -28,17 +28,18 @@ extension AnnotateCommand {
     /// Parses a link such as `annotate://show` or `annotate://tool/arrow`: the host is the command
     /// and the path its value, matched like `init?(path:)`. Fails for another scheme, a missing
     /// command, a user, password, port, query, or fragment, a path `init?(path:)` rejects, or a
-    /// command that `runsFromLinks` keeps from links, such as a capture.
+    /// command that `runsFromLinks` keeps from links, such as a capture. Percent-encoding isn't
+    /// decoded, since no command needs it and `%2F` would otherwise pass for a separator.
     static func parse(url: URL, scheme: String = AnnotateCommand.urlScheme) -> Result<AnnotateCommand, LinkRejection> {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return .failure(.unparseable)
         }
         guard components.scheme?.lowercased() == scheme.lowercased() else { return .failure(.otherScheme) }
-        guard let host = components.host, !host.isEmpty else { return .failure(.missingCommand) }
+        guard let host = components.encodedHost, !host.isEmpty else { return .failure(.missingCommand) }
         guard components.user == nil, components.password == nil, components.port == nil,
             components.query == nil, components.fragment == nil
         else { return .failure(.extraParts) }
-        guard let command = AnnotateCommand(path: host + components.path) else {
+        guard let command = AnnotateCommand(path: host + components.percentEncodedPath) else {
             return .failure(.unknownCommand)
         }
         guard command.runsFromLinks else { return .failure(.notFromLinks) }
