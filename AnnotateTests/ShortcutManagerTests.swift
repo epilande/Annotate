@@ -290,6 +290,36 @@ final class ShortcutManagerTests: XCTestCase, Sendable {
             "Left 3 (Pen) alone because it's already assigned.")
     }
 
+    func testTheColorsRowSortsLikeAKeyboard() {
+        let cases: [(String, [PaletteColor: ShortcutBinding], [PaletteColor])] = [
+            ("no bindings keep palette order", [:], PaletteColor.allCases),
+            (
+                "digits run 1 to 9, then 0",
+                [.red: ShortcutBinding("0"), .orange: ShortcutBinding("9"), .yellow: ShortcutBinding("1")],
+                [.yellow, .orange, .red, .green, .cyan, .indigo, .magenta, .white, .black]
+            ),
+            (
+                "other bare keys follow the 0 in ASCII order, Shift+letter as its capital",
+                [
+                    .red: ShortcutBinding("j"), .orange: ShortcutBinding("J", modifiers: .shift),
+                    .yellow: ShortcutBinding(";"), .green: ShortcutBinding("0"), .cyan: ShortcutBinding("2"),
+                ],
+                [.cyan, .green, .yellow, .orange, .red, .indigo, .magenta, .white, .black]
+            ),
+            (
+                "other chords come after every bare key, then colors with no key",
+                [
+                    .red: ShortcutBinding("1", modifiers: .command), .orange: ShortcutBinding("z"),
+                    .yellow: ShortcutBinding("1", modifiers: .shift), .green: ShortcutBinding("a", modifiers: .option),
+                ],
+                [.orange, .yellow, .red, .green, .cyan, .indigo, .magenta, .white, .black]
+            ),
+        ]
+        for (name, bindings, expected) in cases {
+            XCTAssertEqual(ColorShortcutsRow.keyboardOrder(of: bindings), expected, name)
+        }
+    }
+
     func testColorPickerNumbersFollowTheColorShortcuts() {
         func numbers(_ keys: [PaletteColor: ShortcutBinding]) -> [Int] {
             ShortcutManager.colorPickerNumbers(for: PaletteColor.allCases.map { keys[$0] ?? .unassigned })

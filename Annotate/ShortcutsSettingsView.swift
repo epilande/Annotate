@@ -429,6 +429,7 @@ struct ShortcutSettingRow: View {
 struct ColorShortcutsRow: View {
     @Binding var shortcuts: [ShortcutKey: String]
     @Binding var editingShortcut: ShortcutKey?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var skippedMessage: String?
     @State private var recordingError: String?
@@ -455,8 +456,9 @@ struct ColorShortcutsRow: View {
                 .accessibilityIdentifier("shortcut.colors.useDigits")
             }
 
+            let order = Self.keyboardOrder(of: colorBindings)
             HStack(spacing: 6) {
-                ForEach(PaletteColor.allCases, id: \.self) { color in
+                ForEach(order, id: \.self) { color in
                     ColorShortcutCell(
                         color: color,
                         shortcuts: $shortcuts,
@@ -467,6 +469,7 @@ struct ColorShortcutsRow: View {
                     }
                 }
             }
+            .animation(reduceMotion ? nil : .snappy, value: order)
 
             Text("Colors on a number key use that number in the color picker. The rest fill the free numbers.")
                 .font(.caption)
@@ -481,6 +484,50 @@ struct ColorShortcutsRow: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    /// Each color's binding. Reads `shortcuts` so the row re-sorts whenever a shortcut changes;
+    /// every edit writes the manager first and then copies `allShortcuts` into it.
+    private var colorBindings: [PaletteColor: ShortcutBinding] {
+        _ = shortcuts
+        return Dictionary(uniqueKeysWithValues: PaletteColor.allCases.map { color in
+            (color, ShortcutManager.shared.binding(for: .color(color)))
+        })
+    }
+
+    /// The order the row shows the colors in, laid out like a keyboard:
+    /// 1. Bare number keys, 1 through 9 and then 0.
+    /// 2. Other keys without modifiers in ASCII order, with Shift plus a letter sorted as its
+    ///    capital (so A–Z come before a–z).
+    /// 3. Any other chord, by key and then by modifiers.
+    /// 4. Colors with no shortcut.
+    ///
+    /// Ties keep palette order.
+    static func keyboardOrder(of bindings: [PaletteColor: ShortcutBinding]) -> [PaletteColor] {
+        func rank(_ binding: ShortcutBinding) -> (group: Int, key: [UInt32], modifiers: UInt) {
+            let key = binding.key
+            let scalars = { (text: String) in text.unicodeScalars.map(\.value) }
+            if key.isEmpty { return (3, [], 0) }
+            if binding.modifiers.isEmpty, key.count == 1, let digit = Int(key) {
+                return (0, [UInt32(digit == 0 ? 10 : digit)], 0)
+            }
+            if binding.modifiers.isEmpty { return (1, scalars(key), 0) }
+            if binding.modifiers == .shift, key.count == 1, let letter = key.first,
+                letter.isASCII, letter.isLetter {
+                return (1, scalars(key.uppercased()), 0)
+            }
+            return (2, scalars(key), binding.modifiers.rawValue)
+        }
+        let ranked = PaletteColor.allCases.enumerated().map { index, color in
+            (color: color, index: index, rank: rank(bindings[color] ?? .unassigned))
+        }
+        let sorted = ranked.sorted { lhs, rhs in
+            if lhs.rank.group != rhs.rank.group { return lhs.rank.group < rhs.rank.group }
+            if lhs.rank.key != rhs.rank.key { return lhs.rank.key.lexicographicallyPrecedes(rhs.rank.key) }
+            if lhs.rank.modifiers != rhs.rank.modifiers { return lhs.rank.modifiers < rhs.rank.modifiers }
+            return lhs.index < rhs.index
+        }
+        return sorted.map(\.color)
     }
 
     /// What **Use 1–9 for colors** reports about the digits it left alone, or nil when it
