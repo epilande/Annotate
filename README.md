@@ -385,7 +385,7 @@ Annotate adds these actions to the Shortcuts app, so you can run them from a sho
 | Show Overlay      | Opens the overlay. Leaves Always-On Mode first.                                  |
 | Hide Overlay      | Closes the overlay on every display. Leaves Always-On Mode.                      |
 | Select Tool       | Selects a tool and opens the overlay.                                            |
-| Set Color         | Sets the annotation color from the palette. Doesn't open the overlay.            |
+| Set Color         | Sets the color to a [color slot](#url-scheme), 1 to 9. Doesn't open the overlay. |
 | Clear Annotations | Clears every open overlay. One Undo on any display brings them all back.         |
 | Set Toolbar       | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.              |
 | Set Fade Mode     | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit.    |
@@ -411,7 +411,7 @@ open "annotate://tool/arrow"
 | `annotate://show`                      | Opens the overlay. Leaves Always-On Mode first.                               |
 | `annotate://hide`                      | Closes the overlay on every display. Leaves Always-On Mode.                   |
 | `annotate://tool/<tool>`               | Selects a tool and opens the overlay.                                         |
-| `annotate://color/<color>`             | Sets the annotation color from the palette. Doesn't open the overlay.         |
+| `annotate://color/<slot>`              | Sets the annotation color to a palette slot. Doesn't open the overlay.        |
 | `annotate://clear`                     | Clears every open overlay. One Undo on any display brings them all back.      |
 | `annotate://toolbar/<on\|off\|toggle>` | Turns the toolbar on, off, or toggles it. Doesn't open the overlay.           |
 | `annotate://fade/<on\|off\|toggle>`    | Turns Fade Mode on, off, or toggles it. In Always-On Mode it applies on exit. |
@@ -420,11 +420,11 @@ open "annotate://tool/arrow"
 Capture has no link. Any web page or app can open a link, so links never read the screen or write to the clipboard. Use the keyboard, the menu bar icon, or the Shortcuts actions instead.
 
 - **Tools:** `pen`, `arrow`, `line`, `highlighter`, `rectangle`, `circle` (the Oval tool), `filledRectangle`, `filledCircle` (the Filled Oval tool), `redact`, `text`, `counter`, `select`, `eraser`
-- **Colors:** `red`, `orange`, `yellow`, `green`, `cyan`, `indigo`, `magenta`, `white`, `black`
+- **Color slots:** `1` to `9`, in palette order: red, orange, yellow, green, cyan, indigo, magenta, white, black. A slot stays the same if you bind its color to another key, but the color picker's numbers follow the keys, so they can differ from the slots
 
 Opening a link with plain `open` brings Annotate to the front for a moment. Once the link runs, focus goes back to the app you were in, unless an interactive overlay is still open, as it is after a tool or show link. When you open several links at once, that's decided after the last one. To keep a running Annotate in the background the whole time, open the link with `open -g`.
 
-Links show the same on-screen messages as the Shortcuts actions. Matching ignores case. A link Annotate doesn't recognize, including one with a query string, does nothing. Turn links off with **Allow URL commands** in Settings → General.
+Links show the same on-screen messages as the Shortcuts actions. Matching ignores case. A link Annotate doesn't recognize, including one with a query string or percent-encoding, does nothing. Turn links off with **Allow URL commands** in Settings → General.
 
 Debug builds answer to `annotate-debug://` instead, so a development build never takes links meant for the installed app.
 

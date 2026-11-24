@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 
 /// An action that runs one `AnnotateCommand` in the running app.
 protocol AnnotateCommandIntent: AppIntent {
-    var command: AnnotateCommand { get }
+    var command: AnnotateCommand { get throws }
 }
 
 extension AnnotateCommandIntent {
@@ -18,13 +18,14 @@ extension AnnotateCommandIntent {
         guard let appDelegate = AppDelegate.shared else {
             throw AnnotateIntentError.appNotReady
         }
-        command.run(on: appDelegate)
+        try command.run(on: appDelegate)
         return .result()
     }
 }
 
 enum AnnotateIntentError: Error, Equatable, CustomLocalizedStringResourceConvertible {
     case appNotReady
+    case unknownColorSlot
     case screenRecordingOff
     /// Capture Area's picker closed before an area was picked.
     case captureCancelled
@@ -48,6 +49,8 @@ enum AnnotateIntentError: Error, Equatable, CustomLocalizedStringResourceConvert
         switch self {
         case .appNotReady:
             return "Annotate is still starting up. Try again in a moment."
+        case .unknownColorSlot:
+            return "Choose a color slot from 1 to \(PaletteColor.allCases.count)."
         case .screenRecordingOff:
             return "Annotate needs Screen Recording permission to capture. Turn it on in Annotate's Settings, in the Capture pane."
         case .captureCancelled:
@@ -108,21 +111,27 @@ struct SelectToolIntent: AnnotateCommandIntent {
 struct SetColorIntent: AnnotateCommandIntent {
     static let title: LocalizedStringResource = "Set Color"
     static let description = IntentDescription(
-        "Sets the annotation color. Doesn't open the overlay.")
+        "Sets the annotation color to a palette slot: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 indigo, 7 magenta, 8 white, 9 black. Doesn't open the overlay.")
 
-    @Parameter(title: "Color")
-    var color: PaletteColor
+    // Xcode only extracts literal bounds, so a test ties them to the palette.
+    @Parameter(title: "Slot", inclusiveRange: (1, 9))
+    var slot: Int
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set color to \(\.$color)")
+        Summary("Set color to slot \(\.$slot)")
     }
 
-    var command: AnnotateCommand { .color(color) }
+    var command: AnnotateCommand {
+        get throws {
+            guard let color = PaletteColor(slot: slot) else { throw AnnotateIntentError.unknownColorSlot }
+            return .color(color)
+        }
+    }
 
     init() {}
 
-    init(color: PaletteColor) {
-        self.color = color
+    init(slot: Int) {
+        self.slot = slot
     }
 }
 
@@ -216,22 +225,6 @@ extension ToolType: AppEnum {
         .counter: "Counter",
         .select: "Select",
         .eraser: "Eraser",
-    ]
-}
-
-extension PaletteColor: AppEnum {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Color"
-
-    static let caseDisplayRepresentations: [PaletteColor: DisplayRepresentation] = [
-        .red: "Red",
-        .orange: "Orange",
-        .yellow: "Yellow",
-        .green: "Green",
-        .cyan: "Cyan",
-        .indigo: "Indigo",
-        .magenta: "Magenta",
-        .white: "White",
-        .black: "Black",
     ]
 }
 

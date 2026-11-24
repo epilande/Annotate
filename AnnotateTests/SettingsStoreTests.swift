@@ -128,6 +128,14 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings[.shortcut(.arrow)], .unassigned)
     }
 
+    func testColorShortcutsAreStoredByPaletteSlot() {
+        for color in PaletteColor.allCases {
+            settings[.shortcut(.color(color))] = ShortcutBinding("j")
+            XCTAssertNotNil(defaults.object(forKey: "shortcut.color\(color.slot)"), color.displayName)
+        }
+        XCTAssertEqual(SettingKey.shortcut(.colorGreen).name, "shortcut.color4")
+    }
+
     func testEveryPaletteColorRoundTrips() {
         for color in colorPalette {
             settings[.selectedColor] = color

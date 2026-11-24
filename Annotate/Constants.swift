@@ -6,8 +6,8 @@ extension KeyboardShortcuts.Name {
     static let toggleAlwaysOnMode = Self("toggleAlwaysOnMode")
 }
 
-/// The annotation colors offered by the color picker, in picker order. The raw value names the
-/// color in Shortcuts actions and commands, so renaming a case breaks saved shortcuts.
+/// The annotation colors offered by the color picker, in palette order. Shortcuts actions, links,
+/// and stored color keys name a color by its slot, so reordering cases breaks all three.
 enum PaletteColor: String, CaseIterable, Sendable {
     case red, orange, yellow
     case green, cyan, indigo
@@ -29,6 +29,18 @@ enum PaletteColor: String, CaseIterable, Sendable {
 
     var displayName: String {
         rawValue.capitalized
+    }
+
+    /// The color's position in the palette, 1 for the first. It doesn't follow the color's
+    /// keyboard shortcut, which the user can change.
+    var slot: Int {
+        Self.allCases.firstIndex(of: self)! + 1
+    }
+
+    /// The color in palette slot `slot`, or nil when there is no such slot.
+    init?(slot: Int) {
+        guard let match = Self.allCases.first(where: { $0.slot == slot }) else { return nil }
+        self = match
     }
 
     /// The entry `color` was picked from, matched as the color picker matches its selection.

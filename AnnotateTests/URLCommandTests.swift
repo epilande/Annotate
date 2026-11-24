@@ -73,7 +73,7 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(AnnotateCommand(url: try link("annotate://show/"), scheme: "annotate"), .show)
         XCTAssertEqual(AnnotateCommand(url: try link("annotate://tool/arrow"), scheme: "annotate"), .tool(.arrow))
         XCTAssertEqual(AnnotateCommand(url: try link("annotate://toolbar/off"), scheme: "annotate"), .toolbar(.off))
-        XCTAssertEqual(AnnotateCommand(url: try link("ANNOTATE://Color/Red"), scheme: "annotate"), .color(.red))
+        XCTAssertEqual(AnnotateCommand(url: try link("ANNOTATE://Color/1"), scheme: "annotate"), .color(.red))
     }
 
     func testLinksOnlyMatchTheBuildsScheme() throws {
@@ -86,7 +86,10 @@ final class URLCommandTests: XCTestCase {
     func testMalformedLinksParseAsNothing() throws {
         let invalid = [
             "annotate://", "annotate:///show", "annotate:show", "annotate://nope",
-            "annotate://tool", "annotate://tool/brush", "annotate://color/purple",
+            "annotate://tool", "annotate://tool/brush", "annotate://color/red",
+            "annotate://color/0", "annotate://color/10", "annotate://color/01",
+            "annotate://color/%34", "annotate://color/4%2F", "annotate://co%6Cor/4", "annotate://color%2F4",
+            "annotate://tool/arr%6Fw",
             "annotate://toolbar/maybe", "annotate://show/now", "annotate://tool/arrow/extra",
             "annotate://show?now=1", "annotate://show?", "annotate://show#top",
             "annotate://user@show", "annotate://user:pass@show", "annotate://show:80",
@@ -109,6 +112,10 @@ final class URLCommandTests: XCTestCase {
             ("annotate://show:80", .extraParts),
             ("annotate://nope", .unknownCommand),
             ("annotate://tool/brush", .unknownCommand),
+            ("annotate://color/red", .unknownCommand),
+            ("annotate://color/10", .unknownCommand),
+            ("annotate://color/%34", .unknownCommand),
+            ("annotate://color/4%2F", .unknownCommand),
             ("annotate://tool/arrow/extra", .unknownCommand),
             ("annotate://capture/screen", .notFromLinks),
             ("annotate://capture/area", .notFromLinks),
@@ -162,7 +169,7 @@ final class URLCommandTests: XCTestCase {
     func testColorAndToolbarLinksDoNotOpenTheOverlay() throws {
         launch()
 
-        try open("annotate-debug://color/green", "annotate-debug://toolbar/off")
+        try open("annotate-debug://color/4", "annotate-debug://toolbar/off")
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         XCTAssertEqual(appDelegate.currentColor, .systemGreen)
@@ -182,7 +189,7 @@ final class URLCommandTests: XCTestCase {
         let colorBefore = appDelegate.currentColor
 
         XCTAssertNil(appDelegate.openCommandURL(try link("annotate-debug://show")))
-        try open("annotate-debug://tool/arrow", "annotate-debug://color/green", "annotate-debug://toolbar/off")
+        try open("annotate-debug://tool/arrow", "annotate-debug://color/4", "annotate-debug://toolbar/off")
 
         XCTAssertTrue(visibleOverlays.isEmpty)
         XCTAssertEqual(appDelegate.currentColor, colorBefore)
@@ -299,7 +306,7 @@ final class URLCommandTests: XCTestCase {
         let focus = installFocusHarness(active: false)
         focus.activateAnnotate()
 
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         XCTAssertTrue(focus.activated().isEmpty, "Waits in case another link follows")
         focus.settle()
 
@@ -324,7 +331,7 @@ final class URLCommandTests: XCTestCase {
         let focus = installFocusHarness(active: false)
         focus.activateAnnotate()
 
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         focus.settle()
 
         XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "Always-On overlays take no input")
@@ -341,7 +348,7 @@ final class URLCommandTests: XCTestCase {
         testDefaults.settings[.urlCommandsEnabled] = false
         focus = installFocusHarness(active: false)
         focus.activateAnnotate()
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         focus.settle()
         XCTAssertEqual(focus.activated(), [NSRunningApplication.current], "URL commands off")
     }
@@ -351,7 +358,7 @@ final class URLCommandTests: XCTestCase {
         launch()
         let focus = installFocusHarness(active: false)
 
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         focus.settle()
 
         XCTAssertTrue(focus.activated().isEmpty)
@@ -376,7 +383,7 @@ final class URLCommandTests: XCTestCase {
         let focus = installFocusHarness(active: false)
         focus.activateAnnotate()
 
-        try openOneAtATime("annotate-debug://color/green", "annotate-debug://tool/arrow", harness: focus)
+        try openOneAtATime("annotate-debug://color/4", "annotate-debug://tool/arrow", harness: focus)
         focus.settle()
 
         XCTAssertEqual(overlay?.isVisible, true)
@@ -390,7 +397,7 @@ final class URLCommandTests: XCTestCase {
         let focus = installFocusHarness(active: false)
         focus.activateAnnotate()
 
-        try open("annotate-debug://color/green", "annotate-debug://toolbar/off", "annotate-debug://fade/off")
+        try open("annotate-debug://color/4", "annotate-debug://toolbar/off", "annotate-debug://fade/off")
         focus.settle()
 
         XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
@@ -415,7 +422,7 @@ final class URLCommandTests: XCTestCase {
 
     func testAColorLinkThatLaunchesTheAppHandsFocusBackWhenLaunchActivatesIt() throws {
         let focus = installLaunchFocusHarness()
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         launchAndSettle(focus)
         XCTAssertEqual(appDelegate.currentColor, .systemGreen)
         XCTAssertTrue(focus.activated().isEmpty, "Not active yet, so nothing to hand back")
@@ -430,7 +437,7 @@ final class URLCommandTests: XCTestCase {
         // A color link launches the app and settles before the launch activation lands. A tool
         // link then opens the overlay, and the activation lands before the tool link settles.
         let focus = installLaunchFocusHarness()
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         launchAndSettle(focus)
 
         try open("annotate-debug://tool/arrow")
@@ -445,10 +452,10 @@ final class URLCommandTests: XCTestCase {
         // Regression: a second color link arrives after the launch link settled but before the
         // launch activation lands.
         let focus = installLaunchFocusHarness()
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         launchAndSettle(focus)
 
-        try open("annotate-debug://color/red")
+        try open("annotate-debug://color/1")
         focus.settle()
         XCTAssertTrue(focus.activated().isEmpty, "Not active yet, so nothing to hand back")
 
@@ -464,7 +471,7 @@ final class URLCommandTests: XCTestCase {
         // notification naming the previous app.
         let focus = installLaunchFocusHarness()
         focus.becomeActive()
-        try open("annotate-debug://color/green")
+        try open("annotate-debug://color/4")
         launchAndSettle(focus)
 
         XCTAssertEqual(focus.activated(), [NSRunningApplication.current])
