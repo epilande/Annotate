@@ -126,10 +126,17 @@ enum ShortcutKey: String, CaseIterable {
     case clearAll
     case captureScreen
     case captureArea
-    // One per palette color, in palette order. Unassigned by default (#147).
-    case colorRed, colorOrange, colorYellow
-    case colorGreen, colorCyan, colorIndigo
-    case colorMagenta, colorWhite, colorBlack
+    // One per palette color, in palette order. Unassigned by default (#147). The raw value,
+    // which names the stored preference, is the color's palette slot (`PaletteColor.slot`).
+    case colorRed = "color1"
+    case colorOrange = "color2"
+    case colorYellow = "color3"
+    case colorGreen = "color4"
+    case colorCyan = "color5"
+    case colorIndigo = "color6"
+    case colorMagenta = "color7"
+    case colorWhite = "color8"
+    case colorBlack = "color9"
 
     /// The per-color actions, in palette order.
     static let colorActions: [ShortcutKey] = PaletteColor.allCases.map(ShortcutKey.color)
